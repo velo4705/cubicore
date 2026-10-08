@@ -67,16 +67,34 @@ Explicitly out of scope: workers, budgets, review.
 
 ## Phase 2 — Dispatch and gates
 
+Status: **gates and permissions done** — 128 tests. Remaining: the opencode
+spawn adapter and agent definitions, which need `@opencode-ai/sdk` installed.
+
 Scope:
 - Map contracts → opencode agent definitions (`mode: subagent`, `hidden: true`)
-- Translate `inputs` / `forbidden` into glob-scoped `edit` permissions
-- Per-artifact gates in order: schema parse → executable `verify` → `doneWhen`
-- One retry per gate, then escalate to aggregation with a failure flag
-- Structured artifacts on disk; aggregator reads artifacts, never transcripts
+- Translate `writes` / `forbidden` into V2 `permissions` rules — done, and
+  fail-closed: a broad `edit: deny` first, narrow allows, forbidden re-denied after
+- Gates in order: `schema` → `verify` → `scope` — done
+- One retry total per contract, then annotate `unresolved` — done
+- Structured artifacts; aggregator reads artifacts, never transcripts — done
+
+Design notes worth keeping:
+- `gateScope` is new and not in the original three-gate list. It checks the
+  worker stayed inside its declared `writes`, which is the runtime counterpart to
+  the plan-time disjointness check — the validator proves workers don't *plan* to
+  collide, this proves one didn't write where it said it wouldn't. It is never
+  retryable: rerunning reproduces the same escape.
+- A worker that escapes scope is **not** rolled back in v1. The finding is
+  recorded and surfaced; undoing arbitrary edits safely is a Phase 3 problem.
+
+Remaining:
+- `dispatch/spawn.ts` — the opencode subagent call
+- `dispatch/agents.ts` — contract → agent definition, `hidden: true`
 
 Exit criteria:
 - Workers run concurrently and produce schema-valid artifacts
 - A worker that fails `verify` is retried once, then flagged, never silently included
+- A worker writing outside `writes` is caught by `gateScope`
 - Aggregator demonstrably never sees a worker transcript
 
 ---

@@ -21,16 +21,18 @@ src/
     topology.ts         classify task into one of four topologies  (Phase 5)
 
   dispatch/
-    index.ts            fan-out / fan-in, sequential pipeline
-    agents.ts           Contract -> opencode agent definition
-    budgets.ts          per-contract ceilings + graph budget (D8)
+    index.ts            fan-out driver, one retry total     [implemented]
+    permissions.ts      Contract -> opencode V2 rules        [implemented, unverified]
+    spawn.ts            opencode subagent adapter            [Phase 2, remaining]
+    agents.ts           Contract -> opencode agent definition [Phase 2, remaining]
+    budgets.ts          per-contract ceilings + graph budget (D8)  [Phase 3]
 
   gate/
-    index.ts            run three gates in order, retry once
-    schema.ts           gate 1 — artifact parses against schema
-    verify.ts           gate 2 — executable verify command
-    doneWhen.ts         gate 3 — machine-evaluated completion
-    severity.ts         blocker-only revision trigger          (Phase 4)
+    index.ts            three gates in order, stop at first fail [implemented]
+    severity.ts         blocker-only revision trigger        [Phase 4]
+
+  aggregate/
+    index.ts            artifacts only — never transcripts   [implemented]
 
   review/
     index.ts            asymmetric critic, novelty gate, revise cap 1  (Phase 4)
@@ -78,12 +80,32 @@ twice on purpose. The schema is what the model is shown; `parse.ts` is what the
 response is checked against. There is a test asserting the two agree on required
 properties, so they cannot drift silently.
 
-**`dispatch/`** — the only layer that spawns agents. It translates a `Contract`
-into an opencode agent definition and applies permission globs. It does not
-decide what the workers do.
+**`dispatch/`** — the only layer that spawns agents. Translates a `Contract`
+into an opencode agent definition and permission rules. It does not decide what
+the workers do.
+
+Two-way split: `permissions.ts` builds the rules and is fully tested;
+`spawn.ts` is the opencode call and is the one place a provider SDK is touched.
+
+**Retry budget is one round total, not one per gate.** A schema failure produces
+a *different* artifact, so the whole chain re-runs; budgeting per gate would
+allow four worker invocations for one contract, a 4× cost against a headline
+cost claim. `shouldRetry` is the single place that decision is made.
 
 **`gate/`** — pure-ish. Verifies artifacts against a contract and returns
-verdicts. Knows nothing about workers or dispatch.
+verdicts. Knows nothing about workers or dispatch. Takes a `CommandRunner` so
+it never shells out itself, which keeps the gates testable without a repo.
+
+Gate order is `schema → verify → scope`. A malformed artifact has nothing to
+verify, so the order is a dependency, not a preference.
+
+`gateVerify` runs only checks that are `blocking` ∧ `convergent`. Advisory and
+non-convergent checks are recorded by the caller and never gate, because neither
+can be satisfied by one revision.
+
+**`aggregate/`** — imports `contracts/` and `telemetry/` only. That restriction
+is what makes D7 mechanical rather than a promise: the module is structurally
+unable to reach a worker transcript.
 
 **`aggregate/`** — reads artifacts off disk. Must not import `dispatch/` or
 `coordinator/`, and must never receive a transcript. That constraint is what

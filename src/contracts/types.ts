@@ -1,3 +1,5 @@
+import type { TokenUsage } from "../telemetry/types";
+
 export type Topology =
   | "fan-out"
   | "pipeline"
@@ -80,6 +82,29 @@ export interface Plan {
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;
+}
+
+/**
+ * What a worker hands back. Never a transcript — the aggregator reads these and
+ * nothing else, which is what keeps D7 true rather than aspirational.
+ */
+export interface Artifact {
+  contractId: string;
+  deliverable: Deliverable;
+  raw: string;
+}
+
+export type WorkerStatus = "accepted" | "failed" | "budget-exhausted";
+
+export interface WorkerResult {
+  contractId: string;
+  status: WorkerStatus;
+  artifact?: Artifact;
+  /** Files the worker actually modified, for the scope gate. */
+  changedFiles: string[];
+  usage: TokenUsage;
+  ms: number;
+  toolCalls: number;
 }
 
 export type FindingCode =
