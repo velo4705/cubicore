@@ -4,10 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "bun build src/index.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "bun run bench/run.ts"
+  },
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.0",
+    "@opencode-ai/sdk": ">=1.18.0"
   },
   "devDependencies": {
+    "@opencode-ai/plugin": "1.18.35",
+    "@opencode-ai/sdk": "1.18.35",
     "@types/bun": "latest",
     "typescript": "^5"
   }

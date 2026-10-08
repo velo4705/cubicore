@@ -89,22 +89,43 @@ describe("RunRecorder", () => {
 });
 
 describe("opencode adapter", () => {
-  test("reads a flat token block", () => {
-    const usage = readUsage({
-      role: { type: "assistant" },
-      tokens: { input: 10, output: 5, reasoning: 2, cacheRead: 100, cacheWrite: 20, cost: 0.03 },
+  /**
+   * Verbatim shape of a real assistant row from
+   * ~/.local/share/opencode/opencode-stable.db. If opencode changes the token
+   * schema this fixture is what needs updating, and it should fail loudly
+   * rather than silently record zeroes.
+   */
+  const REAL_ROW = {
+    role: "assistant",
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    cost: 0,
+    modelID: "big-pickle",
+    providerID: "opencode",
+  };
+
+  const REAL_ROW_POPULATED = {
+    role: "assistant",
+    tokens: { input: 1200, output: 340, reasoning: 90, cache: { read: 8192, write: 512 } },
+    cost: 0.0175,
+    modelID: "big-pickle",
+    providerID: "opencode",
+  };
+
+  test("reads the nested cache shape from a real row", () => {
+    const usage = readUsage(REAL_ROW);
+    expect(usage).toEqual({
+      input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0,
     });
-    expect(usage).toEqual({ input: 10, output: 5, reasoning: 2, cacheRead: 100, cacheWrite: 20, cost: 0.03 });
   });
 
-  test("reads a nested cache block", () => {
-    const usage = readUsage({
-      role: { type: "assistant" },
-      tokens: { input: 10, output: 5, cache: { read: 100, write: 20 } },
+  test("reads populated counters and cost", () => {
+    expect(readUsage(REAL_ROW_POPULATED)).toEqual({
+      input: 1200, output: 340, reasoning: 90, cacheRead: 8192, cacheWrite: 512, cost: 0.0175,
     });
-    expect(usage?.cacheRead).toBe(100);
-    expect(usage?.cacheWrite).toBe(20);
-    expect(usage?.cost).toBe(0);
+  });
+
+  test("tolerates a string role, which is how the database stores it", () => {
+    expect(readUsage({ ...REAL_ROW, role: "user" })).toBeNull();
   });
 
   test("ignores non-assistant messages", () => {
@@ -112,9 +133,15 @@ describe("opencode adapter", () => {
   });
 
   test("ignores events with no token block", () => {
-    expect(readUsage({ role: { type: "assistant" } })).toBeNull();
+    expect(readUsage({ role: "assistant" })).toBeNull();
     expect(readUsage({ tokens: {} })).toBeNull();
     expect(readUsage(null)).toBeNull();
     expect(readUsage("nonsense")).toBeNull();
+  });
+
+  test("treats a missing cache block as zero, not a crash", () => {
+    const usage = readUsage({ role: "assistant", tokens: { input: 5, output: 5 } });
+    expect(usage?.cacheRead).toBe(0);
+    expect(usage?.cacheWrite).toBe(0);
   });
 });

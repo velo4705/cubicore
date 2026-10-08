@@ -105,6 +105,12 @@ export interface WorkerResult {
   usage: TokenUsage;
   ms: number;
   toolCalls: number;
+  /**
+   * Whether the host actually terminated an over-budget session. False when
+   * Cubicore merely stopped waiting, which is not the same thing — a session
+   * left running keeps spending.
+   */
+  cancelled: boolean;
 }
 
 export type FindingCode =
@@ -122,7 +128,9 @@ export type FindingCode =
   | "unsupported-check-kind"
   | "baseline-dropped"
   /** Coordinator output did not parse. Distinct from `empty-plan`. */
-  | "malformed-plan";
+  | "malformed-plan"
+  /** The planner's declared topology disagrees with the plan's own structure. */
+  | "mis-declared-topology";
 
 export interface Finding {
   code: FindingCode;

@@ -156,3 +156,57 @@ describe("producePlan", () => {
     await expect(producePlan(planner, "x")).rejects.toThrow("provider timeout");
   });
 });
+describe("topology validation in producePlan", () => {
+  const DEPENDENT = {
+    ...GOOD,
+    contracts: [
+      { ...GOOD.contracts[0], id: "types", writes: ["src/types.ts"], reads: [] },
+      {
+        ...GOOD.contracts[0],
+        id: "parser",
+        writes: ["src/parser.ts"],
+        reads: ["src/types.ts"],
+        checks: GOOD.contracts[0].checks.map((c: unknown) => ({ ...(c as object), command: "npm test -- parser" })),
+      },
+    ],
+    graphBudget: { nodes: 8, edges: 16, tokens: 500000, wallMs: 1200000 },
+  };
+
+  test("rejects a fan-out whose own structure implies a pipeline", async () => {
+    const outcome = await producePlan(scriptedPlanner(JSON.stringify(DEPENDENT)), "add a parser");
+    expect(outcome.kind).toBe("fallback");
+    if (outcome.kind !== "fallback") return;
+    expect(outcome.findings.map((f) => f.code)).toContain("mis-declared-topology");
+  });
+
+  test("accepts the same contracts declared as a pipeline", async () => {
+    const outcome = await producePlan(
+      scriptedPlanner(JSON.stringify({ ...DEPENDENT, topology: "pipeline" })),
+      "add a parser",
+    );
+    expect(outcome.kind).toBe("accepted");
+  });
+
+  test("re-plans on the topology complaint when the retry is correct", async () => {
+    const outcome = await producePlan(
+      scriptedPlanner(JSON.stringify(DEPENDENT), JSON.stringify({ ...DEPENDENT, topology: "pipeline" })),
+      "add a parser",
+    );
+    expect(outcome.kind).toBe("accepted");
+    if (outcome.kind !== "accepted") return;
+    expect(outcome.attempts).toBe(2);
+  });
+
+  test("the re-plan prompt carries the topology reasoning", async () => {
+    const prompts: string[] = [];
+    const planner: Planner = {
+      async complete(prompt) {
+        prompts.push(prompt);
+        return prompts.length === 1 ? JSON.stringify(DEPENDENT) : JSON.stringify({ ...DEPENDENT, topology: "pipeline" });
+      },
+    };
+    await producePlan(planner, "add a parser");
+    expect(prompts[1]).toContain("fan-out");
+    expect(prompts[1]).toContain("types -> parser");
+  });
+});

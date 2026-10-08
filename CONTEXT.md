@@ -86,6 +86,16 @@ The coordinator picks one. It does not default to divide-and-conquer.
 The third row is where genuine token reduction lives. The other rows relocate
 cost at best.
 
+**Topology is checked, not trusted.** The planner declares one, and
+`coordinator/topology.ts` validates that declaration against the plan's own
+structure using one relation: *if contract A writes a path that contract B reads,
+B depends on A.* That single fact distinguishes fan-out from pipeline, orders the
+pipeline by topological stage for free, and — through a dependency **cycle** —
+proves non-decomposability outright, since two contracts each needing the
+other's output is exactly what "not a divide-and-conquer task" describes. A
+mismatch is `mis-declared-topology` and the planner re-plans; a cycle is told to
+return `refuse` rather than being silently overridden.
+
 ## Key decisions
 
 **D1 — Contracts are the enforcement unit.** A worker never receives a prompt.
@@ -103,9 +113,18 @@ not something to reimplement.
 Reviewer never replies to replies. Two hops, guaranteed to terminate. Symmetric
 peer critique is the failure mode this project exists to avoid.
 
+**D4a — The reviewer checks bar integrity, not quality.** Semantic judgment was
+cut in v1 (D9), so a reviewer asking "is this good?" would reintroduce exactly
+the authorship D9 removed, with no way to bound its opinions. Instead it asks two
+mechanical questions, only on the revise round: did a check's *definition* change,
+and were test files removed? Both are answerable by diffing repo state, and both
+answer the only question with a live incentive behind it — a worker that already
+failed a check and gets one more attempt.
+
 **D5 — Novelty gate.** A critique is only sent if the reviewer can name
 something the worker did not already address. "Looks good" never triggers a
-round trip.
+round trip. Adapted for a mechanical reviewer: every finding must carry named
+evidence, and findings without it are dropped rather than forwarded.
 
 **D6 — Revise cap = 1.** After one revision the artifact flows to aggregation
 carrying an explicit `unresolved: [...]` flag rather than being forced to a

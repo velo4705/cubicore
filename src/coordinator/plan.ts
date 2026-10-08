@@ -2,6 +2,7 @@ import type { Check } from "../contracts/types";
 import { PLANNER_PROMPT, REPLAN_PROMPT } from "../contracts/schema";
 import type { Finding, Plan, Topology } from "../contracts/types";
 import { validatePlan } from "../validate/plan";
+import { checkTopology } from "./topology";
 import { MalformedPlan, formatFindings, parsePlan } from "./parse";
 
 /**
@@ -20,6 +21,16 @@ export type PlanOutcome =
   | { kind: "refused"; topology: Topology; attempts: number }
   | { kind: "fallback"; attempts: number; reason: string; findings: Finding[] };
 
+/** Disagreements between the planner and what the plan structure implies. */
+export function topologyFindings(plan: Plan): Finding[] {
+  const check = checkTopology(plan);
+  return check.messages.map((message) => ({
+    code: "mis-declared-topology" as const,
+    contractIds: check.edges.map((edge) => edge.consumer),
+    message,
+  }));
+}
+
 /**
  * Plan, validate, re-plan once, then fall back to serial.
  *
@@ -27,25 +38,39 @@ export type PlanOutcome =
  * cannot converge must hand the work back to a single agent rather than keep
  * spending on plans that will be rejected for the same structural reason.
  */
+export interface PlanTrace {
+  (event: string, detail?: Record<string, unknown>): void;
+}
+
 export async function producePlan(
   planner: Planner,
   request: string,
-  options: { baseline?: readonly Check[]; maxReplans?: number } = {},
+  options: {
+    baseline?: readonly Check[];
+    maxReplans?: number;
+    trace?: PlanTrace;
+  } = {},
 ): Promise<PlanOutcome> {
   const maxReplans = options.maxReplans ?? 1;
   const attempts = maxReplans + 1;
 
   let prompt = `${PLANNER_PROMPT}\n\nUser request:\n${request}`;
   let lastFindings: Finding[] = [];
+  const trace: PlanTrace = options.trace ?? (() => {});
 
   for (let attempt = 0; attempt < attempts; attempt++) {
+    trace("attempt.start", { attempt: attempt + 1, promptChars: prompt.length });
+    const startedAt = Date.now();
     const raw = await planner.complete(prompt);
+    trace("attempt.prompted", { attempt: attempt + 1, ms: Date.now() - startedAt, rawChars: raw.length });
 
     let plan: Plan;
     try {
       plan = parsePlan(raw);
+      trace("attempt.parsed", { attempt: attempt + 1, topology: plan.topology, contracts: plan.contracts.length });
     } catch (error) {
       if (!(error instanceof MalformedPlan)) throw error;
+      trace("attempt.malformed", { attempt: attempt + 1, problems: error.problems.length });
       lastFindings = [
         {
           code: "malformed-plan",
@@ -63,12 +88,24 @@ export async function producePlan(
 
     const validation = validatePlan(plan, options.baseline);
     if (validation.ok) {
-      return { kind: "accepted", plan, attempts: attempt + 1 };
+      // Structural validation passing is necessary but not sufficient. A plan
+      // can be well-formed and still claim a topology its own structure
+      // contradicts — which is exactly what the planner cannot know, having not
+      // read the code it declared write scopes for.
+      const topologyProblems = topologyFindings(plan);
+      trace("attempt.validated", { attempt: attempt + 1, topologyProblems: topologyProblems.length });
+      if (topologyProblems.length === 0) {
+        return { kind: "accepted", plan, attempts: attempt + 1 };
+      }
+      lastFindings = topologyProblems;
+    } else {
+      lastFindings = validation.findings;
+      trace("attempt.invalid", { attempt: attempt + 1, findings: validation.findings.map((f) => f.code) });
     }
-
-    lastFindings = validation.findings;
     prompt = REPLAN_PROMPT.replace("{findings}", formatFindings(lastFindings));
   }
+
+  trace("done.fallback");
 
   const malformedOnly =
     lastFindings.length > 0 &&

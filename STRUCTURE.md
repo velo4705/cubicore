@@ -18,14 +18,18 @@ src/
   coordinator/
     parse.ts            runtime shape check, MalformedPlan       [implemented]
     plan.ts             plan / validate / re-plan-once / fall back [implemented]
-    topology.ts         classify task into one of four topologies  (Phase 5)
+    topology.ts         dependency, stages, cycles, refusal      [implemented]
 
   dispatch/
     index.ts            fan-out driver, one retry total     [implemented]
-    permissions.ts      Contract -> opencode V2 rules        [implemented, unverified]
-    spawn.ts            opencode subagent adapter            [Phase 2, remaining]
-    agents.ts           Contract -> opencode agent definition [Phase 2, remaining]
-    budgets.ts          per-contract ceilings + graph budget (D8)  [Phase 3]
+    permissions.ts      Contract -> opencode V2 rules        [implemented]
+    prompt.ts           Contract -> what the worker reads    [implemented]
+    agent.ts            Contract -> agent definition         [implemented]
+    observe.ts          event bus -> run observation         [implemented, one guess]
+    spawn.ts            SessionSpawner, the SDK seam         [implemented, unverified]
+    routing.ts          model routing policy                 [implemented]
+    budgets.ts          caps + graph budget admission        [implemented]
+    hooks.ts            chat.params / tool.execute.before    (Phase 3, blocked)
 
   gate/
     index.ts            three gates in order, stop at first fail [implemented]
@@ -33,6 +37,10 @@ src/
 
   aggregate/
     index.ts            artifacts only — never transcripts   [implemented]
+
+  review/
+    index.ts            bar-integrity review, novelty gate    [implemented]
+    anchors.ts          check command -> manifest anchor      [implemented]
 
   review/
     index.ts            asymmetric critic, novelty gate, revise cap 1  (Phase 4)
@@ -50,7 +58,12 @@ src/
       opencode.ts       MessageInfo -> TokenUsage                   [implemented, unverified]
 
   bench/
-    baseline.ts         single-agent baseline runner                 (Phase 0, remaining)
+    types.ts            arm, trial, corpus types            [implemented]
+    aggregate.ts        median/MAD, paired ratios, claims    [implemented]
+    runner.ts           three-arm interleaved trial driver    [implemented]
+    tokens.ts           TokenSource — session DB reader        [implemented, verified]
+    cli.ts              opencode Runner adapter               (Phase 0, remaining)
+    corpus.ts           task set to benchmark against         (Phase 0, remaining)
 
 test/
   validate/plan.test.ts
@@ -84,13 +97,25 @@ properties, so they cannot drift silently.
 into an opencode agent definition and permission rules. It does not decide what
 the workers do.
 
-Two-way split: `permissions.ts` builds the rules and is fully tested;
-`spawn.ts` is the opencode call and is the one place a provider SDK is touched.
+Two-way split: `prompt.ts`, `agent.ts`, `permissions.ts` and `observe.ts` are
+pure and fully tested. `spawn.ts` is the only SDK seam, and it is deliberately
+narrow — three method names, because the plugin already receives every event
+through the `event` hook, so usage, tool counts and changed files need no client
+call at all.
 
 **Retry budget is one round total, not one per gate.** A schema failure produces
 a *different* artifact, so the whole chain re-runs; budgeting per gate would
 allow four worker invocations for one contract, a 4× cost against a headline
 cost claim. `shouldRetry` is the single place that decision is made.
+
+`WorkerSessions` owns the fan-out's event subscription rather than each call
+subscribing for itself — otherwise observers stack up across workers and mutate
+shared state. Each observer filters by session, which is what keeps siblings
+from contaminating each other's totals.
+
+`WorkerSessions` distinguishes `failed` (a session error) from
+`budget-exhausted` (an unfinished session). Collapsing those would make a killed
+worker look like a successful one.
 
 **`gate/`** — pure-ish. Verifies artifacts against a contract and returns
 verdicts. Knows nothing about workers or dispatch. Takes a `CommandRunner` so
@@ -117,9 +142,16 @@ live in `telemetry/adapters/`, so adding Claude Code support means writing an
 adapter, not editing the report schema. The run report is the artifact the cost
 claim is made from — its shape has to outlive any single host.
 
-**`bench/`** — the baseline runner. Separate from `telemetry/` because it drives
-opencode itself rather than observing it, and must not be importable by the
-plugin.
+**`bench/`** — drives opencode from the outside rather than observing it. That
+separation is deliberate: the plugin grading its own runs is the same
+circularity that makes a worker's self-reported completion untrustworthy, and it
+would invalidate the only number this project has to sell. Nothing in `src/`
+may import `bench/`.
+
+Its statistics are the load-bearing part and they are deliberately conservative —
+median over mean, paired within-task ratios, and a `stable` flag that goes false
+rather than publishing a number whose sign flips between tasks. See
+`bench/README.md`.
 
 ## Dependency rule
 

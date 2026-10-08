@@ -132,7 +132,7 @@ describe("the emitted schema matches the parser", () => {
   test("the check enum in the schema matches what the planner prompt tells it", () => {
     const checkEnum = (
       planSchema.properties.contracts as {
-        items: { properties: { checks: { items: { properties: { kind: { enum: string[] } } } } } };
+        items: { properties: { checks: { items: { properties: { kind: { enum: readonly string[] } } } } } };
       }
     ).items.properties.checks.items.properties.kind.enum;
     expect(checkEnum).toEqual(["baseline", "coverage", "intent", "judgment"]);
