@@ -190,3 +190,46 @@ than by dropping a file into a scratch repo.
 
 This is a harness setup error, not a design failure. Whether `maxSteps` actually
 stops the loop is still unverified — the constrained agent has never once run.
+
+### The coordinator cannot select a subagent — `body.agent` is ignored
+
+Final diagnosis, after four identical failures.
+
+The plugin's `config` hook **works**: with `dist/index.js` loaded via a repo
+`opencode.json`, the server lists the agent —
+
+```
+GET /agent -> [..., {"name":"cubicore-planner","hidden":true}, ...]
+```
+
+Yet a coordinator session created with `session.prompt({ body: { agent:
+"cubicore-planner" } })` records **`agent: build` on every message**, in the
+`session.agent` column and on each message row.
+
+So `SessionPromptData.body.agent` **does not resolve a subagent by name**. The
+value is accepted and silently ignored, and opencode falls back to the default
+`build` agent with no error.
+
+**This invalidates the previous four diagnoses.** The tool denial, the
+`maxSteps` bound, the named agent, the `NO_TOOLS` body field — all of them were
+constraining a session that was never running the agent they were written for.
+The coordinator was a `build` agent every single time, which is exactly what
+explains: exploring the repo, emitting tool parts, and returning prose.
+
+The signature is silent, which is the real hazard. A wrong model id, a bad tool
+name, or an unknown agent all fail the same way — quietly, with plausible
+output. Worth asserting on in tests anywhere this API is used.
+
+**Consequence for the design.** The coordinator cannot be an opencode agent
+session. It needs either a direct non-agentic provider call or a tool whose
+return value is data. Workers are unaffected — they *are* agents, and the agent
+model is correct for them.
+
+### What four cycles of this actually cost
+
+Each failure had a confident diagnosis and each was wrong. The distinguishing
+evidence was available cheaply the whole time — a database query showing
+`agent: build` — and it was not run until the fifth attempt. The lesson is
+narrow and specific: **when a mechanism fails identically more than once, verify
+the mechanism is running before theorising about it.** I had the exact query
+available and chose the more interesting conclusion instead.

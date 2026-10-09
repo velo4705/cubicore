@@ -3,9 +3,11 @@ import { tool } from "@opencode-ai/plugin";
 import { readFileSync } from "node:fs";
 import { RunRecorder, summarise } from "./telemetry/report";
 import { UsageLedger } from "./telemetry/usage";
+import { addUsage, type TokenUsage } from "./telemetry/types";
 import { PhaseTimer } from "./telemetry/timing";
 import { readUsage } from "./telemetry/adapters/opencode";
 import { producePlan, type Planner } from "./coordinator/plan";
+import { PLANNER_AGENT_ID, withPlannerAgent } from "./coordinator/agent";
 import { dispatch } from "./dispatch";
 import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
 import { RunObserver } from "./dispatch/observe";
@@ -13,6 +15,7 @@ import { BudgetEnforcer } from "./dispatch/hooks";
 import type { ModelConfig } from "./dispatch/routing";
 import { aggregate } from "./aggregate";
 import { snapshotAnchors } from "./review/anchors";
+import { PLAN_SCHEMA_JSON } from "./contracts/schema";
 import { SqliteTokenSource } from "./telemetry/adapters/session-db";
 
 /**
@@ -120,6 +123,16 @@ export const CubicorePlugin: Plugin = async (input) => {
    */
   const eventTargets: Array<{ onEvent(event: unknown): void }> = [];
 
+  /** Cost for a finished session. The event-fed ledger always reads zero. */
+  const runUsage = (): TokenUsage => {
+    const totals = observers.map((observer) => observer.snapshot().usage);
+    if (totals.length === 0) return usage.read("");
+    return totals.reduce(
+      (sum, one) => addUsage(sum, one),
+      { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    );
+  };
+
   const models = (workerModel?: string): ModelConfig => ({
     strong: STRONG_MODEL,
     cheap: workerModel || WORKER_MODEL,
@@ -141,7 +154,11 @@ export const CubicorePlugin: Plugin = async (input) => {
       await client.session.prompt({
         path: { id: sessionId },
         query: { directory },
-        body: { model: splitModel(model), parts: [{ type: "text", text: prompt }] },
+        body: {
+          model: splitModel(model),
+          agent: PLANNER_AGENT_ID,
+          parts: [{ type: "text", text: prompt }],
+        },
       });
 
       const deadline = Date.now() + 180_000;
@@ -157,6 +174,25 @@ export const CubicorePlugin: Plugin = async (input) => {
   }
 
   return {
+    /**
+     * Defines the constrained coordinator agent.
+     *
+     * Without this the plugin has no planner: `body.agent` would name an agent
+     * that does not exist and opencode would silently fall back to `build`,
+     * which reads the planner prompt as a coding request and returns prose. That
+     * fallback is exactly the failure this hook exists to prevent, and it is
+     * invisible — no error, just an unusable coordinator.
+     */
+    config: async (config) => {
+      Object.assign(config, withPlannerAgent(config, {
+        prompt:
+          "You are the Cubicore coordinator. Emit one plan as JSON and nothing " +
+          "else. Never use tools, never explore the repository, never explain.\n\n" +
+          PLAN_SCHEMA_JSON,
+        model: STRONG_MODEL,
+      }));
+    },
+
     /**
      * Routes every bus event to every observer. `RunObserver` filters by
      * session, so siblings never contaminate each other, and the ledger dedupes
@@ -237,8 +273,8 @@ export const CubicorePlugin: Plugin = async (input) => {
           timer.stop("dispatch");
 
           timer.start("aggregate");
-          const run = recorder.finish(ledger.totalUsage());
-          void usage;
+          // Session rows, not the event stream: live events report zero usage.
+          const run = recorder.finish(runUsage());
           const aggregated = aggregate(
             [...dispatched.accepted, ...dispatched.failed.map((f) => f.result)],
             dispatched.unresolved,
