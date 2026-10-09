@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output — `bun run build` regenerates this
+dist/
+
+# Local benchmark artefacts. Run reports and logs are per-machine and can be
+# large; the committed ones live in bench/ as RESULTS.md and VERIFICATION.md.
+*.log
+bench/**/*.log
+bench/out/
+
+# Scratch measurement output. Only the summaries are worth keeping.
+cubicore-report.json
+run-report.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local env
+.env
+.env.local
