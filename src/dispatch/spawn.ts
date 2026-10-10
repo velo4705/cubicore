@@ -24,7 +24,16 @@ import type { TokenUsage } from "../telemetry/types";
 
 export interface SessionSpawner {
   create(): Promise<{ sessionId: string }>;
-  prompt(sessionId: string, input: { agent: string; text: string; model?: string }): Promise<void>;
+  /**
+   * `agent` is deliberately optional and defaults to the host's default agent.
+   *
+   * An agent name the host does not know is accepted and SILENTLY ignored:
+   * verified against opencode 1.18.x, where naming a nonexistent agent yields a
+   * session whose messages all record `agent: build` and no error anywhere.
+   * Passing an invented name therefore costs a dispatch and buys nothing, so
+   * this interface does not require one.
+   */
+  prompt(sessionId: string, input: { agent?: string; text: string; model?: string }): Promise<void>;
   changedFiles(sessionId: string): Promise<string[]>;
   /**
    * UNVERIFIED. No cancel method appears in the docs, so this is optional and
@@ -89,7 +98,6 @@ export class WorkerSessions {
 
     try {
       await this.spawner.prompt(sessionId, {
-        agent: `cubicore-${contract.id}`,
         text: renderPrompt(contract),
         model: routing?.model,
       });

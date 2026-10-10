@@ -26,7 +26,7 @@ function contract(overrides: Partial<Contract> = {}): Contract {
  * exercise the real polling path rather than a fake that returns instantly.
  */
 function autoIdleSpawner(sessionId = "ses_1", onPrompt?: () => void) {
-  const calls: { agent: string; text: string }[] = [];
+  const calls: { agent?: string; text: string }[] = [];
   const sessionsRef: { current: WorkerSessions | null } = { current: null };
 
   const spawner: SessionSpawner = {
@@ -177,11 +177,13 @@ describe("WorkerSessions", () => {
     expect((await sessions.asRunner().run(contract())).contractId).toBe("w1");
   });
 
-  test("sends the rendered contract to the named agent", async () => {
+  test("sends the rendered contract without inventing an agent name", async () => {
     const { sessions, calls } = autoIdleSpawner();
     await sessions.run(contract());
     expect(calls).toHaveLength(1);
-    expect(calls[0].agent).toBe("cubicore-w1");
+    // An agent the host does not know is accepted and silently ignored, so a
+    // made-up name costs a dispatch and buys nothing. See spawn.ts.
+    expect(calls[0].agent).toBeUndefined();
     expect(calls[0].text).toContain("# Objective");
     expect(calls[0].text).toContain("src/parser.ts");
   });

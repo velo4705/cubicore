@@ -10,7 +10,6 @@ import { checkTopology } from "./coordinator/topology";
 import { parsePlan, MalformedPlan } from "./coordinator/parse";
 import { validatePlan } from "./validate/plan";
 import type { Plan } from "./contracts/types";
-import { PLANNER_AGENT_ID, withPlannerAgent } from "./coordinator/agent";
 import { dispatch } from "./dispatch";
 import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
 import { RunObserver } from "./dispatch/observe";
@@ -141,61 +140,7 @@ export const CubicorePlugin: Plugin = async (input) => {
     cheap: workerModel || WORKER_MODEL,
   });
 
-  /**
-   * A single coordinator turn in its own session, so its context never reaches
-   * a worker. Returns the assistant's text, which is the plan JSON.
-   */
-  async function coordinatorTurn(prompt: string, model: string): Promise<string> {
-    const observer = new RunObserver();
-    const created = await client.session.create({ query: { directory } });
-    const sessionId = created.data?.id;
-    if (!sessionId) throw new Error("opencode did not return a session id");
-    observer.attach(sessionId);
-    observers.push(observer);
-
-    try {
-      await client.session.prompt({
-        path: { id: sessionId },
-        query: { directory },
-        body: {
-          model: splitModel(model),
-          agent: PLANNER_AGENT_ID,
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
-
-      const deadline = Date.now() + 180_000;
-      while (Date.now() < deadline) {
-        if (observer.snapshot().idle) break;
-        await Bun.sleep(50);
-      }
-      return observer.snapshot().texts.join("\n").trim();
-    } finally {
-      const index = observers.indexOf(observer);
-      if (index >= 0) observers.splice(index, 1);
-    }
-  }
-
   return {
-    /**
-     * Defines the constrained coordinator agent.
-     *
-     * Without this the plugin has no planner: `body.agent` would name an agent
-     * that does not exist and opencode would silently fall back to `build`,
-     * which reads the planner prompt as a coding request and returns prose. That
-     * fallback is exactly the failure this hook exists to prevent, and it is
-     * invisible — no error, just an unusable coordinator.
-     */
-    config: async (config) => {
-      Object.assign(config, withPlannerAgent(config, {
-        prompt:
-          "You are the Cubicore coordinator. Emit one plan as JSON and nothing " +
-          "else. Never use tools, never explore the repository, never explain.\n\n" +
-          PLAN_SCHEMA_JSON,
-        model: STRONG_MODEL,
-      }));
-    },
-
     /**
      * Routes every bus event to every observer. `RunObserver` filters by
      * session, so siblings never contaminate each other, and the ledger dedupes
