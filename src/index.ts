@@ -6,7 +6,10 @@ import { UsageLedger } from "./telemetry/usage";
 import { addUsage, type TokenUsage } from "./telemetry/types";
 import { PhaseTimer } from "./telemetry/timing";
 import { readUsage } from "./telemetry/adapters/opencode";
-import { producePlan, type Planner } from "./coordinator/plan";
+import { checkTopology } from "./coordinator/topology";
+import { parsePlan, MalformedPlan } from "./coordinator/parse";
+import { validatePlan } from "./validate/plan";
+import type { Plan } from "./contracts/types";
 import { PLANNER_AGENT_ID, withPlannerAgent } from "./coordinator/agent";
 import { dispatch } from "./dispatch";
 import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
@@ -204,9 +207,7 @@ export const CubicorePlugin: Plugin = async (input) => {
       for (const observer of observers) observer.on(event);
 
       const properties = (event as { properties?: Record<string, unknown> }).properties;
-      const info = properties?.info as { id?: string; sessionID?: string } | undefined;
-      const usage = readUsage(info);
-      if (usage && info?.id) ledger.record(info.sessionID ?? "session", info.id, usage);
+      void ledger;
     },
 
     /**
@@ -226,34 +227,69 @@ export const CubicorePlugin: Plugin = async (input) => {
           "genuinely independent files. The coordinator refuses interface changes, " +
           "renames and migrations, because parallel workers would collide.",
         args: {
-          request: tool.schema.string().describe("The task, in the user's own words."),
+          plan: tool.schema
+            .string()
+            .describe("A Cubicore plan as JSON, matching the plan schema."),
           workerModel: tool.schema
             .string()
             .optional()
             .describe("Override the worker model as provider/model."),
         },
 
-        async execute({ request, workerModel }, ctx) {
+        async execute({ plan, workerModel }, ctx) {
           const timer = new PhaseTimer();
 
-          timer.start("plan");
-          const planner: Planner = {
-            complete: (prompt) => coordinatorTurn(prompt, STRONG_MODEL),
-          };
-          const outcome = await producePlan(planner, request);
-          timer.stop("plan");
+          // No coordinator. The agent that called this tool already has the repo
+          // context, so it splits better than a planner that cannot see the
+          // code. Cubicore's job is making that split *safe*, not producing it.
+          timer.start("validate");
+          let parsed: Plan;
+          try {
+            parsed = parsePlan(plan);
+          } catch (error) {
+            timer.stop("validate");
+            const problems =
+              error instanceof MalformedPlan
+                ? error.problems
+                : [String(error)];
+            return ["Malformed plan:", ...problems.map((p) => `- ${p}`)].join("\n");
+          }
 
-          if (outcome.kind === "refused") return refusalNote(request);
-          if (outcome.kind === "fallback") {
+          if (parsed.topology === "refuse") {
+            timer.stop("validate");
+            return "This plan is marked refuse; nothing to dispatch.";
+          }
+
+          const validation = validatePlan(parsed, []);
+          const topology = checkTopology(parsed);
+          timer.stop("validate");
+
+          // A cycle is not a mis-declaration to be corrected: two contracts
+          // each needing the other's output is exactly the non-decomposable
+          // case. Tell the caller to return `refuse` rather than retrying.
+          const reject: string[] = validation.findings.map(
+            (f) => `- [${f.code}] ${f.message}`,
+          );
+          if (topology.cycles.length > 0) {
+            reject.push(
+              `- [dependency-cycle] contracts need each other: ${topology.cycles
+                .map((c) => c.join(" -> "))
+                .join("; ")}. This is not a divide-and-conquer task — return \`refuse\`.`,
+            );
+          } else if (!topology.ok) {
+            reject.push(
+              `- [mis-declared-topology] declared \`${topology.declared}\` but the plan implies \`${topology.implied}\``,
+            );
+          }
+
+          if (reject.length > 0) {
             return [
-              "Plan rejected twice; handling this as a single agent instead.",
+              "Plan rejected before dispatch — nothing was spent.",
               "",
-              ...outcome.findings.map((f) => `- [${f.code}] ${f.message}`),
+              ...reject,
             ].join("\n");
           }
 
-          const plan = outcome.plan;
-          const recorder = new RunRecorder(plan.topology, timer);
           const workers = new WorkerSessions(
             clientSpawner(client, directory),
             models(workerModel),
@@ -263,9 +299,11 @@ export const CubicorePlugin: Plugin = async (input) => {
           );
           eventTargets.push(workers);
 
+          const recorder = new RunRecorder(parsed.topology, timer);
+
           timer.start("dispatch");
           const dispatched = await dispatch(
-            plan,
+            parsed,
             workers.asRunner(),
             commandRunner(ctx.directory || directory),
             { repo: repoSource(root) },
@@ -273,7 +311,6 @@ export const CubicorePlugin: Plugin = async (input) => {
           timer.stop("dispatch");
 
           timer.start("aggregate");
-          // Session rows, not the event stream: live events report zero usage.
           const run = recorder.finish(runUsage());
           const aggregated = aggregate(
             [...dispatched.accepted, ...dispatched.failed.map((f) => f.result)],
@@ -283,7 +320,7 @@ export const CubicorePlugin: Plugin = async (input) => {
           timer.stop("aggregate");
 
           const lines = [
-            `${plan.topology} · ${dispatched.accepted.length} passed, ` +
+            `${parsed.topology} · ${dispatched.accepted.length} passed, ` +
               `${dispatched.failed.length} flagged, ${dispatched.deferred.length} deferred`,
             summarise(run),
             "",
