@@ -300,3 +300,75 @@ plugins already handle depth limiting and container pooling.
 The gap being filled here is **validation** — opencode lets you spawn agents and
 control permissions, but nothing checks whether the plan was sane before the
 spend. That is the product.
+
+## The org chart
+
+A Cubicore is a core; a Cubicle holds cores. The user is the founder, the
+opencode session they are talking to is the **Main agent**, and each contract
+is an **associate** with one disjoint write set.
+
+```
+founder ──> Main agent ──> associates ──> Main agent inspects ──> done
+              (plans)       (parallel)      (errors only)
+```
+
+**There is no coordinator component, and adding one would be a mistake.** The
+Main agent *is* whoever holds the conversation, so it already has the intent
+and the repo context a planner would have to go and acquire. `cubicore` takes
+a plan as input precisely because its caller is the coordinator. An earlier
+attempt made the coordinator a separate opencode agent and was removed: the
+platform ignores `session.prompt`'s `body.agent` and silently falls back to
+`build`, so the coordinator ran as the default agent while every constraint
+written for it was enforced against the wrong session.
+
+Headcount is the Main agent's call, bounded by `graphBudget.nodes`. The agent
+proposes; the budget rejects. A plan asking for twelve workers against an
+eight-node budget fails validation rather than being silently truncated.
+
+### Associates may ask the Main agent to clarify
+
+An associate that finds its contract ambiguous asks the Main agent rather than
+guessing. A wrong guess surfaces two minutes later as a gate failure, having
+already cost the tokens.
+
+This is **hierarchical, not peer-to-peer**, and it terminates — a question gets
+one answer. It is not the symmetric critique loop D4 forbids; that loop is
+Worker ↔ Reviewer ↔ reply, which has no exit condition.
+
+One clarification per contract, and **the answer is written into the
+contract**, not the transcript. Otherwise the next associate re-asks the same
+question and pays for it again.
+
+### Associates do not address each other
+
+Two associates in the same role share context through **artifacts**, not
+messages: one writes a findings file, the other reads it. That is D7 — the
+single-reader/multi-consumer constraint — and it is the only mechanism in the
+system that reduces total token count rather than relocating it.
+
+Direct associate-to-associate dialogue is optional and currently out. The
+artifact route already covers the case that matters, and it needs no
+loop-termination argument to be safe. If it is ever added, the same-role
+restriction is not sufficient on its own.
+
+### The Main agent inspects for errors, not for taste
+
+```
+schema → did it produce valid output?
+verify → do the blocking checks pass?
+scope  → did it stay inside its write set?
+```
+
+If the part does not work, the Main agent dispatches a fix. That is the whole
+of inspection. **"Does this look right" is not part of it** — `judgment` checks
+are rejected by the validator, so the Main agent is no more qualified to judge
+quality than any other agent in the system.
+
+The revise cap of 1 still holds, but for the Main agent's reason rather than the
+reviewer's: a fix can itself fail, and that second failure annotates the
+artifact with `unresolved` rather than looping.
+
+The cost to watch is that inspection is a second serial pass through a single
+agent, on top of planning and aggregation. At 15% and 10%, that erodes the
+Amdahl ceiling directly, and it is the one part of this design that cannot be
+parallelised away.
