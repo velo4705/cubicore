@@ -1,4 +1,4 @@
-import type { Contract, WorkerResult } from "../contracts/types";
+import type { Artifact, Contract, WorkerResult } from "../contracts/types";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
 import { routeModel, type ModelConfig } from "./routing";
@@ -139,6 +139,7 @@ export class WorkerSessions {
         ms: Date.now() - startedAt,
         toolCalls: snapshot.toolCalls,
         cancelled,
+        artifact: buildArtifact(contract, snapshot, changedFiles),
       };
     } finally {
       this.observers.delete(contract.id);
@@ -168,4 +169,45 @@ async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boo
       resolve(true);
     }, 25);
   });
+}
+
+/**
+ * Turns a finished session into the typed artifact the gates check.
+ *
+ * This step had no owner. `WorkerResult.artifact` was declared optional, no
+ * producer ever set it, and `dispatch` fell back to `emptyArtifact`, so every
+ * contract failed the schema gate with "artifact was empty" and reported zero
+ * passes while the work itself had succeeded. The type permitted the hole by
+ * making the field optional, which is why nothing caught it.
+ *
+ * `raw` is derived from what the worker demonstrably produced -- the files it
+ * wrote -- rather than from its prose, so correctness never depends on the
+ * model cooperating with the format. A worker that answered with a description
+ * instead of doing the work yields an empty file list, and the scope gate
+ * rejects it, which is the behaviour we want.
+ */
+function buildArtifact(
+  contract: Contract,
+  snapshot: { texts: readonly string[] },
+  changedFiles: readonly string[],
+): Artifact {
+  const prose = snapshot.texts.join("\n").trim();
+  const files = JSON.stringify({ files: changedFiles });
+
+  // A structured deliverable must satisfy the contract's schema, so `raw` is
+  // JSON. A worker whose prose is not valid JSON must not fail on formatting,
+  // so prose is only used when it actually parses; otherwise the demonstrable
+  // file list stands in. Either way the artifact is derived from what the
+  // worker did rather than from how it phrased the answer.
+  let body = files;
+  if (contract.deliverable !== "diff" && prose.length > 0) {
+    try {
+      JSON.parse(prose);
+      body = prose;
+    } catch {
+      body = files;
+    }
+  }
+
+  return { contractId: contract.id, deliverable: contract.deliverable, raw: body };
 }
