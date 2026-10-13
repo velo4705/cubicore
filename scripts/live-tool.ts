@@ -10,7 +10,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk";
  */
 
 const PORT = process.env.PORT ?? "4631";
-const directory = "/home/nix/Projects/cubicore/.live/benchrepo";
+const directory = process.env.TARGET ?? "/home/nix/Projects/cubicore/.live/benchrepo";
 
 const client = createOpencodeClient({
   baseUrl: `http://127.0.0.1:${PORT}`,
@@ -52,7 +52,7 @@ const contract = (id: string, src: string, out: string) => ({
   budget: { tokens: 30_000, toolCalls: 60, wallMs: 240_000 },
 });
 
-const plan = {
+const plan = JSON.parse(await Bun.file(process.env.PLAN ?? "/tmp/opencode/plan.json").text()); const _unused = {
   topology: "fan-out",
   contracts: [
     contract("doc-a", "src/module-1.ts", "src/module-1.md"),
@@ -60,6 +60,7 @@ const plan = {
   ],
   graphBudget: { nodes: 2, edges: 1, tokens: 60_000, wallMs: 480_000 },
 };
+void _unused;
 
 // Keep the event pump running for the duration of the dispatch. The SDK's
 // `event.subscribe` returns a Response rather than an async iterable in this

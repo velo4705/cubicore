@@ -12,6 +12,7 @@ import { validatePlan } from "./validate/plan";
 import type { Plan } from "./contracts/types";
 import { dispatch } from "./dispatch";
 import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
+import { progressReporter } from "./telemetry/progress";
 import { RunObserver } from "./dispatch/observe";
 import { BudgetEnforcer } from "./dispatch/hooks";
 import type { ModelConfig } from "./dispatch/routing";
@@ -235,12 +236,21 @@ export const CubicorePlugin: Plugin = async (input) => {
             ].join("\n");
           }
 
+          // Progress goes to stderr, not the return value: the return only
+          // arrives when the run is over, which is too late to tell a slow
+          // dispatch from a dead one.
+          const progress = progressReporter(parsed.contracts);
+          process.stderr.write(
+            `[cubicore ${parsed.contracts.length} associates, topology ${parsed.topology}]\n`,
+          );
+
           const workers = new WorkerSessions(
             clientSpawner(client, directory),
             models(workerModel),
             enforcer,
             // Live events report zero usage; the session row is the truth.
             usage.resolver(),
+            progress.trace,
           );
           eventTargets.push(workers);
 
