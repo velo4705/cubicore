@@ -12,7 +12,7 @@ import { validatePlan } from "./validate/plan";
 import type { Plan } from "./contracts/types";
 import { dispatch } from "./dispatch";
 import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
-import { progressReporter } from "./telemetry/progress";
+import { ProgressSink } from "./mcp/progress";
 import { RunObserver } from "./dispatch/observe";
 import { BudgetEnforcer } from "./dispatch/hooks";
 import type { ModelConfig } from "./dispatch/routing";
@@ -239,7 +239,7 @@ export const CubicorePlugin: Plugin = async (input) => {
           // Progress goes to stderr, not the return value: the return only
           // arrives when the run is over, which is too late to tell a slow
           // dispatch from a dead one.
-          const progress = progressReporter(parsed.contracts);
+          const progress = new ProgressSink(parsed.contracts);
           process.stderr.write(
             `[cubicore ${parsed.contracts.length} associates, topology ${parsed.topology}]\n`,
           );
