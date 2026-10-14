@@ -263,6 +263,74 @@ export const TOOLS = [
   },
 ];
 
+/**
+ * Slash-command surface.
+ *
+ * Tools are callable but invisible: the Main agent calls cubicore_execute and
+ * the founder sees one blocked tool call and a wall of text. Prompts are the
+ * half of MCP a client can turn into a command, which is what makes the
+ * plan/execute split reviewable rather than something inferred afterwards.
+ *
+ * Whether a given client renders these as slash commands is the client's
+ * choice, so the tools remain the reliable path and these are an improvement
+ * where supported.
+ */
+const PROMPTS = [
+  {
+    name: "cubicore-plan",
+    description: "Decompose a request into a Cubicore plan without dispatching anything.",
+    arguments: [{ name: "request", description: "What you want built", required: true }],
+  },
+  {
+    name: "cubicore-execute",
+    description: "Dispatch a Cubicore plan across parallel associates.",
+    arguments: [{ name: "plan", description: "Plan JSON", required: true }],
+  },
+];
+
+function promptFor(name: string, args: Record<string, string>) {
+  if (name === "cubicore-plan") {
+    return {
+      description: "Plan a request as Cubicore contracts.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              `Produce a Cubicore plan for the request below and validate it with cubicore_plan.\n` +
+              `Do not dispatch anything, and do not answer with prose.\n\n` +
+              `Request: ${args.request ?? "(none given)"}\n\n` +
+              `Read the repository before splitting. Keep every writes set disjoint, and give each\n` +
+              `diff contract a concrete file path in writes rather than a description of the change.\n` +
+              `Refusing is a valid answer: renames, interface changes, and dependent chains are\n` +
+              `not divide-and-conquer tasks.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "cubicore-execute") {
+    return {
+      description: "Execute a Cubicore plan.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              `Call cubicore_execute with the plan below. Do not ask for confirmation.\n\n` +
+              `${args.plan ?? "(no plan supplied)"}`,
+          },
+        },
+      ],
+    };
+  }
+
+  return { description: `Unknown prompt: ${name}`, messages: [] };
+}
+
 /** Minimal JSON-RPC 2.0 over stdio. MCP's transport, without the SDK. */
 export async function serve(): Promise<void> {
   const decoder = new TextDecoder();
@@ -294,7 +362,7 @@ export async function serve(): Promise<void> {
       if (request.method === "initialize") {
         respond({
           protocolVersion: "2024-11-05",
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, prompts: {} },
           serverInfo: { name: "cubicore", version: "0.1.0" },
         });
       } else if (request.method === "tools/list") {
@@ -316,6 +384,10 @@ export async function serve(): Promise<void> {
             isError: true,
           });
         }
+      } else if (request.method === "prompts/list") {
+        respond({ prompts: PROMPTS });
+      } else if (request.method === "prompts/get") {
+        respond(promptFor(String(request.params?.name ?? ""), (request.params?.arguments ?? {}) as Record<string, string>));
       } else if (request.method === "ping") {
         respond({});
       }
