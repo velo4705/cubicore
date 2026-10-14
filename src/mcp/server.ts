@@ -277,19 +277,19 @@ export const TOOLS = [
  */
 const PROMPTS = [
   {
-    name: "cubicore-plan",
-    description: "Decompose a request into a Cubicore plan without dispatching anything.",
+    name: "plan",
+    description: "Decompose a request into a plan without dispatching.",
     arguments: [{ name: "request", description: "What you want built", required: true }],
   },
   {
-    name: "cubicore-execute",
-    description: "Dispatch a Cubicore plan across parallel associates.",
+    name: "execute",
+    description: "Dispatch a plan across parallel associates.",
     arguments: [{ name: "plan", description: "Plan JSON", required: true }],
   },
 ];
 
 function promptFor(name: string, args: Record<string, string>) {
-  if (name === "cubicore-plan") {
+  if (name === "plan") {
     return {
       description: "Plan a request as Cubicore contracts.",
       messages: [
@@ -311,7 +311,7 @@ function promptFor(name: string, args: Record<string, string>) {
     };
   }
 
-  if (name === "cubicore-execute") {
+  if (name === "execute") {
     return {
       description: "Execute a Cubicore plan.",
       messages: [
