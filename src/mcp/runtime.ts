@@ -19,11 +19,36 @@ import { ProgressSink } from "./progress";
 
 export interface Runtime {
   client: OpencodeClient;
+  /** Resolved loopback port of the opencode server. */
+  port: string;
   directory: string;
   models: { strong: string; cheap: string };
 }
 
-const DEFAULT_PORT = 4096;
+/**
+ * Find the loopback port the local opencode server is listening on.
+ *
+ * There is no fixed port: opencode binds an ephemeral one, and the MCP server
+ * inherits credentials but no base URL. Guessing 4096 failed against a server
+ * on 46447. Ask the socket table instead, and let an explicit OPENCODE_PORT
+ * still win.
+ *
+ * `ss` is unavailable on some systems, in which case the caller's configured
+ * port is the only option -- so this reports nothing rather than guessing.
+ */
+function discoverPort(): string | null {
+  try {
+    const { stdout } = Bun.spawnSync(["sh", "-c", "ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null"]);
+    const table = new TextDecoder().decode(stdout);
+    for (const line of table.split("\n")) {
+      const match = /127\.0\.0\.1:(\d+)/.exec(line);
+      if (match) return match[1];
+    }
+  } catch {
+    // No socket table available.
+  }
+  return null;
+}
 
 export function runtimeFromEnv(env: Record<string, string | undefined> = process.env): Runtime {
   const username = env.OPENCODE_SERVER_USERNAME;
@@ -37,10 +62,19 @@ export function runtimeFromEnv(env: Record<string, string | undefined> = process
     );
   }
 
-  const port = env.OPENCODE_PORT ?? env.OPENCODE_SERVER_PORT ?? String(DEFAULT_PORT);
+  const configured = env.OPENCODE_PORT ?? env.OPENCODE_SERVER_PORT;
+  const port = configured ?? discoverPort();
+  if (!port) {
+    throw new Error(
+      "Cubicore MCP could not determine the opencode server port. opencode binds an " +
+        "ephemeral port and does not pass it to MCP servers. Set OPENCODE_PORT " +
+        "explicitly, or install `ss` (or netstat) so it can be discovered.",
+    );
+  }
   const directory = env.OPENCODE_CUBICORE_DIRECTORY ?? env.OPENCODE_WORKTREE ?? process.cwd();
 
   return {
+    port,
     client: createOpencodeClient({
       baseUrl: `http://127.0.0.1:${port}`,
       directory,

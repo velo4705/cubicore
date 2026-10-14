@@ -41,12 +41,12 @@ async function pumpEvents(
   const auth = `Basic ${btoa(
     `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
   )}`;
-  const port = process.env.OPENCODE_PORT ?? process.env.OPENCODE_SERVER_PORT ?? "4096";
+  const port = runtime.port;
 
   while (!signal.aborted) {
     try {
       const response = await fetch(
-        `http://127.0.0.1:${port}/event?directory=${encodeURIComponent(runtime.directory)}`,
+        `http://127.0.0.1:${runtime.port}/event?directory=${encodeURIComponent(runtime.directory)}`,
         { headers: { Authorization: auth, Accept: "text/event-stream" }, signal },
       );
       const body = response.body;
