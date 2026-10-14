@@ -279,12 +279,12 @@ const PROMPTS = [
   {
     name: "plan",
     description: "Decompose a request into a plan without dispatching.",
-    arguments: [{ name: "request", description: "What you want built", required: true }],
+    arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
   },
   {
     name: "execute",
     description: "Dispatch a plan across parallel associates.",
-    arguments: [{ name: "plan", description: "Plan JSON", required: true }],
+    arguments: [{ name: "plan", description: "Plan JSON; omit to reuse the plan already in this conversation", required: false }],
   },
 ];
 
@@ -300,7 +300,7 @@ function promptFor(name: string, args: Record<string, string>) {
             text:
               `Produce a Cubicore plan for the request below and validate it with cubicore_plan.\n` +
               `Do not dispatch anything, and do not answer with prose.\n\n` +
-              `Request: ${args.request ?? "(none given)"}\n\n` +
+              `Request: ${args.request ?? "(the current request in this conversation)"}\n\n` +
               `Read the repository before splitting. Keep every writes set disjoint, and give each\n` +
               `diff contract a concrete file path in writes rather than a description of the change.\n` +
               `Refusing is a valid answer: renames, interface changes, and dependent chains are\n` +
@@ -319,9 +319,13 @@ function promptFor(name: string, args: Record<string, string>) {
           role: "user",
           content: {
             type: "text",
-            text:
-              `Call cubicore_execute with the plan below. Do not ask for confirmation.\n\n` +
-              `${args.plan ?? "(no plan supplied)"}`,
+            text: args.plan
+              ? `Call cubicore_execute with the plan below. Do not ask for confirmation.\n\n` +
+                `${args.plan}`
+              : `Execute the Cubicore plan from this conversation.\n\n` +
+                `Call cubicore_execute once with that plan. Do not ask for confirmation, and do not\n` +
+                `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
+                `the request, validate it with cubicore_plan first, and then execute it.`,
           },
         },
       ],
