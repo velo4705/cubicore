@@ -136,7 +136,7 @@ async function plan(raw: string): Promise<ToolResult> {
     );
   }
 
-  return text([...summary, "", "Call cubicore_execute with this plan to dispatch it."].join("\n"));
+  return text([...summary, "", "Call execute with this plan to dispatch it."].join("\n"));
 }
 
 async function execute(raw: string): Promise<ToolResult> {
@@ -238,7 +238,7 @@ async function execute(raw: string): Promise<ToolResult> {
 
 export const TOOLS = [
   {
-    name: "cubicore_plan",
+    name: "plan",
     description:
       "Validate a Cubicore plan and return the decomposition without dispatching. " +
       "Costs nothing. Call this before cubicore_execute so the founder can read the split.",
@@ -250,7 +250,7 @@ export const TOOLS = [
     handler: async (args: { plan: string }) => plan(args.plan),
   },
   {
-    name: "cubicore_execute",
+    name: "execute",
     description:
       "Dispatch a validated Cubicore plan across parallel associates, gate each result, " +
       "and aggregate the artifacts. Progress streams to stderr while it runs.",
@@ -298,7 +298,7 @@ function promptFor(name: string, args: Record<string, string>) {
           content: {
             type: "text",
             text:
-              `Produce a Cubicore plan for the request below and validate it with cubicore_plan.\n` +
+              `Produce a Cubicore plan for the request below and validate it with plan.\n` +
               `Do not dispatch anything, and do not answer with prose.\n\n` +
               `Request: ${args.request ?? "(the current request in this conversation)"}\n\n` +
               `Read the repository before splitting. Keep every writes set disjoint, and give each\n` +
@@ -320,12 +320,12 @@ function promptFor(name: string, args: Record<string, string>) {
           content: {
             type: "text",
             text: args.plan
-              ? `Call cubicore_execute with the plan below. Do not ask for confirmation.\n\n` +
+              ? `Call execute with the plan below. Do not ask for confirmation.\n\n` +
                 `${args.plan}`
               : `Execute the Cubicore plan from this conversation.\n\n` +
-                `Call cubicore_execute once with that plan. Do not ask for confirmation, and do not\n` +
+                `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
                 `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
-                `the request, validate it with cubicore_plan first, and then execute it.`,
+                `the request, validate it with plan first, and then execute it.`,
           },
         },
       ],
