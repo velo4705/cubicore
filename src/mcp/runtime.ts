@@ -37,15 +37,23 @@ export interface Runtime {
  * port is the only option -- so this reports nothing rather than guessing.
  */
 function discoverPort(): string | null {
-  try {
-    const { stdout } = Bun.spawnSync(["sh", "-c", "ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null"]);
-    const table = new TextDecoder().decode(stdout);
-    for (const line of table.split("\n")) {
-      const match = /127\.0\.0\.1:(\d+)/.exec(line);
+  // `ss -ltn` lists every loopback listener with no process information, and
+  // the first one is usually CUPS on :631 -- not opencode. Identifying the
+  // owner is the whole point, so ask for `ss -ltnp` and match the process.
+  for (const cmd of [
+    "ss -ltnp 2>/dev/null | grep -i opencode",
+    "ss -ltnp 2>/dev/null | grep -i 'ai.opencode'",
+    "lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | grep -i opencode",
+  ]) {
+    try {
+      const { stdout, exitCode } = Bun.spawnSync(["sh", "-c", cmd]);
+      if (exitCode !== 0) continue;
+      const table = new TextDecoder().decode(stdout);
+      const match = /127\.0\.0\.1:(\d+)/.exec(table);
       if (match) return match[1];
+    } catch {
+      // Try the next strategy.
     }
-  } catch {
-    // No socket table available.
   }
   return null;
 }
