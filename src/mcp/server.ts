@@ -7,6 +7,7 @@ import { RunRecorder } from "../telemetry/report";
 import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
+import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { runtimeFromEnv, workerSessions, type Runtime } from "./runtime";
 import type { Plan } from "../contracts/types";
 
@@ -139,7 +140,7 @@ async function plan(raw: string): Promise<ToolResult> {
   return text([...summary, "", "Call execute with this plan to dispatch it."].join("\n"));
 }
 
-async function execute(raw: string, parentSessionID?: string): Promise<ToolResult> {
+async function runToCompletion(raw: string, runId: string, parentSessionID?: string): Promise<string> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
 
@@ -148,20 +149,17 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
     parsed = parsePlan(raw) as Plan;
   } catch (error) {
     const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
-    return text(`Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`, true);
+    return `Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`;
   }
 
   if (parsed.topology === "refuse") {
-    return text("This plan refuses to split. Nothing dispatched.");
+    return "This plan refuses to split. Nothing dispatched.";
   }
 
   const validation = validatePlan(parsed, []);
   const topology = checkTopology(parsed);
   if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
-    return text(
-      "Plan rejected before dispatch — nothing was spent. Run cubicore_plan to see why.",
-      true,
-    );
+    return "Plan rejected before dispatch — nothing was spent. Run the plan tool to see why.";
   }
 
   const progress = new ProgressSink(parsed.contracts);
@@ -224,8 +222,7 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
 
   controller.abort();
 
-  return text(
-    [
+  return [
       `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} flagged, ` +
         `${outcome.deferred.length} deferred`,
       `tokens: ${totalTokens} (in ${usage.input}, out ${usage.output}, cache ${usage.cacheRead})`,
@@ -233,8 +230,59 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
       ...aggregated.artifacts.map(
         (a) => `- ${a.contractId}: ${a.status}${a.unresolved.length ? ` — ${a.unresolved.join("; ")}` : ""}`,
       ),
+    ].join("\n");
+}
+
+/**
+ * Starts a run and returns immediately.
+ *
+ * The old shape blocked for the whole dispatch, so a client timeout meant the
+ * verdict was lost entirely even though the work completed -- and a timeout
+ * looks exactly like a hang. Returning a handle makes that unrepresentable:
+ * there is nothing left to time out, and the caller decides how long to wait.
+ */
+async function execute(raw: string, parentSessionID?: string): Promise<ToolResult> {
+  let parsed: Plan;
+  try {
+    parsed = parsePlan(raw) as Plan;
+  } catch (error) {
+    const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
+    return text(`Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`, true);
+  }
+
+  if (parsed.topology === "refuse") {
+    return text("This plan refuses to split. Nothing dispatched.");
+  }
+
+  const validation = validatePlan(parsed, []);
+  const topology = checkTopology(parsed);
+  if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
+    return text("Plan rejected before dispatch — nothing was spent. Run plan to see why.", true);
+  }
+
+  const run = startRun(parsed);
+  void runToCompletion(raw, run.id, parentSessionID)
+    .then((summary) => finishRun(run.id, summary))
+    .catch((error) => failRun(run.id, error instanceof Error ? error.message : String(error)));
+
+  return text(
+    [
+      `Started ${run.id} — ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
+      `Progress streams to the server log; the verdict does not arrive here.`,
+      `Poll with the status tool using run id ${run.id}.`,
     ].join("\n"),
   );
+}
+
+function status(runId: string): ToolResult {
+  const run = getRun(runId);
+  if (!run) {
+    return text(
+      `Unknown run ${runId}. Run ids are process-local, so a restarted MCP server loses them.`,
+      true,
+    );
+  }
+  return text(describe(run));
 }
 
 export const TOOLS = [
@@ -265,6 +313,18 @@ export const TOOLS = [
     },
     handler: async (args: { plan: string; parentSessionID?: string }) =>
       execute(args.plan, args.parentSessionID),
+  },
+  {
+    name: "status",
+    description:
+      "Poll a Cubicore run started by execute. Returns its current state, and the full " +
+      "verdict once it finishes. Event-fed progress is not available here; the server log has it.",
+    inputSchema: {
+      type: "object",
+      properties: { runId: { type: "string", description: "Run id returned by execute." } },
+      required: ["runId"],
+    },
+    handler: async (args: { runId: string }) => status(args.runId),
   },
 ];
 
@@ -325,9 +385,12 @@ function promptFor(name: string, args: Record<string, string>) {
           content: {
             type: "text",
             text: args.plan
-              ? `Call execute with the plan below. Do not ask for confirmation.\n\n` +
+              ? `Call execute with the plan below. It returns a run id immediately, so do not\n` +
+              `assume the work has finished. Poll status with that id and report the verdict.\n\n` +
                 `${args.plan}`
-              : `Execute the Cubicore plan from this conversation.\n\n` +
+              : `Execute the Cubicore plan from this conversation.\n` +
+                `execute returns a run id rather than a result, so poll status with it and report\n` +
+                `the verdict when it is done.\n\n` +
                 `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
                 `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
                 `the request, validate it with plan first, and then execute it.`,
