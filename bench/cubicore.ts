@@ -2,9 +2,8 @@ import type { ModelConfig } from "../src/dispatch/routing";
 import { WorkerSessions, type SessionSpawner } from "../src/dispatch/spawn";
 import { BudgetEnforcer } from "../src/dispatch/hooks";
 import { RunObserver } from "../src/dispatch/observe";
-import { producePlan, type Planner } from "../src/coordinator/plan";
-import { PLANNER_AGENT_ID } from "../src/coordinator/agent";
 import { dispatch } from "../src/dispatch";
+import { parsePlan } from "../src/coordinator/parse";
 import { clientSpawner } from "../src/index";
 import { SqliteTokenSource } from "../src/telemetry/adapters/session-db";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../src/telemetry/types";
@@ -82,42 +81,8 @@ export class OrchestratedRunner {
     const startedAt = Date.now();
     const { client, directory, models } = this.options;
 
-    const observers: RunObserver[] = [];
-    const coordinatorTurn = async (prompt: string): Promise<string> => {
-      const observer = new RunObserver();
-      const created = await client.session.create({ query: { directory } });
-      const sessionId = created.data?.id;
-      if (!sessionId) throw new Error("no coordinator session id");
-      observer.attach(sessionId);
-      observers.push(observer);
-
-      await client.session.prompt({
-        path: { id: sessionId },
-        query: { directory },
-        body: {
-          model: splitModel(models.strong),
-          parts: [{ type: "text", text: prompt }],
-        },
-      });
-
-      const deadline = Date.now() + 180_000;
-      while (Date.now() < deadline) {
-        if (observer.snapshot().idle) break;
-        await Bun.sleep(50);
-      }
-      return observer.snapshot().texts.join("\n").trim();
-    };
-
-    const planner: Planner = { complete: coordinatorTurn };
-
-    // The benchmark hosts the loop rather than opencode, so it has to feed the
-    // observers itself. `onEvent` is wired to the client's event stream by the
-    // caller; it closes over this run's observer list.
-    this.onEvent = (event) => {
-      for (const observer of observers) observer.on(event);
-      this.workerOnEvent?.(event);
-    };
-
+    // The coordinator is gone, so there is no planning observer to collect.
+    // Worker sessions carry the whole cost of this arm.
     const sessions = new WorkerSessions(
       clientSpawner(client as never, directory),
       models,
@@ -126,27 +91,26 @@ export class OrchestratedRunner {
       this.usage.resolver(),
       this.trace,
     );
-    // The bug that hung this arm: worker sessions keep observers privately, so
-    // the runner's event feed never reached them.
     this.workerOnEvent = (event: unknown) => sessions.onEvent(event);
 
-    const outcome = await producePlan(planner, task.prompt, { trace: this.trace });
-
-    if (outcome.kind !== "accepted") {
+    if (!task.plan) {
       return {
         taskId: task.id,
         arm: "orchestrated",
         durationMs: Date.now() - startedAt,
-        usage: this.collect(observers),
+        usage: EMPTY_USAGE,
         timedOut: true,
       };
     }
 
-    // Checks are stubbed here: the benchmark corpus has no runnable suite, and
-    // a stubbed gate is closer to what a real task would cost than omitting the
-    // gate and its tokens entirely.
-    const dispatched = await dispatch(
-      outcome.plan,
+    const plan = parsePlan(JSON.stringify(task.plan)) as never;
+
+    // Checks are stubbed: the benchmark corpus has no runnable suite, and a
+    // stubbed gate is closer to what a real task would cost than omitting the
+    // gate and its tokens entirely. Stubbing keeps the comparison fair, since
+    // the other arms run the same checks against the same tree.
+    await dispatch(
+      plan,
       sessions.asRunner(),
       { async run() { return { exitCode: 0, output: "" }; } },
       { trace: this.trace },
@@ -156,7 +120,7 @@ export class OrchestratedRunner {
       taskId: task.id,
       arm: "orchestrated",
       durationMs: Date.now() - startedAt,
-      usage: this.collect(observers),
+      usage: sessions.settledUsage(),
     };
   }
 

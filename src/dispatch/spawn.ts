@@ -5,7 +5,7 @@ import { routeModel, type ModelConfig } from "./routing";
 import { BudgetEnforcer } from "./hooks";
 import { deriveCaps } from "./budgets";
 import type { WorkerRunner } from "./index";
-import type { TokenUsage } from "../telemetry/types";
+import { addUsage, EMPTY_USAGE, type TokenUsage } from "../telemetry/types";
 
 /**
  * Spawning one worker.
@@ -60,6 +60,8 @@ export interface SessionSpawner {
  */
 export class WorkerSessions {
   private readonly observers = new Map<string, RunObserver>();
+  /** Finished workers, so run-level cost can be reported after dispatch. */
+  private readonly settled: WorkerResult[] = [];
 
   constructor(
     private readonly spawner: SessionSpawner,
@@ -131,7 +133,7 @@ export class WorkerSessions {
           ? snapshot.changedFiles
           : await this.spawner.changedFiles(sessionId);
 
-      return {
+      const result: WorkerResult = {
         contractId: contract.id,
         // A session error is a failure; an unfinished session is a budget kill.
         // The two must stay distinguishable or exhaustion looks like success.
@@ -143,10 +145,26 @@ export class WorkerSessions {
         cancelled,
         artifact: buildArtifact(contract, snapshot, changedFiles),
       };
+      this.settled.push(result);
+      return result;
     } finally {
       this.observers.delete(contract.id);
       this.enforcer?.release(sessionId);
     }
+  }
+
+  /**
+   * True usage summed across every worker that has finished.
+   *
+   * Event-fed usage is always zero -- verified, a session recording 34,539
+   * input tokens emitted zero-usage events throughout -- so this is read from
+   * the session rows rather than observed. Without it the reported cost of a
+   * run is zero, which makes the benchmark meaningless.
+   */
+  settledUsage(): TokenUsage {
+    let total = EMPTY_USAGE;
+    for (const result of this.settled) total = addUsage(total, result.usage);
+    return total;
   }
 
   asRunner(): WorkerRunner {

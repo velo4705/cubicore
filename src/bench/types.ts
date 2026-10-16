@@ -38,6 +38,17 @@ export interface TaskSpec {
    * contracts cannot be compared against an 8-way naive baseline.
    */
   expectedWorkers: number;
+  /**
+   * The plan the Main agent produces. The coordinator was removed -- opencode
+   * silently ignores an unknown agent name, so a separate planning agent could
+   * never run -- so the orchestrated arm now takes the decomposition as input,
+   * exactly as the product does.
+   *
+   * Supplied rather than derived because deriving it would measure a planner
+   * the product no longer has. What is being compared is per-worker cost and
+   * wall time, not planning quality.
+   */
+  plan?: unknown;
 }
 
 export interface TrialStats {
