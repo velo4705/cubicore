@@ -41,7 +41,7 @@ const WORKER_MODEL = process.env.CUBICORE_WORKER_MODEL ?? "opencode/space-bunny-
 
 interface ClientLike {
   session: {
-    create(args: { query?: { directory?: string } }): Promise<{ data?: { id?: string } | null }>;
+    create(args: { query?: { directory?: string }; body?: { parentID?: string; title?: string } }): Promise<{ data?: { id?: string } | null }>;
     prompt(args: {
       body: {
         agent?: string;
@@ -64,10 +64,25 @@ function splitModel(model: string): { providerID: string; modelID: string } {
   return { providerID: model.slice(0, slash), modelID: model.slice(slash + 1) };
 }
 
-export function clientSpawner(client: ClientLike, directory: string): SessionSpawner {
+export function clientSpawner(
+  client: ClientLike,
+  directory: string,
+  /** Caller session id. Associates are created as its children so the host UI shows them as sub-agents. */
+  sessionID?: string,
+): SessionSpawner {
   return {
-    async create() {
-      const result = await client.session.create({ query: { directory } });
+    async create(input?: { title?: string }) {
+      // parentID is what makes an associate appear in the host's own UI as a
+      // sub-agent rather than an orphan session. Without it the work is real
+      // but invisible to the founder, which is the whole complaint about a
+      // tool call that blocks for a minute and returns a wall of text.
+      const result = await client.session.create({
+        query: { directory },
+        body: {
+          parentID: sessionID,
+          ...(input?.title ? { title: input.title } : {}),
+        },
+      });
       const id = result.data?.id;
       if (!id) throw new Error("opencode did not return a session id");
       return { sessionId: id };
@@ -245,7 +260,9 @@ export const CubicorePlugin: Plugin = async (input) => {
           );
 
           const workers = new WorkerSessions(
-            clientSpawner(client, directory),
+            // Parenting the worker sessions to the caller's makes each associate
+            // appear in the host's own sub-agent UI rather than as an orphan.
+            clientSpawner(client, directory, ctx.sessionID),
             models(workerModel),
             enforcer,
             // Live events report zero usage; the session row is the truth.

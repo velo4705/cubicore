@@ -23,7 +23,7 @@ import type { TokenUsage } from "../telemetry/types";
  */
 
 export interface SessionSpawner {
-  create(): Promise<{ sessionId: string }>;
+  create(input?: { title?: string }): Promise<{ sessionId: string }>;
   /**
    * `agent` is deliberately optional and defaults to the host's default agent.
    *
@@ -90,7 +90,9 @@ export class WorkerSessions {
       ? routeModel(contract, this.models, { attempt })
       : undefined;
 
-    const { sessionId } = await this.spawner.create();
+    const { sessionId } = await this.spawner.create({
+      title: `${contract.id} (associate)`,
+    });
     observer.attach(sessionId);
     this.trace?.("worker.created", { contractId: contract.id, sessionId, attempt });
     this.observers.set(contract.id, observer);

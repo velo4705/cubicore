@@ -139,8 +139,9 @@ async function plan(raw: string): Promise<ToolResult> {
   return text([...summary, "", "Call execute with this plan to dispatch it."].join("\n"));
 }
 
-async function execute(raw: string): Promise<ToolResult> {
+async function execute(raw: string, parentSessionID?: string): Promise<ToolResult> {
   const runtime = runtimeFromEnv();
+  runtime.sessionID = parentSessionID;
 
   let parsed: Plan;
   try {
@@ -256,10 +257,14 @@ export const TOOLS = [
       "and aggregate the artifacts. Progress streams to stderr while it runs.",
     inputSchema: {
       type: "object",
-      properties: { plan: { type: "string", description: "Plan JSON previously accepted by cubicore_plan." } },
+      properties: {
+        plan: { type: "string", description: "Plan JSON previously accepted by plan." },
+        parentSessionID: { type: "string", description: "Session to parent the associates to." },
+      },
       required: ["plan"],
     },
-    handler: async (args: { plan: string }) => execute(args.plan),
+    handler: async (args: { plan: string; parentSessionID?: string }) =>
+      execute(args.plan, args.parentSessionID),
   },
 ];
 

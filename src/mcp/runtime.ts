@@ -21,6 +21,8 @@ export interface Runtime {
   client: OpencodeClient;
   /** Resolved loopback port of the opencode server. */
   port: string;
+  /** Parent session, so associates render as sub-agents in the host UI. */
+  sessionID?: string;
   directory: string;
   models: { strong: string; cheap: string };
 }
@@ -107,7 +109,7 @@ export function workerSessions(runtime: Runtime, progress?: ProgressSink): Worke
   const db = new SqliteTokenSource();
 
   return new WorkerSessions(
-    clientSpawner(runtime.client as never, runtime.directory),
+    clientSpawner(runtime.client as never, runtime.directory, runtime.sessionID),
     runtime.models,
     undefined as never,
     (sessionId: string) => {
