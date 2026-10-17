@@ -8,6 +8,7 @@ import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
+import { findCallerSession } from "./runtime";
 import { runtimeFromEnv, workerSessions, type Runtime } from "./runtime";
 import type { Plan } from "../contracts/types";
 
@@ -140,6 +141,16 @@ async function plan(raw: string): Promise<ToolResult> {
   return text([...summary, "", "Call execute with this plan to dispatch it."].join("\n"));
 }
 
+/** Best-effort caller session; undefined simply means the associates are not nested. */
+async function resolveParent(parentSessionID?: string): Promise<string | undefined> {
+  if (parentSessionID) return parentSessionID;
+  try {
+    return await findCallerSession(runtimeFromEnv());
+  } catch {
+    return undefined;
+  }
+}
+
 async function runToCompletion(raw: string, runId: string, parentSessionID?: string): Promise<string> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
@@ -261,7 +272,10 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
   }
 
   const run = startRun(parsed);
-  void runToCompletion(raw, run.id, parentSessionID)
+  // Nest under the Main agent's session so each associate appears in the host's
+  // sub-agent view. A caller may pass one explicitly; otherwise the newest
+  // session in this directory is almost always the caller.
+  void resolveParent(parentSessionID).then((parent) => runToCompletion(raw, run.id, parent))
     .then((summary) => finishRun(run.id, summary))
     .catch((error) => failRun(run.id, error instanceof Error ? error.message : String(error)));
 

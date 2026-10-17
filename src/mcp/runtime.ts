@@ -105,6 +105,35 @@ export function runtimeFromEnv(env: Record<string, string | undefined> = process
  * reported zero usage for a session that later recorded 34,539 input tokens,
  * so an event-fed cost is always zero.
  */
+/**
+ * The session most likely to be the caller.
+ *
+ * An MCP tool call carries no session id, so an agent cannot be asked to supply
+ * one it has no way to know. The most recently created session in the working
+ * directory is the Main agent that invoked the tool in every normal case, and
+ * parenting to it is what makes associates render as sub-agents rather than
+ * orphans.
+ *
+ * Best-effort by construction: if there is no recent session the run still
+ * works, it just is not nested.
+ */
+export async function findCallerSession(
+  runtime: Runtime,
+): Promise<string | undefined> {
+  try {
+    const result = await runtime.client.session.list({ query: { directory: runtime.directory } });
+    const sessions = (result.data ?? []) as Array<{ id: string; time?: { created?: number } }>;
+    if (sessions.length === 0) return undefined;
+
+    const newest = sessions.reduce((a, b) =>
+      (b.time?.created ?? 0) > (a.time?.created ?? 0) ? b : a,
+    );
+    return newest.id;
+  } catch {
+    return undefined;
+  }
+}
+
 export function workerSessions(runtime: Runtime, progress?: ProgressSink): WorkerSessions {
   const db = new SqliteTokenSource();
 
