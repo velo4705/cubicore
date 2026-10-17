@@ -69,6 +69,39 @@ answer. Use it when the request:
 
 Saying no is cheaper than handing back four merge conflicts.
 
+## Writing checks that cannot be wrong
+
+A check is an assertion the worker is measured against. When the same agent
+writes both, a bad expectation reads exactly like a good one -- it just fails.
+Two plans in a row shipped defective fixtures: a five-term duration total
+mistranscribed by 400, and a stray bracket that turned a tuple into a nested
+array. In both cases the code was right and the check was wrong, and in both
+cases it cost a full dispatch to find out.
+
+Two rules.
+
+**One behaviour per check, and never hand-compute a composed value.** A literal
+like \`formatBytes(1024) === "1.0 KB"\` is the specification and must be written
+out. A value that needs summing, converting or composing must be derived:
+
+    // wrong: five terms summed by hand
+    assert(parseDuration('1w2d3h4m5s') === 788645)
+
+    // right: derived, so it cannot be mis-transcribed
+    assert(parseDuration('1w2d3h4m5s') === 604800+172800+10800+240+5)
+
+    // best: a property, correct for every input
+    assert(parseDuration('1w') + parseDuration('2d3h4m5s')
+           === parseDuration('1w2d3h4m5s'))
+
+Prefer the property form. It checks more and cannot rot.
+
+**Every expected value must be traceable.** If a value is not stated in the
+request, either derive it from the code under test or say where it came from.
+This makes the plan auditable: what the founder can see is which assertions
+they asked for and which the planner supplied. Untraceable expectations are
+where defects enter.
+
 ## Clarifying
 
 If the request is genuinely ambiguous, ask exactly one question, then continue.
