@@ -11,6 +11,7 @@ import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession } from "./runtime";
 import { ASSOCIATE_AGENT_ID, dispatchBlueprint } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
+import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
   DEBUG_MD,
   PLAN_JSON,
@@ -483,6 +484,30 @@ async function inlineBlueprint(directory: string): Promise<ToolResult> {
   );
 }
 
+/**
+ * Look before asking.
+ *
+ * A founder who cannot name their own files cannot answer "which modules
+ * should this touch?" — they will guess, and the guess becomes contracts that
+ * claim everything. Surveying first turns an unanswerable question into a
+ * choice: "not billing" is easy once `src/billing.ts` is on screen.
+ */
+async function research(directory: string): Promise<ToolResult> {
+  const s = survey(directory);
+  if (!s.exists) return text(`No project at ${directory}. ${questionsFrom(s)[0]}`);
+
+  return text(
+    [
+      renderSurvey(s),
+      "```",
+      "",
+      "Answer these before planning:",
+      "",
+      ...questionsFrom(s).map((q, i) => `${i + 1}. ${q}`),
+    ].join("\n"),
+  );
+}
+
 export const TOOLS = [
   {
     name: "plan",
@@ -585,6 +610,18 @@ export const TOOLS = [
       inlineBlueprint(args.directory ?? process.cwd()),
   },
   {
+    name: "research",
+    description:
+      "Survey the working directory -- languages, modules, exported names, existing commands -- " +
+      "then ask the smallest set of questions grounded in what actually exists. Use before " +
+      "planning any request that has not named specific files yet.",
+    inputSchema: {
+      type: "object",
+      properties: { directory: { type: "string", description: "Working directory" } },
+    },
+    handler: async (args: { directory?: string }) => research(args.directory ?? process.cwd()),
+  },
+  {
     name: "status",
     description:
       "Poll a Cubicore run started by execute. Returns its current state, and the full " +
@@ -626,8 +663,9 @@ const PROMPTS = [
   {
     name: "clarify",
     description:
-      "Turn a vague goal into something plannable. Asks the founder the smallest set of " +
-      "questions needed, once. Use before plan when the request is a goal rather than a task.",
+      "Turn a vague goal into something plannable. Calls research first, then asks the founder " +
+      "questions grounded in what actually exists. Use before plan for any request that has not " +
+      "named specific files.",
     arguments: [{ name: "request", description: "What the founder asked for, in their words", required: false }],
   },
   {
@@ -700,11 +738,14 @@ plan it yet.
 
 ${args.request ?? "(the current request in this conversation)"}
 
+**Call the research tool first.** Do not ask the founder which files exist — they do not know.
+Read the tree, then ask about things they can actually answer, by name. A founder can say
+"not billing" far more easily than they can invent a path that does not exist.
+
 Do NOT write a plan. A goal decomposed too early produces contracts that claim the whole
 tree, and four associates that collide while every gate passes.
 
-Instead, ask the founder the smallest set of questions that would make it concrete. In
-practice that means:
+Ask the smallest set of questions that would make it concrete:
 
 1. **The first shippable slice.** Not the product — the smallest thing worth putting in
    front of someone. "A SaaS" is not a slice; "a URL shortener with an API" is.
