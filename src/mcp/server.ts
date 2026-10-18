@@ -9,6 +9,7 @@ import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession } from "./runtime";
+import { ASSOCIATE_AGENT_ID, dispatchBlueprint } from "./inline";
 import {
   DEBUG_MD,
   PLAN_JSON,
@@ -430,6 +431,46 @@ async function testRun(args: { findings?: TestFinding[] }, directory: string): P
   );
 }
 
+/**
+ * Emit the inline dispatch blueprint.
+ *
+ * Cubicore cannot invoke the host's sub-agent tool -- an MCP server offers
+ * tools, it does not call the client's -- so the host makes the N calls and
+ * this supplies one ready-to-dispatch instruction per associate. Emitting data
+ * rather than acting is what makes a host without inline sub-tasks degrade to
+ * the session path instead of failing.
+ */
+async function inlineBlueprint(directory: string): Promise<ToolResult> {
+  let raw: string;
+  try {
+    raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
+  } catch {
+    return text(`No ${PLAN_JSON} here. Run the plan command first.`, true);
+  }
+
+  const loaded = loadPlan(raw);
+  if (!loaded.ok) return text(`Refusing to blueprint: ${loaded.reason}`, true);
+
+  const cycleGate = canExecute(readCycleState(`${directory}/.cubicore-cycle.json`));
+  if (!cycleGate.allowed) return text(cycleGate.reason, true);
+
+  const blueprint = dispatchBlueprint(loaded.plan);
+  writeFileSync(`${directory}/CUBICORE_DISPATCH.md`, blueprint);
+
+  return text(
+    [
+      `Wrote CUBICORE_DISPATCH.md -- ${loaded.plan.contracts.length} instruction(s), one per associate.`,
+      ``,
+      `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel. When they return,`,
+      `run each contract's blocking checks and record the results with the test tool.`,
+      ``,
+      `--- first instruction, for shape ---`,
+      ``,
+      blueprint.split("```")[0].split("# Cubicore dispatch blueprint")[1]?.trim().slice(0, 700) ?? "",
+    ].join("\n"),
+  );
+}
+
 export const TOOLS = [
   {
     name: "plan",
@@ -519,6 +560,19 @@ export const TOOLS = [
       testRun(args, args.directory ?? process.cwd()),
   },
   {
+    name: "dispatch_blueprint",
+    description:
+      "Emit one ready-to-dispatch instruction per associate for the host's inline sub-agent " +
+      "tool. Writes CUBICORE_DISPATCH.md. Cubicore cannot call the host's tool, so this is the " +
+      "data the host dispatches from; hosts without inline sub-tasks ignore it and use sessions.",
+    inputSchema: {
+      type: "object",
+      properties: { directory: { type: "string", description: "Working directory" } },
+    },
+    handler: async (args: { directory?: string }) =>
+      inlineBlueprint(args.directory ?? process.cwd()),
+  },
+  {
     name: "status",
     description:
       "Poll a Cubicore run started by execute. Returns its current state, and the full " +
@@ -552,8 +606,10 @@ const PROMPTS = [
   },
   {
     name: "execute",
-    description: "Dispatch a plan across parallel associates.",
-    arguments: [{ name: "plan", description: "Plan JSON; omit to reuse the plan already in this conversation", required: false }],
+    description:
+      "Dispatch a plan. Prefers the host's inline sub-agents so each associate renders as a " +
+      "visible step; falls back to Cubicore's own sessions when the host has none.",
+    arguments: [{ name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" }],
   },
   {
     name: "test",

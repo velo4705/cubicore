@@ -7,6 +7,7 @@ import { addUsage, type TokenUsage } from "./telemetry/types";
 import { PhaseTimer } from "./telemetry/timing";
 import { readUsage } from "./telemetry/adapters/opencode";
 import { checkTopology } from "./coordinator/topology";
+import { ASSOCIATE_AGENT_ID, associateAgentConfig } from "./mcp/inline";
 import { parsePlan, MalformedPlan } from "./coordinator/parse";
 import { validatePlan } from "./validate/plan";
 import type { Plan } from "./contracts/types";
@@ -157,6 +158,14 @@ export const CubicorePlugin: Plugin = async (input) => {
   });
 
   return {
+    config: async (config) => {
+      const agents = (config as { agent?: Record<string, unknown> }).agent ?? {};
+      if (!agents[ASSOCIATE_AGENT_ID]) {
+        Object.assign(agents, { [ASSOCIATE_AGENT_ID]: associateAgentConfig() });
+        (config as { agent?: Record<string, unknown> }).agent = agents;
+      }
+    },
+
     /**
      * Routes every bus event to every observer. `RunObserver` filters by
      * session, so siblings never contaminate each other, and the ledger dedupes

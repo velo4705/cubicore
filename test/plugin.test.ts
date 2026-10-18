@@ -35,13 +35,41 @@ describe("plugin surface", () => {
   });
 });
 
-describe("the coordinator is gone", () => {
-  // Removing the coordinator removed the last reason for a `config` hook: it
-  // existed only to register the planner agent. Leaving it would advertise a
-  // capability that no longer exists.
-  test("registers no config hook", async () => {
+describe("the associate sub-agent", () => {
+  // The config hook came back for the associate, not the coordinator: opencode
+  // renders `mode: "subagent"` agents as visible steps, and that is the whole
+  // reason to prefer inline dispatch over an opaque tool call.
+  test("registers cubicore-associate as a sub-agent", async () => {
     const h = await hooks();
-    expect(h.config).toBeUndefined();
+    expect(typeof h.config).toBe("function");
+
+    // The hook mutates the config in place, as opencode's contract expects.
+    const config = {} as { agent?: Record<string, { mode?: string }> };
+    await h.config?.(config as never);
+    const agents = config.agent ?? {};
+    expect(agents["cubicore-associate"]).toBeDefined();
+    expect(agents["cubicore-associate"].mode).toBe("subagent");
+  });
+
+  test("does not register a coordinator or planner agent", async () => {
+    const h = await hooks();
+    const config = {} as { agent?: Record<string, unknown> };
+    await h.config?.(config as never);
+    const agents = config.agent ?? {};
+    // opencode ignores an unknown agent name and silently falls back to
+    // `build`, which is how a coordinator-as-agent failed four times.
+    expect(Object.keys(agents)).not.toContain("cubicore-planner");
+  });
+
+  test("leaves agents the user already configured alone", async () => {
+    const h = await hooks();
+    const config = { agent: {} as Record<string, { mode?: string }> };
+    config.agent.build = { mode: "primary" };
+    config.agent.custom = { mode: "subagent" };
+    await h.config?.(config as never);
+    expect(config.agent.custom).toBeDefined();
+    expect(config.agent.build.mode).toBe("primary");
+    expect(config.agent["cubicore-associate"].mode).toBe("subagent");
   });
 });
 
