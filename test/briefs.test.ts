@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { BRIEF_DIR, briefs, briefPath, renderBrief, renderManifest } from "../src/mcp/inline";
+import { BRIEF_DIR, associateAgentConfig, briefs, briefPath, renderBrief, renderManifest } from "../src/mcp/inline";
 import { parsePlan } from "../src/coordinator/parse";
 import type { Contract, Plan } from "../src/contracts/types";
 
@@ -92,5 +92,55 @@ describe("associate briefs", () => {
     expect(md).toContain("a Rust CLI");
     expect(md).not.toContain("frontend");
     expect(md).not.toContain("backend");
+  });
+});
+
+describe("checks can be wrong", () => {
+  // Observed in a real run: a check asserted n === 0 after t(); t(); t.cancel()
+  // while doneWhen mandated a synchronous leading-edge fire. The associate
+  // satisfied it by making wait=0 defer a tick -- a behavioural regression that
+  // the gate reported as green.
+  const unsatisfiable = {
+    id: "throttle",
+    objective: "Leading edge fires synchronously, even when the interval is 0",
+    reads: [],
+    writes: ["src/throttle.ts"],
+    forbidden: [],
+    deliverable: "diff",
+    schema: { type: "object" },
+    doneWhen: "the leading call fires synchronously for any interval, including 0",
+    checks: [
+      {
+        id: "throttle-clamps-timing",
+        kind: "intent",
+        command: "bunx --bun tsx -e \"const n = f(); t(); t(); t.cancel(); assert(n === 0)\"",
+        expectation: "no invocation after cancel",
+        gating: "blocking",
+        convergent: true,
+      },
+    ],
+    budget: { tokens: 30_000, toolCalls: 60, wallMs: 120_000 },
+  } as unknown as Contract;
+
+  it("does not tell an associate to fix the code unconditionally", () => {
+    const md = renderBrief(unsatisfiable, 0, 1);
+    // The old wording made bending behaviour the only instructed response.
+    expect(md).not.toContain("fix the cause rather than the check");
+  });
+
+  it("tells an associate a contradictory check is a defect in the check", () => {
+    // Standing behaviour lives in the agent prompt, which every associate reads.
+    const raw = associateAgentConfig().prompt;
+    const prompt = Array.isArray(raw) ? raw.join("\n") : String(raw);
+    expect(prompt).toContain("is a defect in the check");
+    expect(prompt).toContain("Do NOT bend the behaviour to satisfy it");
+    // Asserted across the line wrap the prompt is built with.
+    expect(prompt.replace(/\s+/g, " ")).toContain("Never change specified behaviour");
+  });
+
+  it("asks for the bad check to be named rather than worked around", () => {
+    const md = renderBrief(unsatisfiable, 0, 1);
+    expect(md).toContain("If a check is wrong");
+    expect(md).toContain("worth more than a green gate");
   });
 });
