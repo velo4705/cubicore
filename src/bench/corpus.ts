@@ -25,23 +25,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-auth",
       "objective": "Write a concise reference document for auth in /home/nix/cubicore-test/src/auth.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/auth.ts"
+        "src/auth.ts"
       ],
       "writes": [
         "docs/doc-auth.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -73,23 +73,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-bytes",
       "objective": "Write a concise reference document for bytes in /home/nix/cubicore-test/src/bytes.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/bytes.ts"
+        "src/bytes.ts"
       ],
       "writes": [
         "docs/doc-bytes.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -121,23 +121,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-cache",
       "objective": "Write a concise reference document for cache in /home/nix/cubicore-test/src/cache.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/cache.ts"
+        "src/cache.ts"
       ],
       "writes": [
         "docs/doc-cache.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -169,23 +169,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-chunk",
       "objective": "Write a concise reference document for chunk in /home/nix/cubicore-test/src/chunk.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/chunk.ts"
+        "src/chunk.ts"
       ],
       "writes": [
         "docs/doc-chunk.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -217,23 +217,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-debounce",
       "objective": "Write a concise reference document for debounce in /home/nix/cubicore-test/src/debounce.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/debounce.ts"
+        "src/debounce.ts"
       ],
       "writes": [
         "docs/doc-debounce.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -265,23 +265,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-duration",
       "objective": "Write a concise reference document for duration in /home/nix/cubicore-test/src/duration.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/duration.ts"
+        "src/duration.ts"
       ],
       "writes": [
         "docs/doc-duration.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -313,23 +313,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-groupBy",
       "objective": "Write a concise reference document for groupBy in /home/nix/cubicore-test/src/groupBy.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/groupBy.ts"
+        "src/groupBy.ts"
       ],
       "writes": [
         "docs/doc-groupBy.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -361,23 +361,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-mail",
       "objective": "Write a concise reference document for mail in /home/nix/cubicore-test/src/mail.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/mail.ts"
+        "src/mail.ts"
       ],
       "writes": [
         "docs/doc-mail.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -409,23 +409,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-queue",
       "objective": "Write a concise reference document for queue in /home/nix/cubicore-test/src/queue.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/queue.ts"
+        "src/queue.ts"
       ],
       "writes": [
         "docs/doc-queue.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/slug.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -457,23 +457,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-slug",
       "objective": "Write a concise reference document for slug in /home/nix/cubicore-test/src/slug.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/slug.ts"
+        "src/slug.ts"
       ],
       "writes": [
         "docs/doc-slug.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/throttle.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/throttle.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -505,23 +505,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-throttle",
       "objective": "Write a concise reference document for throttle in /home/nix/cubicore-test/src/throttle.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/throttle.ts"
+        "src/throttle.ts"
       ],
       "writes": [
         "docs/doc-throttle.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/wrap.ts"
       ],
       "deliverable": "report",
       "schema": {
@@ -553,23 +553,23 @@ const REAL_PROJECT_PLAN = {
       "id": "doc-wrap",
       "objective": "Write a concise reference document for wrap in /home/nix/cubicore-test/src/wrap.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
-        "/home/nix/cubicore-test/src/wrap.ts"
+        "src/wrap.ts"
       ],
       "writes": [
         "docs/doc-wrap.md"
       ],
       "forbidden": [
-        "/home/nix/cubicore-test/src/auth.ts",
-        "/home/nix/cubicore-test/src/bytes.ts",
-        "/home/nix/cubicore-test/src/cache.ts",
-        "/home/nix/cubicore-test/src/chunk.ts",
-        "/home/nix/cubicore-test/src/debounce.ts",
-        "/home/nix/cubicore-test/src/duration.ts",
-        "/home/nix/cubicore-test/src/groupBy.ts",
-        "/home/nix/cubicore-test/src/mail.ts",
-        "/home/nix/cubicore-test/src/queue.ts",
-        "/home/nix/cubicore-test/src/slug.ts",
-        "/home/nix/cubicore-test/src/throttle.ts"
+        "src/auth.ts",
+        "src/bytes.ts",
+        "src/cache.ts",
+        "src/chunk.ts",
+        "src/debounce.ts",
+        "src/duration.ts",
+        "src/groupBy.ts",
+        "src/mail.ts",
+        "src/queue.ts",
+        "src/slug.ts",
+        "src/throttle.ts"
       ],
       "deliverable": "report",
       "schema": {

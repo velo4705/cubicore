@@ -1,5 +1,6 @@
 import type { ArmName, TaskSpec, Trial } from "../src/bench/types";
 import { CORPUS, promptFor } from "../src/bench/corpus";
+import { FIXTURE_DIR, writeFixture } from "./fixture";
 import { CliRunner } from "../src/bench/cli";
 import { SqliteTokenSource } from "../src/bench/tokens";
 import { addUsage, EMPTY_USAGE, totalTokens, type TokenUsage } from "../src/telemetry/types";
@@ -25,8 +26,35 @@ function flag(name: string, fallback: string): string {
 
 const REPS = Number(flag("reps", "2"));
 const MODEL = flag("model", "opencode/space-bunny-free");
-const CWD = flag("cwd", "/tmp/opencode/benchrepo");
-const SERVER = flag("server", "http://127.0.0.1:4599");
+const CWD = flag("cwd", FIXTURE_DIR);
+/**
+ * Where the opencode server is listening.
+ *
+ * opencode binds an ephemeral port, so there is nothing to default to -- the
+ * previous 4599 was a guess that cost a full benchmark run to discover wrong.
+ * Discovery matches a listener by owning process, because `ss -ltn` alone puts
+ * CUPS first and would have returned the print spooler. An explicit --server
+ * still wins.
+ */
+function discoverServer(): string {
+  for (const cmd of [
+    "ss -ltnp 2>/dev/null | grep -i opencode",
+    "ss -ltnp 2>/dev/null | grep -i 'ai.opencode'",
+    "lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | grep -i opencode",
+  ]) {
+    try {
+      const { stdout, exitCode } = Bun.spawnSync(["sh", "-c", cmd]);
+      if (exitCode !== 0) continue;
+      const match = /127\.0\.0\.1:(\d+)/.exec(new TextDecoder().decode(stdout));
+      if (match) return `http://127.0.0.1:${match[1]}`;
+    } catch {
+      // try the next strategy
+    }
+  }
+  return "http://127.0.0.1:4096";
+}
+
+const SERVER = flag("server", discoverServer());
 
 /**
  * The SDK client needs a baseUrl and, when the server was started with
@@ -141,7 +169,12 @@ function failed(taskId: string, arm: ArmName, error: unknown): Trial {
 }
 
 async function main(): Promise<void> {
-  console.log(`reps=${REPS} model=${MODEL} cwd=${CWD} server=${SERVER}`);
+  // The fixture must match the corpus plan exactly -- twelve modules, same
+// names -- or the associates read files that do not exist and the arm measures
+// a plan that could never have succeeded.
+writeFixture(CWD);
+
+console.log(`reps=${REPS} model=${MODEL} cwd=${CWD} server=${SERVER}`);
   const trials: Trial[] = [];
 
   for (const task of CORPUS) {
