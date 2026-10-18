@@ -29,6 +29,14 @@ export interface Trial {
   timedOut?: boolean;
 }
 
+/**
+ * The plan's wire shape, as the benchmark holds it.
+ *
+ * Deliberately not the full `Plan`: the corpus is data, and importing the
+ * runtime type here would make a schema change a benchmark break.
+ */
+export type PlanShape = unknown;
+
 export interface TaskSpec {
   id: string;
   prompt: string;
