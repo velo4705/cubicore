@@ -635,6 +635,7 @@ export const TOOLS = [
   },
 ];
 
+
 /**
  * Slash-command surface.
  *
@@ -650,7 +651,9 @@ export const TOOLS = [
 const PROMPTS = [
   {
     name: "plan",
-    description: "Decompose a request into a plan without dispatching.",
+    description:
+      "Research the repository, ask the founder what the repo cannot answer, then write " +
+      "CUBICORE_PLAN.md and CUBICORE_PLAN.json. Dispatches nothing.",
     arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
   },
   {
@@ -659,14 +662,6 @@ const PROMPTS = [
       "Dispatch a plan. Prefers the host's inline sub-agents so each associate renders as a " +
       "visible step; falls back to Cubicore's own sessions when the host has none.",
     arguments: [{ name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" }],
-  },
-  {
-    name: "clarify",
-    description:
-      "Turn a vague goal into something plannable. Calls research first, then asks the founder " +
-      "questions grounded in what actually exists. Use before plan for any request that has not " +
-      "named specific files.",
-    arguments: [{ name: "request", description: "What the founder asked for, in their words", required: false }],
   },
   {
     name: "test",
@@ -680,20 +675,53 @@ const PROMPTS = [
 function promptFor(name: string, args: Record<string, string>) {
   if (name === "plan") {
     return {
-      description: "Plan a request as Cubicore contracts.",
+      description: "Research, question, and plan in one pass.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
             text:
-              `Produce a Cubicore plan for the request below and validate it with plan.\n` +
-              `Do not dispatch anything, and do not answer with prose.\n\n` +
-              `Request: ${args.request ?? "(the current request in this conversation)"}\n\n` +
-              `Read the repository before splitting. Keep every writes set disjoint, and give each\n` +
-              `diff contract a concrete file path in writes rather than a description of the change.\n` +
-              `Refusing is a valid answer: renames, interface changes, and dependent chains are\n` +
-              `not divide-and-conquer tasks.`,
+`Plan this request:
+
+${args.request ?? "(the current request in this conversation)"}
+
+Work in this order, and do not skip a step.
+
+**1. Research first.** Call the research tool. Do not ask the founder which files exist --
+they do not know, and a guess becomes a contract that claims the entire repository. Read the
+tree, then look at the modules it names. You need the real structure before any of this is
+answerable.
+
+**2. Decide what it actually is.** A goal is not a task. "Build a SaaS" is a goal; "add a
+rate limiter to the existing HTTP layer" is a task. If this is a goal, do not plan it -- ask
+what the first shippable slice is.
+
+**3. Ask, once.** Put the questions to the founder and wait. Ask only what you could not
+determine from the repository, and only what changes the plan. A founder can answer "not
+billing" once billing.ts is on screen; they cannot invent a path that does not exist. Ask the
+minimum -- a question they cannot answer cheaply is a question you should drop and assume a
+default for.
+
+**4. Write the plan.** Once you have real answers, produce the plan JSON and pass it to
+plan_write, which writes ${PLAN_MD} for the founder and ${PLAN_JSON} for the dispatcher.
+
+**Rules for the plan itself:**
+
+- Every \`writes\` set must be disjoint from every other, and must name concrete files. A
+  scope of \`src/**\` cannot be split safely and will be rejected.
+- Split where the code actually separates, not where the word count does. Two contracts
+  editing the same function are two contracts that collide.
+- Every diff contract needs a check that \`can fail\`. Grepping for a name proves the name
+  exists, not that the code works -- that has let real defects through twice.
+- Never hand-compute a composed expected value. Derive it in the command, or assert a
+  property that holds for every input.
+- \`topology: "refuse"\` is a correct answer. Renames, interface changes and dependent
+  chains are not divide-and-conquer tasks.
+
+Plan JSON must match:
+
+${PLAN_SCHEMA_JSON}`,
           },
         },
       ],
@@ -718,47 +746,6 @@ function promptFor(name: string, args: Record<string, string>) {
                 `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
                 `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
                 `the request, validate it with plan first, and then execute it.`,
-          },
-        },
-      ],
-    };
-  }
-
-  if (name === "clarify") {
-    return {
-      description: "Narrow a goal into a plannable request.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`The request below is a goal, not a set of contracts. Your job is to make it plannable, not to
-plan it yet.
-
-${args.request ?? "(the current request in this conversation)"}
-
-**Call the research tool first.** Do not ask the founder which files exist — they do not know.
-Read the tree, then ask about things they can actually answer, by name. A founder can say
-"not billing" far more easily than they can invent a path that does not exist.
-
-Do NOT write a plan. A goal decomposed too early produces contracts that claim the whole
-tree, and four associates that collide while every gate passes.
-
-Ask the smallest set of questions that would make it concrete:
-
-1. **The first shippable slice.** Not the product — the smallest thing worth putting in
-   front of someone. "A SaaS" is not a slice; "a URL shortener with an API" is.
-2. **Which files it touches.** Name them. A write scope of "everything" cannot be split
-   safely, and disjoint ownership is the entire point.
-3. **What proves each piece works.** A command that can fail. Grepping for a name proves
-   the name exists, not that the code works.
-4. **What is explicitly out of scope.** Boundaries prevent scope creep mid-run.
-
-Ask the minimum. A question the founder cannot answer cheaply is a question you should drop
-and assume a default for.
-
-Once they answer, call plan.`,
           },
         },
       ],
