@@ -9,6 +9,19 @@ import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession } from "./runtime";
+import {
+  DEBUG_MD,
+  PLAN_JSON,
+  PLAN_MD,
+  canExecute,
+  loadPlan,
+  readCycleState,
+  renderDebugMd,
+  renderPlanMd,
+  writeCycleState,
+  type TestFinding,
+} from "./protocol";
+import { writeFileSync } from "node:fs";
 import { runtimeFromEnv, workerSessions, type Runtime } from "./runtime";
 import type { Plan } from "../contracts/types";
 
@@ -299,6 +312,124 @@ function status(runId: string): ToolResult {
   return text(describe(run));
 }
 
+/**
+ * Plan: validate and write the artifacts. Costs nothing and dispatches nothing.
+ *
+ * Two files, deliberately. CUBICORE_PLAN.md is for the founder -- topology,
+ * project size, who does what, why the split is what it is. CUBICORE_PLAN.json
+ * is what Execute actually dispatches, and it is the only thing that is parsed.
+ * A typo in the prose cannot silently change what gets built.
+ */
+async function planWrite(raw: string, directory: string): Promise<ToolResult> {
+  let parsed: Plan;
+  try {
+    parsed = parsePlan(raw) as Plan;
+  } catch (error) {
+    const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
+    return text(["Malformed plan:", ...problems.map((p) => `- ${p}`), "", `Schema: ${PLAN_SCHEMA_JSON}`].join("\n"), true);
+  }
+
+  const validation = validatePlan(parsed, []);
+  const topology = checkTopology(parsed);
+
+  if (parsed.topology === "refuse") {
+    return text("This plan refuses to split. That is a valid answer and nothing is written.");
+  }
+
+  const problems: string[] = validation.findings.map((f) => `- [${f.code}] ${f.message}`);
+  if (topology.cycles.length > 0) {
+    problems.push(`- [dependency-cycle] ${topology.cycles.map((c) => c.join(" -> ")).join("; ")}. Not divide-and-conquer.`);
+  } else if (!topology.ok) {
+    problems.push(`- [mis-declared-topology] declared \`${topology.declared}\`, implies \`${topology.implied}\``);
+  }
+
+  writeFileSync(`${directory}/${PLAN_JSON}`, raw);
+  writeFileSync(`${directory}/${PLAN_MD}`, renderPlanMd(parsed, validation));
+
+  if (problems.length > 0) {
+    return text(
+      [`Plan rejected -- ${PLAN_MD} and ${PLAN_JSON} written for inspection, but nothing will dispatch.`, "", ...problems].join("\n"),
+      true,
+    );
+  }
+
+  return text(
+    [`Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
+     `${parsed.contracts.length} associate(s), topology ${parsed.topology}. Nothing has run.`].join("\n"),
+  );
+}
+
+/** Execute: dispatch ${PLAN_JSON}, honouring the cycle bound. */
+async function executeFile(directory: string, parentSessionID?: string): Promise<ToolResult> {
+  const statePath = `${directory}/.cubicore-cycle.json`;
+  const state = readCycleState(statePath);
+  const gate = canExecute(state);
+  if (!gate.allowed) return text(gate.reason, true);
+
+  let raw: string;
+  try {
+    raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
+  } catch {
+    return text(`No ${PLAN_JSON} in this directory. Run the plan command first.`, true);
+  }
+
+  const loaded = loadPlan(raw);
+  if (!loaded.ok) return text(`Refusing to dispatch: ${loaded.reason}`, true);
+
+  const parsed = loaded.plan;
+  const run = startRun(parsed);
+  writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+
+  void resolveParent(parentSessionID)
+    .then((parent) => runToCompletion(raw, run.id, parent))
+    .then((summary) => finishRun(run.id, summary))
+    .catch((error) => failRun(run.id, error instanceof Error ? error.message : String(error)));
+
+  return text(
+    [`${gate.reason}`, `Started ${run.id} -- ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
+     `Poll with status using ${run.id}.`].join("\n"),
+  );
+}
+
+/**
+ * Test: run the mechanical matrix and write findings.
+ *
+ * `error` and `warning` come from running each contract's own checks and block.
+ * `judgment` -- is this useful, is it production ready, is this API free -- is
+ * reported and annotated rather than blocking, because `judgment` checks are
+ * rejected by the validator in v1. Auto-failing on taste is a loop with no
+ * terminator; auto-passing on taste is worse, because it looks like a verdict.
+ */
+async function testRun(args: { findings?: TestFinding[] }, directory: string): Promise<ToolResult> {
+  const statePath = `${directory}/.cubicore-cycle.json`;
+  const state = readCycleState(statePath);
+  const findings = args.findings ?? [];
+
+  const blocking = findings.filter((f) => f.severity !== "judgment");
+  const advisory = findings.filter((f) => f.severity === "judgment");
+
+  writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(findings, state.cycle, state.maxCycles));
+
+  if (blocking.length === 0) {
+    return text(
+      [`No blocking findings. Wrote ${DEBUG_MD} listing ${advisory.length} advisory item(s).`,
+       advisory.length === 0
+         ? "Nothing mechanical and nothing judgement-worthy was found."
+         : "Advisory items are for a human to judge -- Test does not block on them."].join("\n"),
+    );
+  }
+
+  const next = state.cycle + 1;
+  const exhausted = next > state.maxCycles;
+  return text(
+    [`${blocking.length} blocking finding(s) written to ${DEBUG_MD}.`,
+     exhausted
+       ? `Cycle budget is exhausted (${state.cycle}/${state.maxCycles}). These are reported as unresolved for a human to triage; no further automatic runs.`
+       : `Run execute again to address them. That is cycle ${next} of ${state.maxCycles}.`].join("\n"),
+    true,
+  );
+}
+
 export const TOOLS = [
   {
     name: "plan",
@@ -327,6 +458,65 @@ export const TOOLS = [
     },
     handler: async (args: { plan: string; parentSessionID?: string }) =>
       execute(args.plan, args.parentSessionID),
+  },
+  {
+    name: "plan_write",
+    description:
+      "Validate a Cubicore plan and write CUBICORE_PLAN.md (for you) and CUBICORE_PLAN.json " +
+      "(dispatchable). Costs nothing and dispatches nothing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plan: { type: "string", description: "Plan JSON matching the Cubicore plan schema." },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+      },
+      required: ["plan"],
+    },
+    handler: async (args: { plan: string; directory?: string }) =>
+      planWrite(args.plan, args.directory ?? process.cwd()),
+  },
+  {
+    name: "execute_file",
+    description:
+      "Dispatch CUBICORE_PLAN.json across parallel associates. Returns a run id immediately; " +
+      "poll it with status. Bounded by a cycle budget so fixes cannot loop without end.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+        parentSessionID: { type: "string", description: "Session to parent the associates to." },
+      },
+    },
+    handler: async (args: { directory?: string; parentSessionID?: string }) =>
+      executeFile(args.directory ?? process.cwd(), args.parentSessionID),
+  },
+  {
+    name: "test",
+    description:
+      "Run the mechanical check matrix and write CUBICORE_DEBUG.md. Blocking findings are " +
+      "errors and warnings; judgement calls are reported but never block.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        findings: {
+          type: "array",
+          description: "Findings to record.",
+          items: {
+            type: "object",
+            properties: {
+              severity: { type: "string", enum: ["error", "warning", "judgment"] },
+              source: { type: "string" },
+              message: { type: "string" },
+              fix: { type: "string" },
+            },
+            required: ["severity", "source", "message", "fix"],
+          },
+        },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+      },
+    },
+    handler: async (args: { findings?: TestFinding[]; directory?: string }) =>
+      testRun(args, args.directory ?? process.cwd()),
   },
   {
     name: "status",
@@ -364,6 +554,13 @@ const PROMPTS = [
     name: "execute",
     description: "Dispatch a plan across parallel associates.",
     arguments: [{ name: "plan", description: "Plan JSON; omit to reuse the plan already in this conversation", required: false }],
+  },
+  {
+    name: "test",
+    description:
+      "Run the mechanical check matrix over the delivered work and write CUBICORE_DEBUG.md. " +
+      "Blocks on errors and warnings only -- judgement calls are reported, never blocking.",
+    arguments: [],
   },
 ];
 
@@ -408,6 +605,38 @@ function promptFor(name: string, args: Record<string, string>) {
                 `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
                 `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
                 `the request, validate it with plan first, and then execute it.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "test") {
+    return {
+      description: "Test the delivered work and record findings.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Run the test tool over the work that was just delivered.
+
+First, execute the blocking checks from every contract in ${PLAN_JSON} yourself and record what
+actually happened -- the tool records findings, it does not discover them.
+
+For each finding call test with:
+  - severity "error"   -- the code is broken: it does not compile, a check exits non-zero
+  - severity "warning" -- it works but something is off: a dead export, an unused path
+  - severity "judgment" -- a call only a human can make: is this feature useful, is this
+                           ready for production, is this API free to ship
+
+Errors and warnings block. Judgement calls never block -- they are written to ${DEBUG_MD} as
+advisory and left for the founder, because "judgment" checks are rejected by the validator
+and a loop that waits on taste never terminates.
+
+Give every finding a one-line concrete fix. Do not invent failures to justify an Execute cycle:
+if nothing mechanical is wrong, say so.`,
           },
         },
       ],
