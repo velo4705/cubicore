@@ -152,7 +152,7 @@ async function orchestrated(task: TaskSpec): Promise<Trial> {
     models: { strong: MODEL, cheap: MODEL },
   });
 
-  const stop = await pumpEvents(client as never, runner, CWD);
+  const stop = await pumpEvents(client as never, runner, CWD, SERVER);
   try {
     return await runner.run(task);
   } catch (error) {

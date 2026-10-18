@@ -143,22 +143,59 @@ export class OrchestratedRunner {
  * its wall-clock ceiling.
  */
 export async function pumpEvents(
-  client: { event: { subscribe(args?: { query?: { directory?: string } }): Promise<{ stream: AsyncIterable<{ data?: unknown }> }> } },
+  client: unknown,
   runner: OrchestratedRunner,
   directory: string,
+  baseUrl: string,
 ): Promise<() => void> {
   let stopped = false;
-  const subscription = await client.event.subscribe({ query: { directory } });
 
-  (async () => {
-    try {
-      for await (const chunk of subscription.stream as AsyncIterable<{ data?: unknown }>) {
+  // The SDK's event.subscribe yields only server.connected and
+  // server.heartbeat -- never session.idle. Every worker then waits out its
+  // full wall budget and the arm reports nothing, which looks exactly like a
+  // hang. The raw SSE endpoint carries the session lifecycle.
+  const auth = `Basic ${btoa(
+    `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
+  )}`;
+
+  const pump = (async () => {
+    for (;;) {
+      if (stopped) return;
+      try {
+        const response = await fetch(
+          `${baseUrl}/event?directory=${encodeURIComponent(directory)}`,
+          { headers: { Authorization: auth, Accept: "text/event-stream" } },
+        );
+        const body = response.body;
+        if (!body) return;
+
+        const reader = body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || stopped) return;
+          buffer += decoder.decode(value, { stream: true });
+
+          let split: number;
+          while ((split = buffer.indexOf("\n\n")) >= 0) {
+            const frame = buffer.slice(0, split);
+            buffer = buffer.slice(split + 2);
+            for (const line of frame.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              try {
+                runner.onEvent(JSON.parse(line.slice(5).trim()));
+              } catch {
+                // A malformed frame is not worth failing the run over.
+              }
+            }
+          }
+        }
+      } catch {
         if (stopped) return;
-        const data = chunk?.data;
-        if (data) runner.onEvent(data);
+        await Bun.sleep(2000);
       }
-    } catch {
-      // Stream closed. Workers fall back to their wall-clock ceilings.
     }
   })();
 
