@@ -9,7 +9,7 @@ import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession } from "./runtime";
-import { ASSOCIATE_AGENT_ID, dispatchBlueprint } from "./inline";
+import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
@@ -24,7 +24,7 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { runtimeFromEnv, workerSessions, type Runtime } from "./runtime";
 import type { Plan } from "../contracts/types";
 
@@ -453,7 +453,7 @@ async function testRun(args: { findings?: TestFinding[] }, directory: string): P
  * rather than acting is what makes a host without inline sub-tasks degrade to
  * the session path instead of failing.
  */
-async function inlineBlueprint(directory: string): Promise<ToolResult> {
+async function inlineBlueprint(directory: string, args: { projectKind?: string } = {}): Promise<ToolResult> {
   let raw: string;
   try {
     raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
@@ -467,19 +467,26 @@ async function inlineBlueprint(directory: string): Promise<ToolResult> {
   const cycleGate = canExecute(readCycleState(`${directory}/.cubicore-cycle.json`));
   if (!cycleGate.allowed) return text(cycleGate.reason, true);
 
-  const blueprint = dispatchBlueprint(loaded.plan);
-  writeFileSync(`${directory}/CUBICORE_DISPATCH.md`, blueprint);
+  const written = briefs(loaded.plan, { projectKind: args.projectKind });
+  mkdirSync(`${directory}/${BRIEF_DIR}`, { recursive: true });
+  for (const file of written) {
+    writeFileSync(`${directory}/${file.path}`, file.content);
+  }
+
+  const first = written.find((f) => f.path.endsWith(`01-${loaded.plan.contracts[0].id}.md`));
 
   return text(
     [
-      `Wrote CUBICORE_DISPATCH.md -- ${loaded.plan.contracts.length} instruction(s), one per associate.`,
-      ``,
-      `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel. When they return,`,
-      `run each contract's blocking checks and record the results with the test tool.`,
-      ``,
-      `--- first instruction, for shape ---`,
-      ``,
-      blueprint.split("```")[0].split("# Cubicore dispatch blueprint")[1]?.trim().slice(0, 700) ?? "",
+      `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
+      "",
+      `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving it its`,
+      `brief's path. An associate reads exactly one file and starts building.`,
+      "",
+      `When they return, run each contract's blocking checks and record the results with the test tool.`,
+      "",
+      "--- first brief, for shape ---",
+      "",
+      (first?.content ?? "").split("\n").slice(0, 22).join("\n"),
     ].join("\n"),
   );
 }
@@ -599,15 +606,24 @@ export const TOOLS = [
   {
     name: "dispatch_blueprint",
     description:
-      "Emit one ready-to-dispatch instruction per associate for the host's inline sub-agent " +
-      "tool. Writes CUBICORE_DISPATCH.md. Cubicore cannot call the host's tool, so this is the " +
-      "data the host dispatches from; hosts without inline sub-tasks ignore it and use sessions.",
+      "Write one brief per associate into CUBICORE_ASSOCIATES/, each a standalone document " +
+      "carrying only that associate's write scope, what is off-limits, and its checks. Pass " +
+      "projectKind so each knows what it is building toward. Cubicore cannot call the host's " +
+      "sub-agent tool, so this is the data the host dispatches from; hosts without inline " +
+      "sub-tasks ignore it and use sessions.",
     inputSchema: {
       type: "object",
-      properties: { directory: { type: "string", description: "Working directory" } },
+      properties: {
+        directory: { type: "string", description: "Working directory" },
+        projectKind: {
+          type: "string",
+          description: "What kind of project this is -- web app, CLI, library, plugin, service. " +
+            "Recorded in each brief so the associate knows what it is building toward.",
+        },
+      },
     },
-    handler: async (args: { directory?: string }) =>
-      inlineBlueprint(args.directory ?? process.cwd()),
+    handler: async (args: { directory?: string; projectKind?: string }) =>
+      inlineBlueprint(args.directory ?? process.cwd(), args),
   },
   {
     name: "research",
@@ -617,9 +633,16 @@ export const TOOLS = [
       "planning any request that has not named specific files yet.",
     inputSchema: {
       type: "object",
-      properties: { directory: { type: "string", description: "Working directory" } },
+      properties: {
+        directory: { type: "string", description: "Working directory" },
+        projectKind: {
+          type: "string",
+          description: "What kind of project this is -- web app, CLI, library, plugin, service. " +
+            "Recorded in each brief so the associate knows what it is building toward.",
+        },
+      },
     },
-    handler: async (args: { directory?: string }) => research(args.directory ?? process.cwd()),
+    handler: async (args: { directory?: string; projectKind?: string }) => research(args.directory ?? process.cwd()),
   },
   {
     name: "status",
@@ -739,39 +762,37 @@ ${PLAN_SCHEMA_JSON}`,
             text:
 `Execute CUBICORE_PLAN.md.
 
-**Size the team yourself.** The plan states the project size; you decide how many
-associates that means. There is no maximum. There is a floor of one per
-tech stack the plan touches, and more for a larger project. A small project
-might be one associate in one stack. A normal one might be two backend and one
-frontend. A large one might run eight.
+**What kind of project is this?** A web app, a CLI, a library, a plugin, a service — the
+categories are whatever this project actually is, and you already know. Pass that to
+\`dispatch_blueprint\` as projectKind so each associate knows what it is building toward.
+There is no fixed taxonomy, and forcing one onto a project that does not fit it is how a
+plan turns into guesswork.
 
-**Every stack gets at least one.** If the plan touches frontend, backend,
-design or data, each of those has someone in it. A stack with nobody is
-unowned work that will surface later as a gap.
+**Size the team yourself**, from the project size in CUBICORE_PLAN.md. There is no maximum.
+A small project might be one associate. A normal one might be three. A large one might be
+eight. More associates is right when the work genuinely divides.
 
-**Each associate picks exactly one stack.** Not a blend -- an associate that
-owns "backend and a bit of design" owns two write scopes that overlap with
-the design associate's, which is the collision this system exists to prevent.
-Backend, frontend, design, data. Pick one.
+**Each associate gets its own brief.** That is what \`dispatch_blueprint\` writes — one
+standalone document per associate into \`CUBICORE_ASSOCIATES/\`, each carrying only that
+associate's write scope, what is off-limits, and its checks. Do not merge them into a
+single brief and do not hand an associate another associate's brief. They are working at the
+same time and must not read each other's scopes.
 
 **Dispatch:**
 
-1. Call \`dispatch_blueprint\`. It reads CUBICORE_PLAN.json and writes
-   CUBICORE_DISPATCH.md -- one instruction per associate, already carrying its
-   write scope, its forbidden set and its checks.
-2. Read CUBICORE_PLAN.md to learn which stacks are in play and how large the
-   project is. That is what tells you how many to summon.
-3. Dispatch each instruction to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in
-   parallel, so the work renders as visible steps. Tell each one which stack it
-   is taking and what its slice of the plan is.
-4. Collect every report separately. Never merge them -- each contract is judged
-   on its own checks alone, and a merged report hides which one failed.
+1. Call \`dispatch_blueprint\` with the project kind. It reads CUBICORE_PLAN.json and writes
+   one brief per associate plus an index.
+2. Read the index to see who exists and what each owns.
+3. Dispatch each associate to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving
+   it its own brief's path. Each reads one file and starts building.
+4. Collect every report separately. Never merge them — each contract is judged on its own
+   checks alone, and a merged report hides which one failed.
 
-**If the host has no sub-agent tool**, call \`execute\` instead and Cubicore
-dispatches the sessions itself.
+**If the host has no sub-agent tool**, call \`execute\` instead and Cubicore dispatches the
+sessions itself.
 
-**When they return**, run every blocking check from CUBICORE_PLAN.json yourself
-and record the results with the test tool.`,
+**When they return**, run every blocking check from CUBICORE_PLAN.json yourself and record
+the results with the test tool.`,
           },
         },
       ],

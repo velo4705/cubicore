@@ -1,173 +1,214 @@
-import { PLAN_SCHEMA_JSON } from "../contracts/schema";
-import type { Plan } from "../contracts/types";
+import type { Contract, Plan } from "../contracts/types";
 
 /**
- * Inline dispatch: the host's own sub-agent mechanism.
+ * One brief per associate.
  *
- * A host that supports inline sub-tasks renders each associate as a step in
- * the conversation, which is the difference between watching four workers and
- * watching one opaque tool call for six minutes.
+ * A fixed taxonomy -- frontend, backend, design, data -- does not survive
+ * contact with real projects. A CLI, a plugin and a web app share no such
+ * categories, and a hardcoded list forces the plan into them. So the tracks
+ * come from the Main agent's own plan, which already knows what it is
+ * building; nothing here guesses.
  *
- * Cubicore cannot *invoke* a host tool -- an MCP server offers tools, it does
- * not call the client's. So the host dispatches. What Cubicore supplies is
- * everything else: the validated split, the armed sub-agent, and the gate that
- * judges what comes back. Ownership of the N calls is the host's; ownership of
- * the contract is Cubicore's.
- *
- * The session path stays available because 5 of 9 surveyed agents have no
- * inline sub-tasks at all, and there Cubicore dispatches itself.
+ * Each associate gets its own file rather than a numbered section of one. A
+ * sub-agent reads exactly one document and starts building, which is the
+ * behaviour we want -- a shared file invites an associate to read another
+ * associate's brief and wander into its write scope.
  */
 
 export const ASSOCIATE_AGENT_ID = "cubicore-associate";
 
-/**
- * The sub-agent every inline dispatch runs as.
- *
- * Permissions are deliberately permissive and enforcement is post-hoc: a
- * statically registered agent cannot be given per-contract globs, because the
- * config hook runs at startup and contracts are chosen later. So the scope
- * gate is what actually catches a contract that wandered outside its write
- * set, and it runs on the returned artifact rather than on a promise.
- *
- * If opencode ever accepts permissions per task call, this should move.
- */
+/** Directory the per-associate briefs are written to. */
+export const BRIEF_DIR = "CUBICORE_ASSOCIATES";
+
 export function associateAgentConfig(): Record<string, unknown> {
   return {
     description:
-      "A Cubicore associate. Executes exactly one contract: a bounded write scope, a " +
-      "deliverable, and a set of checks that decide whether it passed. Never widens its " +
-      "own scope and never edits outside the files it was given.",
+      "A Cubicore associate. Executes exactly one brief: a bounded write scope, a " +
+      "deliverable, and checks that decide whether it passed. Never widens its own scope, " +
+      "never reads another associate's brief, and never edits outside the files it was given.",
     mode: "subagent",
     temperature: 0,
     prompt: [
-      "You are a Cubicore associate. You are given one contract and nothing else.",
+      "You are a Cubicore associate. You are given one brief and nothing else.",
       "",
-      "Work only inside the `writes` globs you were given. Files outside that set belong to",
-      "other associates working in parallel; editing them is the single failure this system",
+      "Read your brief. It names your write scope, what is off-limits, and the checks that",
+      "decide whether you passed.",
+      "",
+      "Work only inside the files you were given. Files outside that set belong to other",
+      "associates working at the same time; editing them is the single failure this system",
       "exists to prevent.",
       "",
-      "Every check you were given is blocking and must pass before you report done. If a",
-      "check fails, fix the cause rather than the check. Never remove or weaken a check, and",
-      "never delete a test to make one pass.",
+      "Do not read other associates' briefs. Your own is the whole of your job.",
       "",
-      "If the contract is ambiguous, say so rather than guessing. A wrong guess surfaces",
-      "later as a gate failure, having already cost the tokens.",
+      "Every check you were given is blocking and must pass before you report done. If one",
+      "fails, fix the cause rather than the check. Never remove or weaken a check, and never",
+      "delete a test to make one pass.",
+      "",
+      "If the brief is ambiguous, say so rather than guessing. A wrong guess surfaces later",
+      "as a gate failure, having already cost the tokens.",
     ].join("\n"),
   };
 }
 
-/** One contract rendered as the instruction the host passes to its sub-agent tool. */
-export function taskInstruction(contract: Plan["contracts"][number], index: number, stack?: string): string {
+/** The filename an associate reads. Zero-padded so they sort in dispatch order. */
+export function briefPath(index: number, contractId: string): string {
+  const safe = contractId.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return `${BRIEF_DIR}/${String(index + 1).padStart(2, "0")}-${safe}.md`;
+}
+
+export interface BriefOptions {
+  /** What kind of project this is, as the Main agent described it. */
+  projectKind?: string;
+  /** Neighbouring contracts, so the associate knows what it must not duplicate. */
+  siblings?: { id: string; writes: string[] }[];
+}
+
+/**
+ * One associate's brief, as a standalone document.
+ *
+ * Standalone because the associate should never have to assemble its own
+ * instructions from a shared file, and should never have reason to read
+ * another associate's scope.
+ */
+export function renderBrief(
+  contract: Contract,
+  index: number,
+  total: number,
+  options: BriefOptions = {},
+): string {
   const lines = [
-    `# Contract ${index + 1} of a Cubicore run: ${contract.id}`,
+    `# Brief ${index + 1} of ${total}: ${contract.id}`,
     "",
-    ...(stack ? [`**Stack:** ${stack} — you are the only associate in this stack.`, ""] : []),
-    `**Objective**`,
+    `You are one of ${total} associates working in parallel. You own this piece and nothing else.`,
+    "",
+    "Do not read another associate's brief. Yours is the whole of your job.",
+    "",
+    "## Your objective",
+    "",
     contract.objective,
     "",
-    `**Your write scope — nothing else**`,
-    ...contract.writes.map((w) => `- ${w}`),
+    "## Your write scope — edit nothing outside this",
     "",
-    ...(contract.forbidden.length
-      ? [`**Explicitly off-limits**`, ...contract.forbidden.map((f) => `- ${f}`), ""]
-      : []),
-    ...(contract.reads.length
-      ? [`**You may read**`, ...contract.reads.map((r) => `- ${r}`), ""]
-      : []),
-    `**Deliverable:** ${contract.deliverable}`,
-    "",
-    `**Done when**`,
-    contract.doneWhen,
+    ...(contract.writes.length
+      ? contract.writes.map((w) => `- \`${w}\``)
+      : ["*(none — you produce a report, not a diff)*"]),
     "",
   ];
 
-  if (contract.checks.length > 0) {
-    lines.push(`**Blocking checks — all must pass**`, "");
-    for (const check of contract.checks) {
-      if (check.gating !== "blocking") continue;
-      lines.push(`\`\`\``, check.command, `\`\`\``, `_${check.expectation}_`, "");
-    }
-    const advisory = contract.checks.filter((c) => c.gating !== "blocking");
-    if (advisory.length > 0) {
-      lines.push(`**Advisory — run if cheap, do not chase**`, "");
-      for (const check of advisory) lines.push(`\`${check.command}\` — ${check.expectation}`);
-      lines.push("");
-    }
+  if (contract.forbidden.length > 0) {
+    lines.push(
+      "## Explicitly off-limits",
+      "",
+      "Other associates own these. Touching them will collide.",
+      "",
+      ...contract.forbidden.map((f) => `- \`${f}\``),
+      "",
+    );
+  }
+
+  if (contract.reads.length > 0) {
+    lines.push("## You may read", "", ...contract.reads.map((r) => `- \`${r}\``), "");
   }
 
   lines.push(
-    `**Report back** with a one-paragraph summary of what you changed and the exact result`,
-    `of each check. Do not paste whole files -- the diff is the record.`,
+    "## What you deliver",
+    "",
+    `- **Kind:** ${contract.deliverable}`,
+    `- **Done when:** ${contract.doneWhen}`,
+    "",
+  );
+
+  const blocking = contract.checks.filter((k) => k.gating === "blocking");
+  const advisory = contract.checks.filter((k) => k.gating !== "blocking");
+
+  if (blocking.length > 0) {
+    lines.push("## Blocking checks — every one must pass", "");
+    for (const check of blocking) {
+      lines.push("```", check.command, "```", `_${check.expectation}_`, "");
+    }
+  }
+  if (advisory.length > 0) {
+    lines.push(
+      "## Advisory — run if cheap, do not chase",
+      "",
+      ...advisory.map((k) => `- \`${k.command}\` — ${k.expectation}`),
+      "",
+    );
+  }
+  if (blocking.length === 0 && contract.deliverable === "diff") {
+    lines.push(
+      "## Blocking checks",
+      "",
+      "_None were supplied. A diff with nothing that can fail is not verifiable — if you",
+      "cannot find a command that proves this work, say so rather than claiming success._",
+      "",
+    );
+  }
+
+  if (options.projectKind) {
+    lines.push("## Context", "", `- **Project kind:** ${options.projectKind}`, "");
+  }
+
+  const siblings = (options.siblings ?? []).filter((s) => s.id !== contract.id);
+  if (siblings.length > 0) {
+    lines.push(
+      "## Who else is working",
+      "",
+      "_Listed so you know what is not yours. Do not read their briefs and do not edit them._",
+      "",
+      ...siblings.map((s) => `- **${s.id}** — ${s.writes.join(", ") || "(report)"}`),
+      "",
+    );
+  }
+
+  lines.push(
+    "## Report back",
+    "",
+    "One paragraph: what you changed and the exact result of each check. Do not paste whole",
+    "files — the diff is the record, and the founder reads the contract checks, not your prose.",
+    "",
   );
 
   return lines.join("\n");
 }
 
-/**
- * The blueprint: one ready-to-dispatch instruction per associate.
- *
- * Emitted as data rather than acted on, because the host owns the dispatch.
- * A host without inline sub-tasks ignores this and the session path runs
- * instead.
- */
-/**
- * Stacks a contract can belong to.
- *
- * One stack per associate, never a blend. An associate owning "backend and a
- * bit of design" owns two write scopes that overlap the design associate's,
- * which is the collision the whole system exists to prevent. Where the plan
- * does not say, this is derived from the write paths.
- */
-const STACK_HINTS: Record<string, RegExp> = {
-  // Extension first: a .tsx file is frontend whatever else its name suggests.
-  frontend: /\.(tsx|jsx|vue|svelte|css|scss|html)$/i,
-  design: /(^|\/)(style|styles|theme|themes|token|tokens|design|icon|icons|assets?|fonts?)(\/|\.|$)/i,
-  data: /(^|\/)(models?|migrations?|seeds?|fixtures?|analytics|metrics?|reports?|etl)(\/|\.|$)|\.(sql|prisma)$/i,
-  backend: /(^|\/)(api|server|services?|routes?|controllers?|handlers?|db|queue|workers?|auth)(\/|\.|$)|\.(py|go|rb|java|kt)$/i,
-};
-
-/** Best-effort stack for a contract, inferred from its write scope. */
-export function inferStack(contract: Plan["contracts"][number]): string {
-  // Each write path is judged on its own. Joining them into one haystack let a
-  // sibling path decide the verdict, so `src/api/x.ts` plus
-  // `src/components/App.tsx` classified as backend because "components"
-  // contains "component".
-  for (const path of contract.writes) {
-    for (const [stack, pattern] of Object.entries(STACK_HINTS)) {
-      if (pattern.test(path)) return stack;
-    }
-  }
-  // Nothing in the paths matched. The objective is the last resort, judged
-  // against the same table so the answer is at least consistent with it.
-  const fallback = [contract.objective, contract.id].join(" ");
-  for (const [stack, pattern] of Object.entries(STACK_HINTS)) {
-    if (pattern.test(fallback)) return stack;
-  }
-  return "backend";
-}
-
-/** How many stacks a plan touches -- the floor for team size. */
-export function stacksIn(plan: Plan): string[] {
-  return [...new Set(plan.contracts.map(inferStack))].sort();
-}
-
-export function dispatchBlueprint(plan: Plan): string {
-  const stacks = stacksIn(plan);
+/** Index document: who exists, what they own, and where their brief is. */
+export function renderManifest(plan: Plan, options: BriefOptions = {}): string {
   return [
-    `# Cubicore dispatch blueprint`,
-    ``,
-    `Topology: ${plan.topology}. ${plan.contracts.length} contract(s) across ${stacks.length} stack(s).`,
-    `Stacks: ${stacks.map((s) => `\`${s}\``).join(", ")}`,
-    ``,
-    `Dispatch each block below to the \`${ASSOCIATE_AGENT_ID}\` sub-agent. They are independent,`,
-    `so they may run in parallel. Do not merge their reports -- return them separately so each`,
-    `contract's checks can be judged on its own.`,
-    ``,
-    `Every stack listed above needs at least one associate. Size the team by project size;`,
-    `there is no maximum, and more associates in a stack is fine when the work divides.`,
-    ``,
-    ...plan.contracts.map((c, i) => taskInstruction(c, i, inferStack(c))),
+    `# Cubicore associates`,
+    "",
+    `${plan.contracts.length} associate(s)${options.projectKind ? ` for a ${options.projectKind}` : ""}. ` +
+      `Each has one brief in \`${BRIEF_DIR}/\`.`,
+    "",
+    "| # | Associate | Deliverable | Write scope | Brief |",
+    "|---|---|---|---|---|",
+    ...plan.contracts.map(
+      (c, i) =>
+        `| ${i + 1} | ${c.id} | ${c.deliverable} | ` +
+        `${c.writes.map((w) => `\`${w}\``).join(", ") || "—"} | \`${briefPath(i, c.id)}\` |`,
+    ),
+    "",
+    `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel.`,
+    `Collect every report separately — each contract is judged on its own`,
+    `checks, and a merged report hides which one failed.`,
+    "",
   ].join("\n");
 }
 
-export const BLUEPRINT_SCHEMA = PLAN_SCHEMA_JSON;
+export function briefs(plan: Plan, options: BriefOptions = {}): { path: string; content: string }[] {
+  const out = [
+    { path: `${BRIEF_DIR}/README.md`, content: renderManifest(plan, options) },
+  ];
+
+  plan.contracts.forEach((contract, index) => {
+    out.push({
+      path: briefPath(index, contract.id),
+      content: renderBrief(contract, index, plan.contracts.length, {
+        projectKind: options.projectKind,
+        siblings: plan.contracts.map((c) => ({ id: c.id, writes: c.writes })),
+      }),
+    });
+  });
+
+  return out;
+}
