@@ -10,6 +10,7 @@ import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession } from "./runtime";
 import { ASSOCIATE_AGENT_ID, dispatchBlueprint } from "./inline";
+import { assessRaw, explain } from "../plan/assess";
 import {
   DEBUG_MD,
   PLAN_JSON,
@@ -330,6 +331,17 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
     return text(["Malformed plan:", ...problems.map((p) => `- ${p}`), "", `Schema: ${PLAN_SCHEMA_JSON}`].join("\n"), true);
   }
 
+  // Specificity is checked before validity. "Build me a SaaS" produces a
+  // syntactically valid plan whose write scopes claim the whole tree; it would
+  // pass every structural check and dispatch four associates that collide.
+  const assessed = assessRaw(raw);
+  if (!assessed.ok) {
+    return text(`Malformed plan: ${assessed.reason}`, true);
+  }
+  if (!assessed.assessment.plannable) {
+    return text(explain(assessed.assessment), true);
+  }
+
   const validation = validatePlan(parsed, []);
   const topology = checkTopology(parsed);
 
@@ -612,6 +624,13 @@ const PROMPTS = [
     arguments: [{ name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" }],
   },
   {
+    name: "clarify",
+    description:
+      "Turn a vague goal into something plannable. Asks the founder the smallest set of " +
+      "questions needed, once. Use before plan when the request is a goal rather than a task.",
+    arguments: [{ name: "request", description: "What the founder asked for, in their words", required: false }],
+  },
+  {
     name: "test",
     description:
       "Run the mechanical check matrix over the delivered work and write CUBICORE_DEBUG.md. " +
@@ -661,6 +680,44 @@ function promptFor(name: string, args: Record<string, string>) {
                 `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
                 `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
                 `the request, validate it with plan first, and then execute it.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "clarify") {
+    return {
+      description: "Narrow a goal into a plannable request.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`The request below is a goal, not a set of contracts. Your job is to make it plannable, not to
+plan it yet.
+
+${args.request ?? "(the current request in this conversation)"}
+
+Do NOT write a plan. A goal decomposed too early produces contracts that claim the whole
+tree, and four associates that collide while every gate passes.
+
+Instead, ask the founder the smallest set of questions that would make it concrete. In
+practice that means:
+
+1. **The first shippable slice.** Not the product — the smallest thing worth putting in
+   front of someone. "A SaaS" is not a slice; "a URL shortener with an API" is.
+2. **Which files it touches.** Name them. A write scope of "everything" cannot be split
+   safely, and disjoint ownership is the entire point.
+3. **What proves each piece works.** A command that can fail. Grepping for a name proves
+   the name exists, not that the code works.
+4. **What is explicitly out of scope.** Boundaries prevent scope creep mid-run.
+
+Ask the minimum. A question the founder cannot answer cheaply is a question you should drop
+and assume a default for.
+
+Once they answer, call plan.`,
           },
         },
       ],
