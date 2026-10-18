@@ -57,10 +57,11 @@ export function associateAgentConfig(): Record<string, unknown> {
 }
 
 /** One contract rendered as the instruction the host passes to its sub-agent tool. */
-export function taskInstruction(contract: Plan["contracts"][number], index: number): string {
+export function taskInstruction(contract: Plan["contracts"][number], index: number, stack?: string): string {
   const lines = [
     `# Contract ${index + 1} of a Cubicore run: ${contract.id}`,
     "",
+    ...(stack ? [`**Stack:** ${stack} — you are the only associate in this stack.`, ""] : []),
     `**Objective**`,
     contract.objective,
     "",
@@ -109,17 +110,63 @@ export function taskInstruction(contract: Plan["contracts"][number], index: numb
  * A host without inline sub-tasks ignores this and the session path runs
  * instead.
  */
+/**
+ * Stacks a contract can belong to.
+ *
+ * One stack per associate, never a blend. An associate owning "backend and a
+ * bit of design" owns two write scopes that overlap the design associate's,
+ * which is the collision the whole system exists to prevent. Where the plan
+ * does not say, this is derived from the write paths.
+ */
+const STACK_HINTS: Record<string, RegExp> = {
+  // Extension first: a .tsx file is frontend whatever else its name suggests.
+  frontend: /\.(tsx|jsx|vue|svelte|css|scss|html)$/i,
+  design: /(^|\/)(style|styles|theme|themes|token|tokens|design|icon|icons|assets?|fonts?)(\/|\.|$)/i,
+  data: /(^|\/)(models?|migrations?|seeds?|fixtures?|analytics|metrics?|reports?|etl)(\/|\.|$)|\.(sql|prisma)$/i,
+  backend: /(^|\/)(api|server|services?|routes?|controllers?|handlers?|db|queue|workers?|auth)(\/|\.|$)|\.(py|go|rb|java|kt)$/i,
+};
+
+/** Best-effort stack for a contract, inferred from its write scope. */
+export function inferStack(contract: Plan["contracts"][number]): string {
+  // Each write path is judged on its own. Joining them into one haystack let a
+  // sibling path decide the verdict, so `src/api/x.ts` plus
+  // `src/components/App.tsx` classified as backend because "components"
+  // contains "component".
+  for (const path of contract.writes) {
+    for (const [stack, pattern] of Object.entries(STACK_HINTS)) {
+      if (pattern.test(path)) return stack;
+    }
+  }
+  // Nothing in the paths matched. The objective is the last resort, judged
+  // against the same table so the answer is at least consistent with it.
+  const fallback = [contract.objective, contract.id].join(" ");
+  for (const [stack, pattern] of Object.entries(STACK_HINTS)) {
+    if (pattern.test(fallback)) return stack;
+  }
+  return "backend";
+}
+
+/** How many stacks a plan touches -- the floor for team size. */
+export function stacksIn(plan: Plan): string[] {
+  return [...new Set(plan.contracts.map(inferStack))].sort();
+}
+
 export function dispatchBlueprint(plan: Plan): string {
+  const stacks = stacksIn(plan);
   return [
     `# Cubicore dispatch blueprint`,
     ``,
-    `Topology: ${plan.topology}. ${plan.contracts.length} associate(s).`,
+    `Topology: ${plan.topology}. ${plan.contracts.length} contract(s) across ${stacks.length} stack(s).`,
+    `Stacks: ${stacks.map((s) => `\`${s}\``).join(", ")}`,
     ``,
     `Dispatch each block below to the \`${ASSOCIATE_AGENT_ID}\` sub-agent. They are independent,`,
     `so they may run in parallel. Do not merge their reports -- return them separately so each`,
     `contract's checks can be judged on its own.`,
     ``,
-    ...plan.contracts.map((c, i) => taskInstruction(c, i)),
+    `Every stack listed above needs at least one associate. Size the team by project size;`,
+    `there is no maximum, and more associates in a stack is fine when the work divides.`,
+    ``,
+    ...plan.contracts.map((c, i) => taskInstruction(c, i, inferStack(c))),
   ].join("\n");
 }
 

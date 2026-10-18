@@ -730,22 +730,48 @@ ${PLAN_SCHEMA_JSON}`,
 
   if (name === "execute") {
     return {
-      description: "Execute a Cubicore plan.",
+      description: "Summon the associates and dispatch them.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
-            text: args.plan
-              ? `Call execute with the plan below. It returns a run id immediately, so do not\n` +
-              `assume the work has finished. Poll status with that id and report the verdict.\n\n` +
-                `${args.plan}`
-              : `Execute the Cubicore plan from this conversation.\n` +
-                `execute returns a run id rather than a result, so poll status with it and report\n` +
-                `the verdict when it is done.\n\n` +
-                `Call execute once with that plan. Do not ask for confirmation, and do not\n` +
-                `re-plan. If no plan was produced earlier in this conversation, compose one now from\n` +
-                `the request, validate it with plan first, and then execute it.`,
+            text:
+`Execute CUBICORE_PLAN.md.
+
+**Size the team yourself.** The plan states the project size; you decide how many
+associates that means. There is no maximum. There is a floor of one per
+tech stack the plan touches, and more for a larger project. A small project
+might be one associate in one stack. A normal one might be two backend and one
+frontend. A large one might run eight.
+
+**Every stack gets at least one.** If the plan touches frontend, backend,
+design or data, each of those has someone in it. A stack with nobody is
+unowned work that will surface later as a gap.
+
+**Each associate picks exactly one stack.** Not a blend -- an associate that
+owns "backend and a bit of design" owns two write scopes that overlap with
+the design associate's, which is the collision this system exists to prevent.
+Backend, frontend, design, data. Pick one.
+
+**Dispatch:**
+
+1. Call \`dispatch_blueprint\`. It reads CUBICORE_PLAN.json and writes
+   CUBICORE_DISPATCH.md -- one instruction per associate, already carrying its
+   write scope, its forbidden set and its checks.
+2. Read CUBICORE_PLAN.md to learn which stacks are in play and how large the
+   project is. That is what tells you how many to summon.
+3. Dispatch each instruction to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in
+   parallel, so the work renders as visible steps. Tell each one which stack it
+   is taking and what its slice of the plan is.
+4. Collect every report separately. Never merge them -- each contract is judged
+   on its own checks alone, and a merged report hides which one failed.
+
+**If the host has no sub-agent tool**, call \`execute\` instead and Cubicore
+dispatches the sessions itself.
+
+**When they return**, run every blocking check from CUBICORE_PLAN.json yourself
+and record the results with the test tool.`,
           },
         },
       ],
