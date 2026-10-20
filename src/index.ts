@@ -7,6 +7,7 @@ import { addUsage, type TokenUsage } from "./telemetry/types";
 import { PhaseTimer } from "./telemetry/timing";
 import { readUsage } from "./telemetry/adapters/opencode";
 import { checkTopology } from "./coordinator/topology";
+import { DEFAULT_MODEL } from "./mcp/model";
 import { ASSOCIATE_AGENT_ID, associateAgentConfig } from "./mcp/inline";
 import { parsePlan, MalformedPlan } from "./coordinator/parse";
 import { validatePlan } from "./validate/plan";
@@ -38,7 +39,7 @@ import { SqliteTokenSource } from "./telemetry/adapters/session-db";
  */
 
 const STRONG_MODEL = process.env.CUBICORE_STRONG_MODEL ?? "opencode/big-pickle";
-const WORKER_MODEL = process.env.CUBICORE_WORKER_MODEL ?? "opencode/space-bunny-free";
+const WORKER_MODEL = process.env.CUBICORE_WORKER_MODEL ?? DEFAULT_MODEL;
 
 interface ClientLike {
   session: {

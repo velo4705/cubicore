@@ -8,7 +8,7 @@ import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
-import { findCallerSession } from "./runtime";
+import { findCallerSession, verifyModel } from "./runtime";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -285,6 +285,22 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
   const topology = checkTopology(parsed);
   if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
     return text("Plan rejected before dispatch — nothing was spent. Run plan to see why.", true);
+  }
+
+  // A withdrawn model fails silently -- the prompt is accepted and no reply
+  // ever comes -- so it is checked before any token is spent, and the run is
+  // refused loudly rather than dispatching associates that do nothing.
+  const runtime = runtimeFromEnv();
+  const model = await verifyModel(runtime);
+  if (!model.verified) {
+    return text(
+      `Refusing to dispatch: the model is not usable.\n${model.reason ?? ""}\n` +
+        `Set OPENCODE_CUBICORE_MODEL to a model the provider lists.`,
+      true,
+    );
+  }
+  if (model.reason) {
+    process.stderr.write(`[cubicore] ${model.reason}\n`);
   }
 
   const run = startRun(parsed);

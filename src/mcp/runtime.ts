@@ -3,6 +3,7 @@ import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 import { clientSpawner } from "../index";
 import { WorkerSessions } from "../dispatch/spawn";
 import { SqliteTokenSource } from "../telemetry/adapters/session-db";
+import { DEFAULT_MODEL, resolveModel } from "./model";
 import { ProgressSink } from "./progress";
 
 /**
@@ -19,6 +20,8 @@ import { ProgressSink } from "./progress";
 
 export interface Runtime {
   client: OpencodeClient;
+  /** Resolved model, verified against the provider's list. */
+  model: { id: string; verified: boolean; reason?: string };
   /** Resolved loopback port of the opencode server. */
   port: string;
   /** Parent session, so associates render as sub-agents in the host UI. */
@@ -85,6 +88,7 @@ export function runtimeFromEnv(env: Record<string, string | undefined> = process
 
   return {
     port,
+    model: { id: env.OPENCODE_CUBICORE_MODEL ?? DEFAULT_MODEL, verified: false },
     client: createOpencodeClient({
       baseUrl: `http://127.0.0.1:${port}`,
       directory,
@@ -92,8 +96,8 @@ export function runtimeFromEnv(env: Record<string, string | undefined> = process
     }) as OpencodeClient,
     directory,
     models: {
-      strong: env.OPENCODE_CUBICORE_MODEL ?? "opencode/space-bunny-free",
-      cheap: env.OPENCODE_CUBICORE_WORKER_MODEL ?? env.OPENCODE_CUBICORE_MODEL ?? "opencode/space-bunny-free",
+      strong: env.OPENCODE_CUBICORE_MODEL ?? DEFAULT_MODEL,
+      cheap: env.OPENCODE_CUBICORE_WORKER_MODEL ?? env.OPENCODE_CUBICORE_MODEL ?? DEFAULT_MODEL,
     },
   };
 }
@@ -131,6 +135,49 @@ export async function findCallerSession(
     return newest.id;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Ask the provider which models it has, and check ours is among them.
+ *
+ * A model that has been removed fails silently: the prompt is accepted, the
+ * user message is recorded, and no assistant reply ever arrives. A dispatch
+ * built on one does nothing at all and reports nothing wrong. Verified --
+ * `space-bunny-free` was withdrawn mid-session and every associate sat idle
+ * until its wall budget expired.
+ */
+export async function verifyModel(
+  runtime: Runtime,
+  candidate?: string,
+): Promise<{ id: string; verified: boolean; reason?: string }> {
+  const wanted = candidate ?? runtime.model.id;
+
+  try {
+    const result = await runtime.client.config.get({ query: { directory: runtime.directory } });
+    const providers = (result.data?.provider ?? []) as {
+      id: string;
+      models?: Record<string, unknown>;
+    }[];
+
+    const available: string[] = [];
+    for (const provider of providers) {
+      for (const model of Object.keys(provider.models ?? {})) {
+        available.push(`${provider.id}/${model}`);
+      }
+    }
+
+    const resolved = resolveModel(available, wanted);
+    runtime.model = { id: resolved.model, verified: resolved.ok, reason: resolved.reason };
+    return runtime.model;
+  } catch (error) {
+    // Could not check. Say so rather than implying it was verified.
+    runtime.model = {
+      id: wanted,
+      verified: false,
+      reason: `Could not list the provider's models: ${error instanceof Error ? error.message : String(error)}`,
+    };
+    return runtime.model;
   }
 }
 
