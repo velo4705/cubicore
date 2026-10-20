@@ -23,7 +23,7 @@ const REAL_PROJECT_PLAN = {
   "contracts": [
     {
       "id": "doc-auth",
-      "objective": "Write a concise reference document for auth in /home/nix/cubicore-test/src/auth.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for auth in src/auth.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/auth.ts"
       ],
@@ -71,7 +71,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-bytes",
-      "objective": "Write a concise reference document for bytes in /home/nix/cubicore-test/src/bytes.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for bytes in src/bytes.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/bytes.ts"
       ],
@@ -119,7 +119,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-cache",
-      "objective": "Write a concise reference document for cache in /home/nix/cubicore-test/src/cache.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for cache in src/cache.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/cache.ts"
       ],
@@ -167,7 +167,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-chunk",
-      "objective": "Write a concise reference document for chunk in /home/nix/cubicore-test/src/chunk.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for chunk in src/chunk.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/chunk.ts"
       ],
@@ -215,7 +215,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-debounce",
-      "objective": "Write a concise reference document for debounce in /home/nix/cubicore-test/src/debounce.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for debounce in src/debounce.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/debounce.ts"
       ],
@@ -263,7 +263,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-duration",
-      "objective": "Write a concise reference document for duration in /home/nix/cubicore-test/src/duration.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for duration in src/duration.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/duration.ts"
       ],
@@ -311,7 +311,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-groupBy",
-      "objective": "Write a concise reference document for groupBy in /home/nix/cubicore-test/src/groupBy.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for groupBy in src/groupBy.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/groupBy.ts"
       ],
@@ -359,7 +359,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-mail",
-      "objective": "Write a concise reference document for mail in /home/nix/cubicore-test/src/mail.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for mail in src/mail.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/mail.ts"
       ],
@@ -407,7 +407,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-queue",
-      "objective": "Write a concise reference document for queue in /home/nix/cubicore-test/src/queue.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for queue in src/queue.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/queue.ts"
       ],
@@ -455,7 +455,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-slug",
-      "objective": "Write a concise reference document for slug in /home/nix/cubicore-test/src/slug.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for slug in src/slug.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/slug.ts"
       ],
@@ -503,7 +503,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-throttle",
-      "objective": "Write a concise reference document for throttle in /home/nix/cubicore-test/src/throttle.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for throttle in src/throttle.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/throttle.ts"
       ],
@@ -551,7 +551,7 @@ const REAL_PROJECT_PLAN = {
     },
     {
       "id": "doc-wrap",
-      "objective": "Write a concise reference document for wrap in /home/nix/cubicore-test/src/wrap.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
+      "objective": "Write a concise reference document for wrap in src/wrap.ts. Cover the signature, every parameter, the return value, and one worked example. State edge cases explicitly.",
       "reads": [
         "src/wrap.ts"
       ],
