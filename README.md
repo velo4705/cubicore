@@ -30,7 +30,7 @@ Once done, Hit the "execute" command - The Main agents summon the N "cubicores" 
 
 In the end, It finally gives the result you (the founder) wanted. You can try the "test" command to go even further, by asking the Main agent to summon testers for your project, to make sure all broken interactions, and errors, and fixable warnings are recorded in the DEBUG file. Again, anyone is free to see the DEBUG file, as it shows how many problems it has been encountered through the corners of your masterpiece.
 
-After this, Run the "execute" command again, and it starts fixing the issues once again, same procedures as it was. Basically a "rinse-and-repeat", where you need to run "test" and "execute" commands until there is no DEBUG file, which your project is considered Ready for production.
+After this, Run the "execute" command again, and it starts fixing the issues once again, same procedures as it was. Basically a "rinse-and-repeat" -- with one difference from the original sketch: the loop is **capped at three cycles**. The bound lives in code rather than in a prompt, so it cannot be talked out of. After the cap, the remaining findings are reported as unresolved for a human to triage rather than fixed by another agent that keeps finding new things to complain about.
 
 About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
 
@@ -39,10 +39,44 @@ About the "decorations", Cubicore is meant to have excellent support for plugins
 Currently, we only support Opencode for now.
 
 | AI Agent | Status | Progress |
-| Opencode | ❌ | 45% |
-| Claude Code | ❌ | 0% |
-3. Codex
-4. Cursor
-5. Windsurf
-6. Kilo Code
+|---|---|---|
+| Opencode | ✅ | Works end to end — MCP plan/execute/test, inline sub-tasks, sessions |
+| Claude Code | 🔶 | MCP is portable; the host-dispatch path is written but unverified |
+| Codex | 🔶 | Same MCP surface, unverified |
+| Cursor | ❌ | No inline sub-tasks; would use the session path |
+| Windsurf | 🔶 | Inline sub-tasks available, unverified |
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/cubicore:plan` | Research the repository, ask what the repo cannot answer, write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json` |
+| `/cubicore:execute` | Write one brief per associate, summon them in parallel, gate each result |
+| `/cubicore:test` | Run the mechanical matrix, write `CUBICORE_DEBUG.md` |
+
+## What exists
+
+- **Contracts, not prompts.** Disjoint write scopes, a check matrix computed at
+  validation time, budget caps, and a topology check that refuses work which is
+  not divide-and-conquer.
+- **Two dispatch paths.** Inline sub-tasks where the host supports them, sessions
+  where it does not. Both gate the same way.
+- **A bounded loop.** `plan → execute → test → execute`, capped at three
+  cycles. Not "until the debug file is empty" — that is an unbounded loop whose
+  terminal case is an agent that never stops finding things to fix.
+- **Judgement never blocks.** Errors and warnings block. "Is this useful" and
+  "is this production ready" are recorded as advisory and left to the founder.
+
+## Known limits
+
+- **v1 catches mechanical failures only.** No `judgment` checks are admitted;
+  the validator rejects them. Whether a feature is *useful* is not something
+  the matrix can decide.
+- **Inline dispatch enforces scope after the fact.** A startup hook cannot know
+  the contracts, so per-contract permissions are unavailable there. The scope
+  gate catches a violation rather than preventing it. The session path prevents.
+- **X and Y are unmeasured.** The cost claim has one arm of three. The
+  orchestrated benchmark arm now dispatches and gates, but a completed
+  three-arm run has not been recorded.
+- **Workers get `shell: *`.** Scope violations are detected after the fact.
 
