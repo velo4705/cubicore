@@ -1,6 +1,7 @@
 import type { ArmName, TaskSpec, Trial } from "../src/bench/types";
 import { CORPUS, promptFor } from "../src/bench/corpus";
 import { FIXTURE_DIR, writeFixture } from "./fixture";
+import { DEFAULT_MODEL } from "../src/mcp/model";
 import { CliRunner } from "../src/bench/cli";
 import { SqliteTokenSource } from "../src/bench/tokens";
 import { addUsage, EMPTY_USAGE, totalTokens, type TokenUsage } from "../src/telemetry/types";
@@ -25,7 +26,7 @@ function flag(name: string, fallback: string): string {
 }
 
 const REPS = Number(flag("reps", "2"));
-const MODEL = flag("model", "opencode/space-bunny-free");
+const MODEL = flag("model", DEFAULT_MODEL);
 const CWD = flag("cwd", FIXTURE_DIR);
 /**
  * Where the opencode server is listening.
@@ -177,7 +178,14 @@ writeFixture(CWD);
 console.log(`reps=${REPS} model=${MODEL} cwd=${CWD} server=${SERVER}`);
   const trials: Trial[] = [];
 
-  for (const task of CORPUS) {
+  const only = flag("task", "");
+  const tasks = only ? CORPUS.filter((t) => t.id === only) : CORPUS;
+  if (tasks.length === 0) {
+    console.error(`No corpus task named "${only}". Known: ${CORPUS.map((t) => t.id).join(", ")}`);
+    process.exit(1);
+  }
+
+  for (const task of tasks) {
     for (let rep = 0; rep < REPS; rep++) {
       console.log(`\n${task.id} rep ${rep + 1}/${REPS}`);
       const s = await single(task);
