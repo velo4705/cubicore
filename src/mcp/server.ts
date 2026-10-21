@@ -613,12 +613,27 @@ async function research(directory: string): Promise<ToolResult> {
   );
 }
 
+/**
+ * The clause every Cubicore tool leads with.
+ *
+ * The descriptions say what each tool does, which is not the same as when to
+ * reach for it. A founder saying "use Cubicore to..." gives the model nothing
+ * to match on unless the tools say they are the ones that answer to that
+ * name. So every tool declares the trigger, in the same words, so the model
+ * connects the phrase to the whole set rather than to one arbitrary tool.
+ */
+const WHEN = "Call this when the founder asks to use Cubicore, " +
+  "or to plan, dispatch, test or check work that should be split across " +
+  "parallel agents. ";
+
 export const TOOLS = [
   {
     name: "plan",
     description:
-      "Validate a Cubicore plan and return the decomposition without dispatching. " +
-      "Costs nothing. Call this before cubicore_execute so the founder can read the split.",
+      WHEN +
+      "Validates a plan and returns the decomposition without dispatching. Costs " +
+      "nothing. This is the entry point: call it before execute so the founder " +
+      "can read the split before anything is spent.",
     inputSchema: {
       type: "object",
       properties: {
@@ -633,8 +648,10 @@ export const TOOLS = [
   {
     name: "execute",
     description:
-      "Dispatch a validated Cubicore plan across parallel associates, gate each result, " +
-      "and aggregate the artifacts. Progress streams to stderr while it runs.",
+      WHEN +
+      "Dispatches a validated plan across parallel associates, gates each result, " +
+      "and aggregates the artifacts. Progress streams to stderr while it runs. " +
+      "Returns a run id immediately -- poll it with status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -649,8 +666,9 @@ export const TOOLS = [
   {
     name: "plan_write",
     description:
-      "Validate a Cubicore plan and write CUBICORE_PLAN.md (for you) and CUBICORE_PLAN.json " +
-      "(dispatchable). Costs nothing and dispatches nothing.",
+      WHEN +
+      "Validates a plan and writes CUBICORE_PLAN.md (for the founder) and " +
+      "CUBICORE_PLAN.json (dispatchable). Costs nothing and dispatches nothing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -665,8 +683,10 @@ export const TOOLS = [
   {
     name: "execute_file",
     description:
-      "Dispatch CUBICORE_PLAN.json across parallel associates. Returns a run id immediately; " +
-      "poll it with status. Bounded by a cycle budget so fixes cannot loop without end.",
+      WHEN +
+      "Dispatches CUBICORE_PLAN.json across parallel associates. Returns a run id " +
+      "immediately; poll it with status. Bounded by a cycle budget so fixes cannot " +
+      "loop without end.",
     inputSchema: {
       type: "object",
       properties: {
@@ -680,8 +700,9 @@ export const TOOLS = [
   {
     name: "test",
     description:
-      "Run the mechanical check matrix and write CUBICORE_DEBUG.md. Blocking findings are " +
-      "errors and warnings; judgement calls are reported but never block.",
+      WHEN +
+      "Runs the mechanical check matrix and writes CUBICORE_DEBUG.md. Blocking findings " +
+      "are errors and warnings; judgement calls are reported but never block.",
     inputSchema: {
       type: "object",
       properties: {
@@ -706,11 +727,13 @@ export const TOOLS = [
       testRun(args, args.directory ?? process.cwd()),
   },
   {
-    name: "cubicore_try",
+    name: "try",
     description:
-      "Actually run the delivered thing and report whether it works. Reads the plan's `try` " +
-      "block -- the command, and what a working response looks like -- starts it, checks it, and " +
-      "stops it. Use before declaring a project ready: a contract can be correct and still not run.",
+      WHEN +
+      "Actually runs the delivered thing and reports whether it works. Reads the plan's " +
+      "`try` block -- the command, and what a working response looks like -- starts it, " +
+      "checks it, and stops it. Use before declaring a project ready: a contract can be " +
+      "correct and still not run.",
     inputSchema: {
       type: "object",
       properties: {
@@ -755,9 +778,10 @@ export const TOOLS = [
     },
   },
   {
-    name: "cubicore_prepare",
+    name: "prepare",
     description:
-      "Prepare the working directory: initialise a git repository if there is " +
+      WHEN +
+      "Prepares the working directory: initialise a git repository if there is " +
       "not one already, and record a baseline commit so that later changes can be " +
       "measured against it. Never touches a repository that already exists.",
     inputSchema: {
@@ -784,10 +808,11 @@ export const TOOLS = [
     },
   },
   {
-    name: "cubicore_install",
+    name: "install",
     description:
-      "Install the cubicore-associate sub-agent into the host's own opencode config, so the " +
-      "host can dispatch briefs inline. Required once per host. Restart opencode afterwards.",
+      WHEN +
+      "Installs the Cubicore sub-agents into the host's own opencode config, so the " +
+      "host can dispatch them. Required once per host. Restart opencode afterwards.",
     inputSchema: {
       type: "object",
       properties: { configPath: { type: "string", description: "Path to opencode.json; auto-detected otherwise" } },
@@ -814,11 +839,12 @@ export const TOOLS = [
   {
     name: "dispatch_blueprint",
     description:
-      "Write one brief per associate into CUBICORE_ASSOCIATES/, each a standalone document " +
-      "carrying only that associate's write scope, what is off-limits, and its checks. Pass " +
-      "projectKind so each knows what it is building toward. Cubicore cannot call the host's " +
-      "sub-agent tool, so this is the data the host dispatches from; hosts without inline " +
-      "sub-tasks ignore it and use sessions.",
+      WHEN +
+      "Writes one brief per associate into CUBICORE_ASSOCIATES/, each a standalone " +
+      "document carrying only that associate's write scope, what is off-limits, and its " +
+      "checks. Pass projectKind so each knows what it is building toward. Cubicore " +
+      "cannot call the host's sub-agent tool, so this is the data the host dispatches " +
+      "from; hosts without inline sub-tasks ignore it and use sessions.",
     inputSchema: {
       type: "object",
       properties: {
@@ -836,9 +862,11 @@ export const TOOLS = [
   {
     name: "research",
     description:
-      "Survey the working directory -- languages, modules, exported names, existing commands -- " +
-      "then ask the smallest set of questions grounded in what actually exists. Use before " +
-      "planning any request that has not named specific files yet.",
+      WHEN +
+      "Surveys the working directory -- languages, modules, exported names, existing commands, " +
+      "and the MCP servers connected to this workspace -- then asks the smallest set of " +
+      "questions grounded in what actually exists. Use before planning any request that has " +
+      "not named specific files yet.",
     inputSchema: {
       type: "object",
       properties: {
@@ -855,8 +883,9 @@ export const TOOLS = [
   {
     name: "status",
     description:
-      "Poll a Cubicore run started by execute. Returns its current state, and the full " +
-      "verdict once it finishes. Event-fed progress is not available here; the server log has it.",
+      WHEN +
+      "Polls a run started by execute. Returns its current state, and the full verdict " +
+      "once it finishes. Event-fed progress is not available here; the server log has it.",
     inputSchema: {
       type: "object",
       properties: { runId: { type: "string", description: "Run id returned by execute." } },
