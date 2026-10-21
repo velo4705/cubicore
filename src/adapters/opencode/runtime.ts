@@ -153,15 +153,29 @@ export async function findCallerSession(
 export async function verifyModel(
   runtime: Runtime,
   candidate?: string,
+  auth?: string,
 ): Promise<{ id: string; verified: boolean; reason?: string }> {
   const wanted = candidate ?? runtime.model.id;
 
   try {
-    const result = await runtime.client.config.get({ query: { directory: runtime.directory } });
-    const providers = (result.data?.provider ?? []) as {
-      id: string;
-      models?: Record<string, unknown>;
-    }[];
+    // The model list lives on /provider, shaped { all: [...] }. It has been
+    // three shapes across three endpoints -- an array on /config, an object
+    // keyed by id on /config/providers, and { all: [...] } here -- and
+    // reading the wrong one used to throw, and a throw refused to dispatch.
+    // So: read this one, tolerate a few shapes, and treat "could not check"
+    // as unknown rather than as a failure.
+    const response = await fetch(`${runtime.baseUrl}/provider`, {
+      headers: auth ? { Authorization: auth } : {},
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      return { id: wanted, verified: false, reason: `could not list the provider models: ${response.status}` };
+    }
+
+    const body = (await response.json()) as {
+      all?: Array<{ id: string; models?: Record<string, unknown> }>;
+    };
+    const providers = Array.isArray(body.all) ? body.all : [];
 
     const available: string[] = [];
     for (const provider of providers) {

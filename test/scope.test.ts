@@ -86,36 +86,36 @@ describe("changed files from git", () => {
     return root;
   };
 
-  it("reports unknown when the directory is not a repository", () => {
-    const result = changedFilesSince(repo());
+  it("reports unknown when the directory is not a repository", async () => {
+    const result = await changedFilesSince(repo());
     expect(result.unknown).toBe(true);
   });
 
-  it("initialises a repository and makes a baseline", () => {
+  it("initialises a repository and makes a baseline", async () => {
     const root = repo();
-    const result = prepareRepository(root);
+    const result = await prepareRepository(root);
     expect(result.initialised).toBe(true);
     expect(result.committed).toBe(true);
-    expect(isRepository(root)).toBe(true);
+    expect(await isRepository(root)).toBe(true);
   });
 
-  it("never touches a repository that already exists", () => {
+  it("never touches a repository that already exists", async () => {
     const root = repo();
-    prepareRepository(root);
-    const before = changedFilesSince(root);
-    const second = prepareRepository(root);
+    await prepareRepository(root);
+    const before = await changedFilesSince(root);
+    const second = await prepareRepository(root);
     expect(second.alreadyInitialised).toBe(true);
     expect(second.initialised).toBe(false);
     expect(second.committed).toBe(false);
     // And it did not stage or commit anything.
-    expect(changedFilesSince(root).files).toEqual(before.files);
+    expect((await changedFilesSince(root)).files).toEqual(before.files);
   });
 
-  it("reports the files that changed after the baseline", () => {
+  it("reports the files that changed after the baseline", async () => {
     const root = repo();
-    const prepared = prepareRepository(root);
+    const prepared = await prepareRepository(root);
     writeFileSync(join(root, "src", "b.ts"), "export const b = 2;\n");
-    const changed = changedFilesSince(root, prepared.baseline);
+    const changed = await changedFilesSince(root, prepared.baseline);
     expect(changed.unknown).toBe(false);
     expect(changed.files.join(" ")).toContain("src/b.ts");
   });

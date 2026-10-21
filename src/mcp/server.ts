@@ -298,10 +298,21 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
   const runtime = runtimeFromEnv();
-  const model = await verifyModel(runtime);
-  if (!model.verified) {
+  const auth = `Basic ${btoa(
+    `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
+  )}`;
+  const model = await verifyModel(runtime, undefined, auth);
+
+  // A model that is not on the provider's list fails silently: the prompt is
+  // accepted, the user message is recorded, and no reply ever comes. That is
+  // worth refusing over.
+  //
+  // A model that could not be *checked* is not the same thing, and refusing
+  // on that basis means one unreachable endpoint stops Cubicore running at
+  // all. So: refuse only what is known to be wrong.
+  if (model.verified === false && model.reason?.includes("is not available")) {
     return text(
-      `Refusing to dispatch: the model is not usable.\n${model.reason ?? ""}\n` +
+      `Refusing to dispatch: the model is not usable.\n${model.reason}\n` +
         `Set OPENCODE_CUBICORE_MODEL to a model the provider lists.`,
       true,
     );
@@ -350,7 +361,9 @@ async function status(runId: string, waitMs = 0): Promise<ToolResult> {
   const missing = find();
   if (missing) return missing;
 
-  const deadline = Date.now() + Math.max(0, Math.min(waitMs, 600_000));
+  // Capped below a typical MCP client timeout: a request that outlives the
+  // client's patience is a transport error, not a verdict.
+  const deadline = Date.now() + Math.max(0, Math.min(waitMs, 20_000));
   while (Date.now() < deadline) {
     const run = getRun(runId);
     if (run && run.state !== "running") break;
@@ -815,7 +828,7 @@ export const TOOLS = [
     },
     handler: async (args: { directory?: string }) => {
       const dir = args.directory ?? process.cwd();
-      const result = prepareRepository(dir);
+      const result = await prepareRepository(dir);
       if (result.alreadyInitialised) {
         return text(
           `Already a git repository (${dir}); left completely alone.` +
@@ -1199,14 +1212,19 @@ export async function serve(): Promise<void> {
           respond({ content: [{ type: "text", text: `unknown tool: ${String(params.name)}` }], isError: true });
           continue;
         }
-        try {
-          respond(await tool.handler((params.arguments ?? {}) as never));
-        } catch (error) {
-          respond({
-            content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-            isError: true,
-          });
-        }
+        // Handled concurrently. Awaiting the handler inside the stdin read
+        // loop meant one slow tool call stopped every later request from being
+        // read at all -- a status poll behind a long wait never arrived.
+        void (async () => {
+          try {
+            respond(await tool.handler((params.arguments ?? {}) as never));
+          } catch (error) {
+            respond({
+              content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+              isError: true,
+            });
+          }
+        })();
       } else if (request.method === "prompts/list") {
         respond({ prompts: PROMPTS });
       } else if (request.method === "prompts/get") {

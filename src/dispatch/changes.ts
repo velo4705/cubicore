@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+
 
 /**
  * Which files a worker changed, computed from git.
@@ -23,15 +23,27 @@ export interface ChangedFiles {
 
 const EMPTY: ChangedFiles = { files: [], unknown: false };
 
-function git(args: string[], cwd: string): { ok: boolean; out: string } {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (result.error || result.status !== 0) return { ok: false, out: result.stdout ?? "" };
-  return { ok: true, out: result.stdout ?? "" };
+/**
+ * Run git, asynchronously.
+ *
+ * A synchronous call blocks the whole process's event loop, and the MCP
+ * server shares that loop with the dispatch it is reporting on. A scope check
+ * that blocked for a second blocked the status poll behind it.
+ */
+async function git(args: string[], cwd: string): Promise<{ ok: boolean; out: string }> {
+  try {
+    const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "ignore" });
+    const out = await new Response(proc.stdout).text();
+    const code = await proc.exited;
+    return { ok: code === 0, out };
+  } catch {
+    return { ok: false, out: "" };
+  }
 }
 
 /** Is this directory a git repository? */
-export function isRepository(root: string): boolean {
-  return git(["rev-parse", "--is-inside-work-tree"], root).ok;
+export async function isRepository(root: string): Promise<boolean> {
+  return (await git(["rev-parse", "--is-inside-work-tree"], root)).ok;
 }
 
 /**
@@ -40,8 +52,8 @@ export function isRepository(root: string): boolean {
  * The baseline matters: without one, every file in a fresh repository is
  * untracked, and there is no "before" to compare against.
  */
-export function changedFilesSince(root: string, baseline?: string): ChangedFiles {
-  if (!isRepository(root)) {
+export async function changedFilesSince(root: string, baseline?: string): Promise<ChangedFiles> {
+  if (!(await isRepository(root))) {
     return { files: [], unknown: true, reason: "not a git repository" };
   }
 
@@ -49,7 +61,7 @@ export function changedFilesSince(root: string, baseline?: string): ChangedFiles
 
   if (baseline) {
     // Tracked files that differ from the baseline.
-    const diff = git(["diff", "--name-only", baseline, "--"], root);
+    const diff = await git(["diff", "--name-only", baseline, "--"], root);
     if (!diff.ok) {
       return { files: [], unknown: true, reason: "git could not report changes" };
     }
@@ -60,7 +72,7 @@ export function changedFilesSince(root: string, baseline?: string): ChangedFiles
 
     // Untracked files. `git diff` never sees them, and a worker creating a
     // new file -- the most common case of all -- is exactly that.
-    const untracked = git(["ls-files", "--others", "--exclude-standard"], root);
+    const untracked = await git(["ls-files", "--others", "--exclude-standard"], root);
     if (untracked.ok) {
       for (const line of untracked.out.split("\n")) {
         const trimmed = line.trim();
@@ -68,7 +80,7 @@ export function changedFilesSince(root: string, baseline?: string): ChangedFiles
       }
     }
   } else {
-    const status = git(["status", "--porcelain"], root);
+    const status = await git(["status", "--porcelain"], root);
     if (!status.ok) {
       return { files: [], unknown: true, reason: "git could not report changes" };
     }
@@ -100,10 +112,10 @@ export interface PrepareResult {
   reason?: string;
 }
 
-export function prepareRepository(root: string): PrepareResult {
-  if (isRepository(root)) {
+export async function prepareRepository(root: string): Promise<PrepareResult> {
+  if (await isRepository(root)) {
     // Leave it completely alone. No commit, no branch, no `git add`.
-    const head = git(["rev-parse", "HEAD"], root);
+    const head = await git(["rev-parse", "HEAD"], root);
     return {
       alreadyInitialised: true,
       initialised: false,
@@ -112,7 +124,7 @@ export function prepareRepository(root: string): PrepareResult {
     };
   }
 
-  const init = git(["init"], root);
+  const init = await git(["init"], root);
   if (!init.ok) {
     return {
       alreadyInitialised: false,
@@ -124,17 +136,17 @@ export function prepareRepository(root: string): PrepareResult {
 
   // Respect .gitignore, and never stage anything huge -- a tree with a large
   // untracked build directory would make this stall for minutes.
-  const add = git(["add", "-A"], root);
+  const add = await git(["add", "-A"], root);
   if (!add.ok) {
     return { alreadyInitialised: false, initialised: true, committed: false, reason: "git add failed" };
   }
 
-  const staged = git(["diff", "--cached", "--name-only"], root);
+  const staged = await git(["diff", "--cached", "--name-only"], root);
   if (!staged.ok || staged.out.trim().length === 0) {
     return { alreadyInitialised: false, initialised: true, committed: false };
   }
 
-  const commit = git(
+  const commit = await git(
     ["-c", "user.name=cubicore", "-c", "user.email=cubicore@local", "commit", "-q", "-m", "cubicore: baseline before any changes"],
     root,
   );
@@ -142,7 +154,7 @@ export function prepareRepository(root: string): PrepareResult {
     return { alreadyInitialised: false, initialised: true, committed: false, reason: "git commit failed" };
   }
 
-  const head = git(["rev-parse", "HEAD"], root);
+  const head = await git(["rev-parse", "HEAD"], root);
   return {
     alreadyInitialised: false,
     initialised: true,

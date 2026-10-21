@@ -144,7 +144,7 @@ export class WorkerSessions {
       const fromGit =
         observed.length > 0 || fromSpawner.length > 0
           ? { files: [], unknown: false }
-          : changedFilesSince(this.root, this.baseline);
+          : await changedFilesSince(this.root, this.baseline);
       const changedFiles =
         observed.length > 0 ? observed : fromSpawner.length > 0 ? fromSpawner : fromGit.files;
       const changesUnknown =
