@@ -60,7 +60,25 @@ export interface InstallResult {
   wrote: boolean;
   changed: boolean;
   reason?: string;
+  /** The step bound written onto the primary agent, if one was written. */
+  maxSteps?: number;
+  /** True when a primary agent already had a bound and it was left alone. */
+  maxStepsPreserved?: boolean;
 }
+
+/**
+ * The bound on the primary agent's tool-calling.
+ *
+ * A prompt that says "ask once" is a request, not a bound. A model that has
+ * decided more detail would help will keep going, one turn at a time, and the
+ * only thing that has ever stopped it is a human interrupting.
+ *
+ * opencode's `maxSteps` is the platform's own mechanism: "maximum number of
+ * agentic iterations before forcing text-only response". Past it the agent
+ * cannot call another tool, so it has to answer -- which is the shape we
+ * want, because the answer is the question we meant to ask.
+ */
+export const PRIMARY_MAX_STEPS = 40;
 
 /**
  * Add the associate agent to the host config, preserving everything else.
@@ -90,17 +108,32 @@ export function installAgent(explicitPath?: string): InstallResult {
   const before = JSON.stringify(agents[ASSOCIATE_AGENT_ID] ?? null);
   const after = JSON.stringify(wanted);
 
-  if (before === after && location.existed) {
-    return { path: location.path, wrote: false, changed: false, reason: "already up to date" };
+  // Bound the primary agent too, so the planning phase cannot loop. This is
+  // computed before the "already up to date" check: an agent that is already
+  // installed still needs the bound applied.
+  const primary = (agents.build ?? {}) as { maxSteps?: number };
+  let maxSteps: number | undefined;
+  let maxStepsPreserved = false;
+  if (typeof primary.maxSteps === "number") {
+    maxStepsPreserved = true;
+  } else {
+    primary.maxSteps = PRIMARY_MAX_STEPS;
+    maxSteps = PRIMARY_MAX_STEPS;
+    agents.build = primary;
   }
 
   agents[ASSOCIATE_AGENT_ID] = wanted;
   config.agent = agents;
 
+
   mkdirSync(dirname(location.path), { recursive: true });
+  if (before === after && location.existed && maxSteps === undefined) {
+    return { path: location.path, wrote: false, changed: false, reason: "already up to date" };
+  }
+
   writeFileSync(location.path, `${JSON.stringify(config, null, 2)}\n`);
 
-  return { path: location.path, wrote: true, changed: true };
+  return { path: location.path, wrote: true, changed: true, maxSteps, maxStepsPreserved };
 }
 
 /**

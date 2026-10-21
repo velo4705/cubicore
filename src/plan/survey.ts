@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname, relative } from "node:path";
 
+import { renderSlices } from "./slices";
+
 /**
  * What is actually in this repository.
  *
@@ -187,7 +189,12 @@ function readScripts(root: string): Record<string, string> {
 
 /** Render the survey as the briefing a planner should read before asking. */
 export function render(s: Survey): string {
-  if (!s.exists) return `No project at ${s.root}. Nothing to survey — ask what to create.`;
+  // No project to survey. Returning only "nothing to survey" left the agent
+  // searching with the shell for something that was not there. Give it the
+  // conventional starting points instead, so the question is answerable.
+  if (!s.exists) {
+    return [`No project at ${s.root}.`, "", renderSlices()].join("\n");
+  }
 
   const lines = [
     `# ${s.root}`,
@@ -218,6 +225,10 @@ export function render(s: Survey): string {
 
   if (s.truncated) {
     lines.push(`_Survey truncated; the tree is larger than the cap._`, ``);
+  }
+
+  if (s.totalFiles === 0) {
+    lines.push(`The project is empty.`, ``, renderSlices(), ``);
   }
 
   return lines.join("\n");

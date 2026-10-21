@@ -13,6 +13,7 @@ import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { tryIt } from "../plan/try";
 import { prepareRepository } from "../dispatch/changes";
+import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -585,11 +586,24 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
  */
 async function research(directory: string): Promise<ToolResult> {
   const s = survey(directory);
-  if (!s.exists) return text(`No project at ${directory}. ${questionsFrom(s)[0]}`);
+
+  // The host's MCP servers. The agent already has their tools; it does not
+  // have any indication they exist.
+  let capabilityText = "";
+  try {
+    const runtime = runtimeFromEnv();
+    const auth = `Basic ${btoa(
+      `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
+    )}`;
+    capabilityText = renderCapabilities(await capabilities(runtime.baseUrl, auth));
+  } catch {
+    capabilityText = "";
+  }
 
   return text(
     [
       renderSurvey(s),
+      capabilityText,
       "```",
       "",
       "Answer these before planning:",
@@ -786,6 +800,11 @@ export const TOOLS = [
       return text(
         [
           `Wrote ${ASSOCIATE_AGENT_ID} to ${result.path}.`,
+          result.maxSteps
+            ? `Also bounded the primary agent to ${result.maxSteps} steps, so a planning phase that keeps calling tools cannot run forever.`
+            : result.maxStepsPreserved
+              ? `The primary agent already had a step bound of its own; left it alone.`
+              : ``,
           ``,
           `Restart opencode so it picks the agent up, then run /cubicore:execute.`,
         ].join("\n"),
