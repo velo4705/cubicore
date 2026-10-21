@@ -1,6 +1,7 @@
 import type { Artifact, Contract, WorkerResult } from "../contracts/types";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
+import { changedFilesSince } from "./changes";
 import { routeModel, type ModelConfig } from "./routing";
 import { BudgetEnforcer } from "./hooks";
 import { deriveCaps } from "./budgets";
@@ -74,6 +75,9 @@ export class WorkerSessions {
      */
     private readonly resolveUsage?: (sessionId: string) => TokenUsage,
     private readonly trace?: (event: string, detail?: Record<string, unknown>) => void,
+    /** The project root, and the baseline commit its changes are measured against. */
+    private readonly root: string = process.cwd(),
+    private readonly baseline?: string,
   ) {}
 
   /** Wire this to the plugin's `event` hook, once. */
@@ -128,10 +132,23 @@ export class WorkerSessions {
       this.trace?.("worker.idle", { contractId: contract.id, settled });
       const snapshot = observer.snapshot();
 
+      // Per-worker attribution comes from the event stream: `file.edited`
+      // carries the session id, so each associate's changes are its own.
+      //
+      // Git is only a fallback, and it is a weaker one: in a shared tree the
+      // diff shows every worker's changes, so a parallel associate would look
+      // like a scope violation. Preferring git over the event stream would
+      // manufacture exactly that false positive.
+      const observed = snapshot.changedFiles;
+      const fromSpawner = observed.length > 0 ? [] : await this.spawner.changedFiles(sessionId);
+      const fromGit =
+        observed.length > 0 || fromSpawner.length > 0
+          ? { files: [], unknown: false }
+          : changedFilesSince(this.root, this.baseline);
       const changedFiles =
-        snapshot.changedFiles.length > 0
-          ? snapshot.changedFiles
-          : await this.spawner.changedFiles(sessionId);
+        observed.length > 0 ? observed : fromSpawner.length > 0 ? fromSpawner : fromGit.files;
+      const changesUnknown =
+        observed.length === 0 && fromSpawner.length === 0 && fromGit.unknown;
 
       const result: WorkerResult = {
         contractId: contract.id,
@@ -144,6 +161,7 @@ export class WorkerSessions {
         toolCalls: snapshot.toolCalls,
         cancelled,
         artifact: buildArtifact(contract, snapshot, changedFiles),
+        changesUnknown,
       };
       this.settled.push(result);
       return result;

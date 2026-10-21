@@ -125,7 +125,7 @@ export async function dispatch(
         gates = await runGates(
           { artifact: result.artifact ?? emptyArtifact(contract), contract, baseline: options.baseline },
           gateRunner,
-          { changedFiles: result.changedFiles },
+          { changedFiles: result.changedFiles, changesUnknown: result.changesUnknown },
         );
 
         const passed = gates.every((gate) => gate.passed);

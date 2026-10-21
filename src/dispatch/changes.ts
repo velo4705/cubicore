@@ -1,0 +1,152 @@
+import { spawnSync } from "node:child_process";
+
+/**
+ * Which files a worker changed, computed from git.
+ *
+ * opencode's `session.diff` returns an empty list -- verified against
+ * sessions in both git and non-git directories that demonstrably wrote files.
+ * So the scope gate was being handed nothing, and a gate handed nothing
+ * reports success: it filtered an empty list, found no strays, and returned
+ * "all 0 changed file(s) inside declared writes".
+ *
+ * Git is the source of truth instead. It also gives the founder a baseline to
+ * diff against and a way to undo a run, which is why the plan phase
+ * initialises a repository when there is not one.
+ */
+
+export interface ChangedFiles {
+  files: string[];
+  /** True when the list could not be determined at all. */
+  unknown: boolean;
+  reason?: string;
+}
+
+const EMPTY: ChangedFiles = { files: [], unknown: false };
+
+function git(args: string[], cwd: string): { ok: boolean; out: string } {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.error || result.status !== 0) return { ok: false, out: result.stdout ?? "" };
+  return { ok: true, out: result.stdout ?? "" };
+}
+
+/** Is this directory a git repository? */
+export function isRepository(root: string): boolean {
+  return git(["rev-parse", "--is-inside-work-tree"], root).ok;
+}
+
+/**
+ * Files that differ from the baseline commit.
+ *
+ * The baseline matters: without one, every file in a fresh repository is
+ * untracked, and there is no "before" to compare against.
+ */
+export function changedFilesSince(root: string, baseline?: string): ChangedFiles {
+  if (!isRepository(root)) {
+    return { files: [], unknown: true, reason: "not a git repository" };
+  }
+
+  const files = new Set<string>();
+
+  if (baseline) {
+    // Tracked files that differ from the baseline.
+    const diff = git(["diff", "--name-only", baseline, "--"], root);
+    if (!diff.ok) {
+      return { files: [], unknown: true, reason: "git could not report changes" };
+    }
+    for (const line of diff.out.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed) files.add(trimmed);
+    }
+
+    // Untracked files. `git diff` never sees them, and a worker creating a
+    // new file -- the most common case of all -- is exactly that.
+    const untracked = git(["ls-files", "--others", "--exclude-standard"], root);
+    if (untracked.ok) {
+      for (const line of untracked.out.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed) files.add(trimmed);
+      }
+    }
+  } else {
+    const status = git(["status", "--porcelain"], root);
+    if (!status.ok) {
+      return { files: [], unknown: true, reason: "git could not report changes" };
+    }
+    for (const line of status.out.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      // `git status --porcelain` prefixes each line with a two-character
+      // status code.
+      files.add(/^[ MADRCU?!]{2}\s/.test(line) ? line.slice(3).trim() : trimmed);
+    }
+  }
+
+  return { files: [...files], unknown: false };
+}
+
+/**
+ * Make sure the project is a git repository with a baseline commit.
+ *
+ * Never touches a repository that already exists. A commit is made so that
+ * "before" is a thing git can diff against; without one, every file is
+ * untracked and the scope gate has nothing to compare.
+ */
+export interface PrepareResult {
+  /** True when the project already was a repository and was left alone. */
+  alreadyInitialised: boolean;
+  initialised: boolean;
+  committed: boolean;
+  baseline?: string;
+  reason?: string;
+}
+
+export function prepareRepository(root: string): PrepareResult {
+  if (isRepository(root)) {
+    // Leave it completely alone. No commit, no branch, no `git add`.
+    const head = git(["rev-parse", "HEAD"], root);
+    return {
+      alreadyInitialised: true,
+      initialised: false,
+      committed: false,
+      baseline: head.ok ? head.out.trim() : undefined,
+    };
+  }
+
+  const init = git(["init"], root);
+  if (!init.ok) {
+    return {
+      alreadyInitialised: false,
+      initialised: false,
+      committed: false,
+      reason: "git init failed",
+    };
+  }
+
+  // Respect .gitignore, and never stage anything huge -- a tree with a large
+  // untracked build directory would make this stall for minutes.
+  const add = git(["add", "-A"], root);
+  if (!add.ok) {
+    return { alreadyInitialised: false, initialised: true, committed: false, reason: "git add failed" };
+  }
+
+  const staged = git(["diff", "--cached", "--name-only"], root);
+  if (!staged.ok || staged.out.trim().length === 0) {
+    return { alreadyInitialised: false, initialised: true, committed: false };
+  }
+
+  const commit = git(
+    ["-c", "user.name=cubicore", "-c", "user.email=cubicore@local", "commit", "-q", "-m", "cubicore: baseline before any changes"],
+    root,
+  );
+  if (!commit.ok) {
+    return { alreadyInitialised: false, initialised: true, committed: false, reason: "git commit failed" };
+  }
+
+  const head = git(["rev-parse", "HEAD"], root);
+  return {
+    alreadyInitialised: false,
+    initialised: true,
+    committed: true,
+    baseline: head.ok ? head.out.trim() : undefined,
+  };
+}

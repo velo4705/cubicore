@@ -27,7 +27,7 @@ function plan(contracts: Contract[]): Plan {
   };
 }
 
-function ok(contractId: string, changedFiles: string[] = []): WorkerResult {
+function ok(contractId: string, changedFiles: string[] = ["src/a.ts"]): WorkerResult {
   return {
     contractId,
     status: "accepted",
@@ -415,7 +415,9 @@ describe("dependency stages", () => {
         return {
           contractId: c.id,
           status: "accepted" as const,
-          changedFiles: [],
+          // A diff deliverable that changed nothing is now a failure, so the
+          // fixture has to report the change it claims to have made.
+          changedFiles: [`src/${c.id}.ts`],
           // An artifact is required: without one the schema gate fails and
           // the contract is re-run, which would double the call count.
           artifact: {

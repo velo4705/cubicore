@@ -112,6 +112,14 @@ export interface WorkerResult {
   artifact?: Artifact;
   /** Files the worker actually modified, for the scope gate. */
   changedFiles: string[];
+  /**
+   * True when the changed-file list could not be determined.
+   *
+   * Distinct from an empty list: "changed nothing" is a fact, and "could not
+   * tell" is an absence of evidence. The scope gate must not report the
+   * second as the first.
+   */
+  changesUnknown?: boolean;
   usage: TokenUsage;
   ms: number;
   toolCalls: number;
