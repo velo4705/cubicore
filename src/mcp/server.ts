@@ -12,6 +12,7 @@ import { findCallerSession, verifyModel } from "./runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { tryIt } from "../plan/try";
+import { prepareRepository } from "../dispatch/changes";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -344,6 +345,21 @@ function status(runId: string): ToolResult {
  * is what Execute actually dispatches, and it is the only thing that is parsed.
  * A typo in the prose cannot silently change what gets built.
  */
+/**
+ * How many times a plan has been rejected for a directory.
+ *
+ * The execute -> test loop is capped at three cycles. The plan loop was not
+ * capped at all: plan_write rejects a bad plan, the agent re-plans, it is
+ * rejected again, and nothing stops that except the founder giving up. The
+ * bound belongs in code rather than in the model's restraint.
+ */
+const PLAN_ATTEMPTS = 3;
+const planAttempts = new Map<string, number>();
+
+function attemptCount(directory: string): number {
+  return planAttempts.get(directory) ?? 0;
+}
+
 async function planWrite(raw: string, directory: string): Promise<ToolResult> {
   const dir = directory;
   let parsed: Plan;
@@ -383,8 +399,38 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
   writeFileSync(`${directory}/${PLAN_MD}`, renderPlanMd(parsed, validation));
 
   if (problems.length > 0) {
+    const attempts = attemptCount(dir) + 1;
+    planAttempts.set(dir, attempts);
+    const exhausted = attempts >= PLAN_ATTEMPTS;
+
+    // The safety property is never relaxed. A plan whose write scopes overlap
+    // is a genuine defect, and no amount of defaulting fixes it. What the cap
+    // stops enforcing is preference: which files, which stack, which layout.
+    const unsafe = problems.filter((p) =>
+      /write-collision|catch-all|write-scope/.test(p),
+    );
+
+    if (exhausted && unsafe.length === 0) {
+      return text(
+        [
+          `Plan accepted after ${attempts} attempts, with findings recorded rather than blocking.`,
+          "",
+          ...problems.map((p) => `- ${p}`),
+          "",
+          "These are preferences, not safety problems, and the plan was not reworked for them.",
+        ].join("\n"),
+      );
+    }
+
     return text(
-      [`Plan rejected -- ${PLAN_MD} and ${PLAN_JSON} written for inspection, but nothing will dispatch.`, "", ...problems].join("\n"),
+      [
+        `Plan rejected -- ${PLAN_MD} and ${PLAN_JSON} written for inspection, but nothing will dispatch.`,
+        exhausted
+          ? `Attempt ${attempts} of ${PLAN_ATTEMPTS}. The remaining problems are not preferences, and they will keep being rejected until they are fixed.`
+          : `Attempt ${attempts} of ${PLAN_ATTEMPTS}.`,
+        "",
+        ...problems.map((p) => `- ${p}`),
+      ].join("\n"),
       true,
     );
   }
@@ -695,6 +741,35 @@ export const TOOLS = [
     },
   },
   {
+    name: "cubicore_prepare",
+    description:
+      "Prepare the working directory: initialise a git repository if there is " +
+      "not one already, and record a baseline commit so that later changes can be " +
+      "measured against it. Never touches a repository that already exists.",
+    inputSchema: {
+      type: "object",
+      properties: { directory: { type: "string", description: "Working directory" } },
+    },
+    handler: async (args: { directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const result = prepareRepository(dir);
+      if (result.alreadyInitialised) {
+        return text(
+          `Already a git repository (${dir}); left completely alone.` +
+            (result.baseline ? ` Baseline: ${result.baseline.slice(0, 12)}` : ""),
+        );
+      }
+      if (!result.initialised) {
+        return text(`Could not prepare ${dir}: ${result.reason ?? "unknown"}`, true);
+      }
+      return text(
+        result.committed
+          ? `Initialised a git repository in ${dir} and committed a baseline, so later changes can be measured.`
+          : `Initialised a git repository in ${dir}. Nothing to commit yet.`,
+      );
+    },
+  },
+  {
     name: "cubicore_install",
     description:
       "Install the cubicore-associate sub-agent into the host's own opencode config, so the " +
@@ -825,46 +900,74 @@ ${args.request ?? "(the current request in this conversation)"}
 
 Work in this order, and do not skip a step.
 
-**1. Research first.** Call the research tool. Do not ask the founder which files exist --
-they do not know, and a guess becomes a contract that claims the entire repository. Read the
-tree, then look at the modules it names. You need the real structure before any of this is
-answerable.
+**0. Prepare.** Call the prepare tool. If the project is not a git repository it
+initialises one and records a baseline, so that "before" is a thing later changes
+can be measured against. If it already is one, the tool leaves it alone.
 
-**2. Decide what it actually is.** A goal is not a task. "Build a SaaS" is a goal; "add a
-rate limiter to the existing HTTP layer" is a task. If this is a goal, do not plan it -- ask
-what the first shippable slice is.
+**1. Research once.** Call the research tool. It reports the tree, the modules and
+their exports, and the MCP servers connected to this workspace. Its tools are
+already in your tool list -- use one when it does the job materially better than
+you can by hand. Do not go exploring with the shell afterwards: the research
+output already contains what you need, and a shell search for something that is
+not there does not end.
 
-**3. Ask, once.** Put the questions to the founder and wait. Ask only what you could not
-determine from the repository, and only what changes the plan. A founder can answer "not
-billing" once billing.ts is on screen; they cannot invent a path that does not exist. Ask the
-minimum -- a question they cannot answer cheaply is a question you should drop and assume a
-default for.
+**2. Decide what kind of request this is, and how much the founder wants to be
+involved.**
 
-**4. Write the plan.** Once you have real answers, produce the plan JSON and pass it to
-plan_write, which writes ${PLAN_MD} for the founder and ${PLAN_JSON} for the dispatcher.
+*Is it a task or a goal?* "Build me a SaaS" is a goal. "Add a rate limiter to the
+existing HTTP layer" is a task. A goal has to be narrowed before it can be
+planned.
 
-If the result is something the founder is meant to start — a server, a CLI, an app — the plan
-needs a \`try\` block saying how to run it and what working looks like:
+*Does the founder want to be consulted?* Read their tone, not just their words.
+A founder who says "make no mistakes" or "just make it work" is delegating --
+they do not know what they want and do not want to decide. A founder who is
+exploring, who asks what you would suggest, or who has opinions about the shape
+of the thing wants a conversation. Ask the second kind of founder. Do not ask the
+first.
+
+Both deserve a plan. The difference is whether the questions are worth their time.
+
+**3. If they are delegating, decide everything and build.** Do not ask them
+anything. Choose a conventional feature set, the conventional layout, the
+conventional stack, and checks that can fail. Then make it work and prove it
+runs. The deliverable is a working project, not a spec they did not write.
+
+When you decide, choose what a common developer would choose. Boring,
+well-documented and mainstream beats novel. Record what you decided in the plan
+so the founder can override it.
+
+**If they want a conversation, ask sparingly.** At most three questions, and only
+ones where being wrong would cost a re-run. Everything else, decide and say what
+you decided.
+
+**4. Write the plan.** Produce the plan JSON and pass it to the plan tool, which
+writes ${PLAN_MD} for the founder and ${PLAN_JSON} for the dispatcher.
+
+If the result is something the founder is meant to start -- a server, a CLI, an
+app -- the plan needs a \`try\` block saying how to run it and what working
+looks like:
 
     "try": { "command": "npm start", "url": "http://127.0.0.1:3000/health",
              "expect": { "status": 200, "bodyContains": "\"status\":\"ok\"" } }
 
-That block is what \`cubicore_try\` executes, and it is how the founder finds out it works.
-A library or a report has nothing to run, and then the block is simply absent — that is
-correct, not a gap.
+That block is what the try tool executes, and it is how the founder finds out it
+works. A library or a report has nothing to run, and then the block is simply
+absent -- that is correct, not a gap.
 
 **Rules for the plan itself:**
 
-- Every \`writes\` set must be disjoint from every other, and must name concrete files. A
-  scope of \`src/**\` cannot be split safely and will be rejected.
-- Split where the code actually separates, not where the word count does. Two contracts
-  editing the same function are two contracts that collide.
-- Every diff contract needs a check that \`can fail\`. Grepping for a name proves the name
-  exists, not that the code works -- that has let real defects through twice.
-- Never hand-compute a composed expected value. Derive it in the command, or assert a
-  property that holds for every input.
-- \`topology: "refuse"\` is a correct answer. Renames, interface changes and dependent
-  chains are not divide-and-conquer tasks.
+- Every \`writes\` set must be disjoint from every other, and must name
+  concrete files. A scope of \`src/**\` cannot be split safely and will be
+  rejected.
+- Split where the code actually separates, not where the word count does. Two
+  contracts editing the same function are two contracts that collide.
+- Every diff contract needs a check that \`can fail\`.
+- A blocking check must set \`convergent: true\`. Typecheck and tests converge.
+  Coverage thresholds and complexity limits do not -- mark those \`advisory\`.
+- Never hand-compute a composed expected value. Derive it in the command, or
+  assert a property that holds for every input.
+- \`topology: "refuse"\` is a correct answer. Renames, interface changes and
+  dependent chains are not divide-and-conquer tasks.
 
 Plan JSON must match:
 

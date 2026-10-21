@@ -127,8 +127,9 @@ function questionsFor(blockers: Planability["blockers"]): string[] {
 
   if (codes.has("catch-all-write-scope") || codes.has("no-write-scope")) {
     questions.add(
-      "Which specific files or modules should the first version touch? Name them — a scope " +
-        "of 'everything' cannot be split safely.",
+      "Which specific files or modules should the first version touch? Name them, or " +
+        "say \"use a conventional layout\" and I will -- a scope of 'everything' cannot " +
+        "be split safely.",
     );
   }
   if (codes.has("vague-objective")) {
@@ -139,7 +140,9 @@ function questionsFor(blockers: Planability["blockers"]): string[] {
   }
   if (codes.has("grep-only-check")) {
     questions.add(
-      "The checks only grep for names. What command executes the code and proves it behaves?",
+      "The checks only grep for names, which proves a name exists rather than that " +
+        "the code works. What command executes the code and proves it behaves? If you " +
+        "cannot tell, use the project's own typecheck plus one assertion per behaviour.",
     );
   }
   if (codes.has("empty-plan")) {
@@ -157,7 +160,12 @@ export function explain(assessment: Planability): string {
     "",
     ...assessment.blockers.map((b) => `- [${b.code}] ${b.message}`),
     ...(assessment.questions.length
-      ? ["", "Answer these before planning:", "", ...assessment.questions.map((q, i) => `${i + 1}. ${q}`)]
+      ? [
+          "",
+          "Answer these, or default them and say what you defaulted:",
+          "",
+          ...assessment.questions.map((q, i) => `${i + 1}. ${q}`),
+        ]
       : []),
   ].join("\n");
 }
