@@ -246,6 +246,7 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
     [...outcome.accepted, ...outcome.failed.map((f) => f.result)],
     outcome.unresolved,
     recorder.finish(usage),
+    outcome.failed.map((f) => f.contractId),
   );
 
   controller.abort();

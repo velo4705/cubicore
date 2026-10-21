@@ -298,6 +298,7 @@ export const CubicorePlugin: Plugin = async (input) => {
             [...dispatched.accepted, ...dispatched.failed.map((f) => f.result)],
             dispatched.unresolved,
             run,
+            dispatched.failed.map((f) => f.contractId),
           );
           timer.stop("aggregate");
 

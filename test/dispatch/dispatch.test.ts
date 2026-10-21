@@ -192,8 +192,25 @@ describe("aggregate", () => {
       [ok("a"), { ...ok("b"), status: "failed" }],
       ["b — verify: exited 1"],
       { startedAt: "x", durationMs: 100, phases: [], workers: [], dispatchWallMs: 0, usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, topology: "fan-out" },
+      ["b"],
     );
     expect(out.artifacts[0].unresolved).toEqual([]);
+    expect(out.artifacts[1].unresolved).toEqual(["b — verify: exited 1"]);
+  });
+
+  test("reports a gate failure even when the session finished cleanly", () => {
+    // The bug this covers: `status` says the session finished, which is not a
+    // verdict. A worker whose checks all failed still finished cleanly, so
+    // reading status as the verdict produced two components disagreeing --
+    // "0 passed, 4 flagged" beside four artifacts listed as accepted.
+    const out = aggregate(
+      [ok("a"), ok("b")],
+      ["b — verify: exited 1"],
+      { startedAt: "x", durationMs: 100, phases: [], workers: [], dispatchWallMs: 0, usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, topology: "fan-out" },
+      ["b"],
+    );
+    expect(out.artifacts[0].status).toBe("accepted");
+    expect(out.artifacts[1].status).toBe("flagged");
     expect(out.artifacts[1].unresolved).toEqual(["b — verify: exited 1"]);
   });
 

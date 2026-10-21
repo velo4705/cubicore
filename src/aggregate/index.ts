@@ -33,17 +33,32 @@ export function aggregate(
   results: WorkerResult[],
   unresolved: string[],
   report: RunReport,
+  /**
+   * Contracts whose gates failed.
+   *
+   * `WorkerResult.status` says the *session* finished -- "accepted" there
+   * means nothing errored. It is not a verdict: a worker whose checks all
+   * failed still finished cleanly. Reading status as the verdict produced
+   * two components disagreeing about the same run, one reporting
+   * "0 passed, 4 flagged" and the other listing all four as accepted.
+   *
+   * The gate outcome is known here, so it is passed in rather than inferred.
+   */
+  failedContracts: readonly string[] = [],
 ): Aggregation {
-  const artifacts: AggregatedArtifact[] = results.map((result) => ({
-    contractId: result.contractId,
-    status: result.status,
-    deliverable: result.artifact?.deliverable ?? "none",
-    changedFiles: result.changedFiles,
-    unresolved:
-      result.status === "accepted"
-        ? []
-        : unresolved.filter((line) => line.startsWith(`${result.contractId} —`)),
-  }));
+  const failed = new Set(failedContracts);
+  const artifacts: AggregatedArtifact[] = results.map((result) => {
+    const flagged = failed.has(result.contractId);
+    return {
+      contractId: result.contractId,
+      status: flagged ? "flagged" : result.status,
+      deliverable: result.artifact?.deliverable ?? "none",
+      changedFiles: result.changedFiles,
+      unresolved: flagged
+        ? unresolved.filter((line) => line.startsWith(`${result.contractId} —`))
+        : [],
+    };
+  });
 
   const usage = results.reduce((sum, result) => addUsage(sum, result.usage), EMPTY_USAGE);
 
