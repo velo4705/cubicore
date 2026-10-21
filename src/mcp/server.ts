@@ -489,12 +489,12 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
   // task tool rejects an unknown agent name, and the run silently falls back
   // to sessions -- so the check happens here, before six failed calls.
   const runtime = runtimeFromEnv();
-  const agent = await agentAvailable(runtime.client as never, directory);
+  const agent = await agentAvailable(runtime.baseUrl, directory);
   const inlineReady = agent.present;
   if (!inlineReady) {
     process.stderr.write(
-      `[cubicore] host has no ${ASSOCIATE_AGENT_ID} agent (found: ${agent.agents.join(", ") || "none"}). ` +
-        `Briefs will be written, but the host must dispatch them to an existing sub-agent.\n`,
+      `[cubicore] ${ASSOCIATE_AGENT_ID} not dispatchable: ` +
+        `${agent.checked ? `host agents are ${agent.agents.join(", ") || "none"}` : agent.reason}.\n`,
     );
   }
 

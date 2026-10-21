@@ -20,6 +20,8 @@ import { ProgressSink } from "./progress";
 
 export interface Runtime {
   client: OpencodeClient;
+  /** Base URL of the opencode server, for endpoints the SDK does not expose. */
+  baseUrl: string;
   /** Resolved model, verified against the provider's list. */
   model: { id: string; verified: boolean; reason?: string };
   /** Resolved loopback port of the opencode server. */
@@ -88,6 +90,7 @@ export function runtimeFromEnv(env: Record<string, string | undefined> = process
 
   return {
     port,
+    baseUrl: `http://127.0.0.1:${port}`,
     model: { id: env.OPENCODE_CUBICORE_MODEL ?? DEFAULT_MODEL, verified: false },
     client: createOpencodeClient({
       baseUrl: `http://127.0.0.1:${port}`,

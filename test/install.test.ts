@@ -87,3 +87,16 @@ describe("agent install", () => {
     expect(findConfig(path).path).toBe(path);
   });
 });
+
+describe("agent availability", () => {
+  it("reports an unreachable host as unchecked, not as absent", async () => {
+    // The first version of this check called an SDK method that does not
+    // exist and answered "no agent" -- indistinguishable from a real
+    // absence. A check that cannot run must say it could not run.
+    const { agentAvailable } = await import("../src/mcp/install");
+    const result = await agentAvailable("http://127.0.0.1:1", "/tmp");
+    expect(result.checked).toBe(false);
+    expect(result.present).toBe(false);
+    expect(result.reason).toBeTruthy();
+  });
+});

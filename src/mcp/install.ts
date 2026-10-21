@@ -112,15 +112,33 @@ export function installAgent(explicitPath?: string): InstallResult {
  * calls.
  */
 export async function agentAvailable(
-  client: { agent?: { list(args?: { query?: { directory?: string } }): Promise<{ data?: unknown }> } },
+  baseUrl: string,
   directory: string,
-): Promise<{ present: boolean; agents: string[] }> {
+): Promise<{ present: boolean; agents: string[]; checked: boolean; reason?: string }> {
+  // The SDK has no agent namespace, so this reads the endpoint directly. The
+  // first version of this check called a method that does not exist and
+  // reported "no agent" -- a false negative that looked exactly like a real
+  // absence. A check that cannot run must say so rather than answering.
   try {
-    const result = await client.agent?.list({ query: { directory } });
-    const list = (result?.data ?? []) as Array<{ name?: string }>;
+    const auth = `Basic ${btoa(
+      `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
+    )}`;
+    const response = await fetch(
+      `${baseUrl}/agent?directory=${encodeURIComponent(directory)}`,
+      { headers: { Authorization: auth } },
+    );
+    if (!response.ok) {
+      return { present: false, agents: [], checked: false, reason: `agent list returned ${response.status}` };
+    }
+    const list = (await response.json()) as Array<{ name?: string }>;
     const agents = list.map((a) => a.name ?? "").filter(Boolean);
-    return { present: agents.includes(ASSOCIATE_AGENT_ID), agents };
-  } catch {
-    return { present: false, agents: [] };
+    return { present: agents.includes(ASSOCIATE_AGENT_ID), agents, checked: true };
+  } catch (error) {
+    return {
+      present: false,
+      agents: [],
+      checked: false,
+      reason: `could not reach the host's agent list: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
