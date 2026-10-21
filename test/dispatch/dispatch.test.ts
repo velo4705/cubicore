@@ -320,3 +320,118 @@ describe("review integration", () => {
     expect(out.reviewFindings).toEqual([]);
   });
 });
+
+describe("dependency stages", () => {
+  test("a consumer does not start until the producer it reads has landed", async () => {
+    // The bug this covers: every contract ran at once, so a route importing
+    // the shared types was checked against a module that did not exist yet.
+    // The failure looked exactly like a defect and cost a full revise round.
+    const order: string[] = [];
+    const writes = new Set<string>();
+
+    const producer = {
+      id: "types",
+      objective: "write the shared types",
+      reads: [],
+      writes: ["src/types.ts"],
+      forbidden: [],
+      deliverable: "diff",
+      schema: {},
+      doneWhen: "types exist",
+      checks: [],
+      budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+    };
+    const consumer = {
+      id: "route",
+      objective: "write a route that imports the types",
+      reads: ["src/types.ts"],
+      writes: ["src/route.ts"],
+      forbidden: [],
+      deliverable: "diff",
+      schema: {},
+      doneWhen: "route exists",
+      checks: [],
+      budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+    };
+
+    const plan = {
+      topology: "pipeline",
+      contracts: [consumer, producer],
+      graphBudget: { nodes: 2, edges: 1, tokens: 2000, wallMs: 5000 },
+    } as never;
+
+    const runner = {
+      async run(contract: { id: string; writes: string[] }) {
+        order.push(`start:${contract.id}`);
+        // A consumer that ran before its producer would find the module
+        // missing. Record whether it was there.
+        if (contract.id === "route") order.push(`types-present:${writes.has("src/types.ts")}`);
+        for (const w of contract.writes) writes.add(w);
+        order.push(`end:${contract.id}`);
+        return {
+          contractId: contract.id,
+          status: "accepted" as const,
+          changedFiles: contract.writes,
+          artifact: { contractId: contract.id, deliverable: "diff", raw: "done" },
+          usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+          ms: 0,
+          toolCalls: 0,
+          cancelled: false,
+        };
+      },
+    };
+
+    await dispatch(plan, runner, { async run() { return { exitCode: 0, output: "" }; } });
+
+    expect(order.indexOf("end:types")).toBeLessThan(order.indexOf("start:route"));
+    expect(order).toContain("types-present:true");
+  });
+
+  test("independent contracts in one stage still run in parallel", async () => {
+    const started: string[] = [];
+    const contract = (id: string) => ({
+      id,
+      objective: "o",
+      reads: [],
+      writes: [`src/${id}.ts`],
+      forbidden: [],
+      deliverable: "diff",
+      schema: {},
+      doneWhen: "d",
+      checks: [],
+      budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+    });
+
+    const plan = {
+      topology: "fan-out",
+      contracts: [contract("a"), contract("b"), contract("c")],
+      graphBudget: { nodes: 3, edges: 1, tokens: 3000, wallMs: 5000 },
+    } as never;
+
+    const runner = {
+      async run(c: { id: string }) {
+        started.push(c.id);
+        await Bun.sleep(20);
+        return {
+          contractId: c.id,
+          status: "accepted" as const,
+          changedFiles: [],
+          // An artifact is required: without one the schema gate fails and
+          // the contract is re-run, which would double the call count.
+          artifact: {
+            contractId: c.id,
+            deliverable: "diff",
+            raw: "done",
+          },
+          usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+          ms: 0,
+          toolCalls: 0,
+          cancelled: false,
+        };
+      },
+    };
+
+    await dispatch(plan, runner, { async run() { return { exitCode: 0, output: "" }; } });
+    expect(started.sort()).toEqual(["a", "b", "c"]);
+  });
+});

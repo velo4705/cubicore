@@ -5,6 +5,7 @@ import { effectiveMatrix } from "../validate/matrix";
 import { BudgetLedger, admit, type Caps } from "./budgets";
 import { deriveCaps } from "./budgets";
 import { gate as noveltyGate, review, type ReviewFinding } from "../review";
+import { stages } from "../coordinator/topology";
 
 /** Supplies repo state so the reviewer can diff it across the revise round. */
 export interface RepoSnapshotSource {
@@ -93,10 +94,30 @@ export async function dispatch(
     );
   }
 
-  // Fan-out: every admitted contract runs, because a shared workspace means an
-  // early failure does not release a lock anyone else was waiting on.
-  const settled = await Promise.all(
-    admitted.map(async (contract) => {
+  // Contracts run in dependency stages. A contract that reads what another
+  // writes -- a route importing the shared types, a dispatcher importing the
+  // routes -- cannot be verified until the producer has landed. Running the
+  // whole plan at once made every such check fail on a module that simply had
+  // not been written yet, and the revise round then re-ran the work to fix a
+  // race. The plan already declares the ordering; the executor has to honour
+  // it.
+  //
+  // Within a stage the contracts are independent by construction, so they
+  // still run in parallel.
+  const pipeline = stages(plan.contracts);
+  const stageOf = new Map<string, number>();
+  for (const stage of pipeline.stages) {
+    for (const contract of stage.contracts) stageOf.set(contract.id, stage.index);
+  }
+
+  const settled: Array<{ contract: Contract; result: WorkerResult; gates: GateResult[]; passed: boolean }> = [];
+
+  for (const stage of pipeline.stages) {
+    const batch = admitted.filter((c) => stageOf.get(c.id) === stage.index);
+    if (batch.length === 0) continue;
+
+    const results = await Promise.all(
+      batch.map(async (contract) => {
       let result = await runner.run(contract);
       let gates: GateResult[] = [];
 
@@ -152,8 +173,11 @@ export async function dispatch(
       }
 
       return { contract, result, gates, passed: false };
-    }),
-  );
+      }),
+    );
+
+    settled.push(...results);
+  }
 
   for (const { contract, result, gates, passed } of settled) {
     if (passed) {

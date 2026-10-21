@@ -6,6 +6,7 @@ import type {
   ValidationResult,
 } from "../contracts/types";
 import { overlapPairs, overlaps } from "./overlap";
+import { findDependencies } from "../coordinator/topology";
 import { assertBaselineIntact, effectiveMatrix, validateChecks } from "./matrix";
 
 function isBlank(value: string | undefined): boolean {
@@ -131,6 +132,19 @@ function checkGraphBudget(plan: Plan): Finding[] {
       code: "budget-exceeded",
       contractIds: ids,
       message: `contract token budgets sum to ${tokens}, exceeding the graph ceiling of ${budget.tokens}`,
+    });
+  }
+
+  // The edge ceiling is a budget like the others, and it was the one that
+  // was not checked. A plan declaring 11 edges for a graph that needs 14
+  // under-funds itself, and nothing said so -- the same class of quiet
+  // inconsistency the whole system keeps hunting for.
+  const requiredEdges = findDependencies(plan.contracts).length;
+  if (requiredEdges > budget.edges) {
+    findings.push({
+      code: "budget-exceeded",
+      contractIds: ids,
+      message: `plan needs ${requiredEdges} dependency edges, exceeding the graph ceiling of ${budget.edges}`,
     });
   }
 
