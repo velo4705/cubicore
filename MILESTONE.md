@@ -71,6 +71,28 @@ gating, budget caps, topology. Only orchestration moves.
 associate session rows to read, so the cost claim loses its current source.
 That must be resolved before the orchestrated benchmark arm can report X and Y.
 
+## Platform behaviours worth recording
+
+- **`body.agent` on `session.prompt` is accepted and silently ignored.** An
+  unknown agent name falls back to `build` with no error. This cost four
+  benchmark cycles before it was found, and it is why the associate is now
+  created as a session child rather than selected by name.
+- **`client.event.subscribe` yields only `server.connected` and
+  `server.heartbeat`.** It never carries `session.idle`, so a dispatch built
+  on it waits out every worker's full wall budget and reports nothing. The
+  raw SSE endpoint carries the session lifecycle.
+- **A plugin's `config` hook may not be applied in every host instance.**
+  The hook ran, the plugin loaded without error, and yet the mutation was
+  absent from `/config` and the agent from `/agent`. Anything a host
+  *requires* should live in the host's own config file, not behind a hook.
+- **A model removed from the provider fails silently.** The prompt is
+  accepted, the user message is recorded, and no assistant reply ever
+  arrives -- no error anywhere. Every associate then sits idle until its
+  wall budget expires, which reads as a slow model.
+- **An opencode server binds an ephemeral port.** Identifying it by
+  listening position picks the print spooler; it has to be matched by owning
+  process.
+
 ## Known state
 
 - Plugin and MCP front-ends both dispatch, gate and report a verdict
