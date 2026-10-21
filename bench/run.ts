@@ -26,6 +26,8 @@ function flag(name: string, fallback: string): string {
 }
 
 const REPS = Number(flag("reps", "2"));
+/** Simultaneous workers per arm. Keeps the machine usable. */
+const CONCURRENCY = Number(flag("concurrency", "4"));
 const MODEL = flag("model", DEFAULT_MODEL);
 const CWD = flag("cwd", FIXTURE_DIR);
 /**
@@ -99,10 +101,17 @@ async function naiveFanOut(task: TaskSpec): Promise<Trial> {
   const tokens = new SqliteTokenSource();
   const startedAt = Date.now();
 
+  // Concurrency is capped. Twelve simultaneous model sessions on one
+  // machine saturates it, and a saturated machine produces a wall-clock
+  // number that measures the saturation rather than the work. The cap
+  // applies to every arm equally, so the comparison stays like-for-like.
   const results = await Promise.all(
     Array.from({ length: task.expectedWorkers }, async (_, index) => {
       const runner = new CliRunner({ model: MODEL, cwd: CWD });
       try {
+        if (index >= CONCURRENCY) {
+          await Bun.sleep(index * 400);
+        }
         return await runner.run({
           taskId: task.id,
           arm: "naive-fanout",
