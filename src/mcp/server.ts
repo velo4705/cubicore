@@ -11,6 +11,7 @@ import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession, verifyModel } from "./runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
+import { tryIt } from "../plan/try";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -645,6 +646,55 @@ export const TOOLS = [
       testRun(args, args.directory ?? process.cwd()),
   },
   {
+    name: "cubicore_try",
+    description:
+      "Actually run the delivered thing and report whether it works. Reads the plan's `try` " +
+      "block -- the command, and what a working response looks like -- starts it, checks it, and " +
+      "stops it. Use before declaring a project ready: a contract can be correct and still not run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+        plan: { type: "string", description: "Plan JSON; omit to use CUBICORE_PLAN.json" },
+      },
+    },
+    handler: async (args: { directory?: string; plan?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      let raw = args.plan;
+      if (!raw) {
+        try {
+          raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+        } catch {
+          return text(`No ${PLAN_JSON} in ${dir}. Plan first, or pass the plan.`, true);
+        }
+      }
+
+      const loaded = loadPlan(raw);
+      if (!loaded.ok) return text(`Refusing: ${loaded.reason}`, true);
+
+      const spec = loaded.plan.try;
+      if (!spec) {
+        return text(
+          "This plan has no `try` block, so there is nothing to run. That is correct for a " +
+            "library or a report. If this is something the founder is meant to start, the plan " +
+            "should say how.",
+        );
+      }
+
+      const outcome = await tryIt(spec, dir);
+      const lines = [
+        outcome.ok ? "It runs." : "It does not run.",
+        outcome.detail,
+        `(${Math.round(outcome.elapsedMs)}ms)`,
+      ];
+      if (outcome.status !== undefined) lines.push(`status: ${outcome.status}`);
+      if (outcome.body) lines.push(`body: ${outcome.body.slice(0, 300)}`);
+      if (outcome.output) lines.push("", "--- output ---", outcome.output.slice(-800));
+
+      return text(lines.join("\n"), !outcome.ok);
+    },
+  },
+  {
     name: "cubicore_install",
     description:
       "Install the cubicore-associate sub-agent into the host's own opencode config, so the " +
@@ -792,6 +842,16 @@ default for.
 
 **4. Write the plan.** Once you have real answers, produce the plan JSON and pass it to
 plan_write, which writes ${PLAN_MD} for the founder and ${PLAN_JSON} for the dispatcher.
+
+If the result is something the founder is meant to start — a server, a CLI, an app — the plan
+needs a \`try\` block saying how to run it and what working looks like:
+
+    "try": { "command": "npm start", "url": "http://127.0.0.1:3000/health",
+             "expect": { "status": 200, "bodyContains": "\"status\":\"ok\"" } }
+
+That block is what \`cubicore_try\` executes, and it is how the founder finds out it works.
+A library or a report has nothing to run, and then the block is simply absent — that is
+correct, not a gap.
 
 **Rules for the plan itself:**
 

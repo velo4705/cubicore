@@ -78,10 +78,20 @@ export interface Contract {
   budget: Budget;
 }
 
+import type { TrySpec } from "../plan/try";
+
 export interface Plan {
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;
+  /**
+   * How to run the result, when the result is something that runs.
+   *
+   * Absent for a library or a report, present for anything the founder is
+   * meant to start. The absence is not a defect: some deliverables have
+   * nothing to run.
+   */
+  try?: TrySpec;
 }
 
 /**

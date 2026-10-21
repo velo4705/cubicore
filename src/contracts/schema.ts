@@ -82,6 +82,28 @@ export const planSchema = {
       enum: ["fan-out", "pipeline", "shared-context", "refuse"],
     },
     contracts: { type: "array", items: contract },
+    try: {
+      type: "object",
+      additionalProperties: false,
+      description:
+        "How to run the delivered thing, and what working looks like. A contract can be " +
+        "correct and still not start, and no assertion on the code can find that.",
+      required: ["command"],
+      properties: {
+        command: { type: "string", minLength: 1, description: "The command that starts it." },
+        url: { type: "string", description: "A URL to poll until the thing answers." },
+        readyTimeoutMs: { type: "integer", exclusiveMinimum: 0, description: "How long to wait for readiness." },
+        readyLine: { type: "string", description: "A line in the output that means it is ready." },
+        expect: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            status: { type: "integer", description: "The status the URL should answer with." },
+            bodyContains: { type: "string", description: "A string the body must contain." },
+          },
+        },
+      },
+    },
     graphBudget: {
       type: "object",
       additionalProperties: false,
