@@ -924,11 +924,12 @@ initialises one and records a baseline, so that "before" is a thing later change
 can be measured against. If it already is one, the tool leaves it alone.
 
 **1. Research once.** Call the research tool. It reports the tree, the modules and
-their exports, and the MCP servers connected to this workspace. Its tools are
-already in your tool list -- use one when it does the job materially better than
-you can by hand. Do not go exploring with the shell afterwards: the research
-output already contains what you need, and a shell search for something that is
-not there does not end.
+their exports, and the garage: the MCP servers connected to this workspace. Their
+tools are already in your tool list, and they are optional -- the ordinary path
+needs none of them. Use one only when you hit an obstacle you cannot get past
+yourself. Do not go exploring with the shell afterwards: the research output
+already contains what you need, and a shell search for something that is not
+there does not end.
 
 **2. Decide what kind of request this is, and how much the founder wants to be
 involved.**

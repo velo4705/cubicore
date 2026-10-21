@@ -6,6 +6,13 @@
  * would do the job better than a shell loop. So "research how to analyse
  * this binary" becomes `curl`, `strings`, and twenty minutes.
  *
+ * The framing matters as much as the list. These are not tools the agent
+ * should prefer -- they are the garage. The agent has the pass, and the
+ * ordinary path needs no tools at all, so reaching for one is an admission
+ * that the direct route is blocked. A list that said "use these when they
+ * help" would push the agent into the garage for work it could have done
+ * itself, which costs tokens and buys nothing.
+ *
  * The host's inventory is a single endpoint, and it names the servers and
  * whether they are connected. That is enough for a model to choose: it
  * already has the tools, and now it knows the tools are worth reaching for.
@@ -67,10 +74,14 @@ export function renderCapabilities(list: readonly Capability[]): string {
   }
 
   return [
-    "# Available capabilities",
+    "# The garage",
     "",
-    "These are connected to this workspace. Their tools are already in your tool list -- use",
-    "one when it does the job materially better than you can by hand.",
+    "You have the pass to these. They are connected to this workspace and their tools are",
+    "already in your tool list.",
+    "",
+    "They are optional. The ordinary path needs no tool at all, so treat them as what they",
+    "are: somewhere to go when the direct route is blocked and you need a capability you",
+    "do not have. Reaching for one before you are stuck is a cost, not a shortcut.",
     "",
     ...connected.map((c) => `- **${c.server}**${c.purpose ? ` — ${c.purpose}` : ""}`),
     "",

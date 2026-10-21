@@ -71,6 +71,10 @@ export function associateAgentConfig(): Record<string, unknown> {
       "",
       "If the brief is ambiguous, say so rather than guessing. A wrong guess surfaces later",
       "as a gate failure, having already cost the tokens.",
+      "",
+      "You have the pass to this workspace's MCP servers. They are optional: the ordinary",
+      "path needs none of them, so they are somewhere to go when you are genuinely blocked,",
+      "not a shortcut to try first.",
     ].join("\n"),
   };
 }
