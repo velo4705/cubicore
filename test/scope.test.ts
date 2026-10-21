@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { gateScope } from "../src/gate";
 import { changedFilesSince, isRepository, prepareRepository } from "../src/dispatch/changes";
+import { parsePlan } from "../src/coordinator/parse";
+import { tryIt } from "../src/plan/try";
 import type { Contract } from "../src/contracts/types";
 
 /**
@@ -116,5 +118,70 @@ describe("changed files from git", () => {
     const changed = changedFilesSince(root, prepared.baseline);
     expect(changed.unknown).toBe(false);
     expect(changed.files.join(" ")).toContain("src/b.ts");
+  });
+});
+
+describe("the run block survives the whole round trip", () => {
+  // It was broken twice: the parser rejected the key, and once it accepted
+  // it, the value was read from nowhere and dropped. A plan's instructions on
+  // how to run it would have vanished between the plan file and the dispatcher.
+  it("parses the run block, including a zero-edge graph", () => {
+    const parsed = parsePlan(
+      JSON.stringify({
+        topology: "fan-out",
+        contracts: [
+          {
+            id: "a",
+            objective: "Write a health endpoint that answers 200",
+            reads: [],
+            writes: ["src/health.ts"],
+            forbidden: [],
+            deliverable: "diff",
+            schema: { type: "object" },
+            doneWhen: "it answers",
+            checks: [
+              {
+                id: "k",
+                kind: "intent",
+                command: "test -f src/health.ts",
+                expectation: "e",
+                gating: "blocking",
+                convergent: true,
+              },
+            ],
+            budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+          },
+        ],
+        graphBudget: { nodes: 1, edges: 0, tokens: 1000, wallMs: 1000 },
+        try: {
+          command: "node src/health.js",
+          url: "http://127.0.0.1:3111/health",
+          expect: { status: 200, bodyContains: "ok" },
+        },
+      }),
+    );
+
+    expect(parsed.try?.command).toBe("node src/health.js");
+    expect(parsed.try?.url).toBe("http://127.0.0.1:3111/health");
+    expect(parsed.try?.expect?.status).toBe(200);
+    // A fan-out with no dependencies has zero edges, honestly.
+    expect(parsed.graphBudget.edges).toBe(0);
+  });
+
+  it("runs what the plan said to run", async () => {
+    const root = mkdtempSync(join(tmpdir(), "cubicore-try-"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "health.js"),
+      'require("node:http").createServer((q,s)=>{s.writeHead(200,{"content-type":"application/json"});' +
+        's.end(JSON.stringify({status:"ok"}))}).listen(3211);\n',
+    );
+
+    const outcome = await tryIt(
+      { command: "node src/health.js", url: "http://127.0.0.1:3211/health", expect: { status: 200, bodyContains: "ok" } },
+      root,
+    );
+    expect(outcome.ok).toBe(true);
+    expect(outcome.status).toBe(200);
   });
 });
