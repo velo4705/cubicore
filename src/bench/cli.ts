@@ -56,7 +56,7 @@ export class CliRunner implements Runner {
       // stalled model session holds the whole benchmark open indefinitely, and
       // a run that never finishes measures nothing. The killed worker is
       // reported as failed rather than silently dropped.
-      const timeoutMs = this.options.timeoutMs ?? 300_000;
+      const timeoutMs = this.options.timeoutMs ?? 900_000;
       const timedOut = Symbol("timeout");
       const exit = await Promise.race([
         proc.exited,
