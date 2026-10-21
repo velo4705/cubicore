@@ -3,7 +3,7 @@ import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
 import { changedFilesSince } from "./changes";
 import { routeModel, type ModelConfig } from "./routing";
-import { BudgetEnforcer } from "./hooks";
+import { BudgetEnforcer } from "../adapters/opencode/hooks";
 import { deriveCaps } from "./budgets";
 import type { WorkerRunner } from "./index";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../telemetry/types";

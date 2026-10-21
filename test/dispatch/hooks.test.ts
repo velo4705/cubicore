@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BudgetEnforcer, applyDenial } from "../../src/dispatch/hooks";
+import { BudgetEnforcer, applyDenial } from "../../src/adapters/opencode/hooks";
 import { deriveCaps } from "../../src/dispatch/budgets";
 import type { Contract } from "../../src/contracts/types";
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { WorkerSessions, type SessionSpawner } from "../../src/dispatch/spawn";
-import { BudgetEnforcer } from "../../src/dispatch/hooks";
+import { BudgetEnforcer } from "../../src/adapters/opencode/hooks";
 import type { Contract } from "../../src/contracts/types";
 
 function contract(overrides: Partial<Contract> = {}): Contract {

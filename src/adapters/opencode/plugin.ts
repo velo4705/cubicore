@@ -1,27 +1,27 @@
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { readFileSync } from "node:fs";
-import { RunRecorder, summarise } from "./telemetry/report";
-import { UsageLedger } from "./telemetry/usage";
-import { addUsage, type TokenUsage } from "./telemetry/types";
-import { PhaseTimer } from "./telemetry/timing";
-import { readUsage } from "./telemetry/adapters/opencode";
-import { checkTopology } from "./coordinator/topology";
-import { DEFAULT_MODEL } from "./mcp/model";
-import { ASSOCIATE_AGENT_ID, associateAgentConfig } from "./mcp/inline";
-import { parsePlan, MalformedPlan } from "./coordinator/parse";
-import { validatePlan } from "./validate/plan";
-import type { Plan } from "./contracts/types";
-import { dispatch } from "./dispatch";
-import { WorkerSessions, type SessionSpawner } from "./dispatch/spawn";
-import { ProgressSink } from "./mcp/progress";
-import { RunObserver } from "./dispatch/observe";
-import { BudgetEnforcer } from "./dispatch/hooks";
-import type { ModelConfig } from "./dispatch/routing";
-import { aggregate } from "./aggregate";
-import { snapshotAnchors } from "./review/anchors";
-import { PLAN_SCHEMA_JSON } from "./contracts/schema";
-import { SqliteTokenSource } from "./telemetry/adapters/session-db";
+import { RunRecorder, summarise } from "../../telemetry/report";
+import { UsageLedger } from "../../telemetry/usage";
+import { addUsage, type TokenUsage } from "../../telemetry/types";
+import { PhaseTimer } from "../../telemetry/timing";
+import { readUsage } from "../../telemetry/adapters/opencode";
+import { checkTopology } from "../../coordinator/topology";
+import { DEFAULT_MODEL } from "../../mcp/model";
+import { CUBICORE_AGENTS } from "../../mcp/agents";
+import { parsePlan, MalformedPlan } from "../../coordinator/parse";
+import { validatePlan } from "../../validate/plan";
+import type { Plan } from "../../contracts/types";
+import { dispatch } from "../../dispatch";
+import { WorkerSessions, type SessionSpawner } from "../../dispatch/spawn";
+import { ProgressSink } from "../../mcp/progress";
+import { RunObserver } from "../../dispatch/observe";
+import { BudgetEnforcer } from "../opencode/hooks";
+import type { ModelConfig } from "../../dispatch/routing";
+import { aggregate } from "../../aggregate";
+import { snapshotAnchors } from "../../review/anchors";
+import { PLAN_SCHEMA_JSON } from "../../contracts/schema";
+import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
 
 /**
  * The opencode plugin entry point.
@@ -161,9 +161,11 @@ export const CubicorePlugin: Plugin = async (input) => {
   return {
     config: async (config) => {
       const agents = (config as { agent?: Record<string, unknown> }).agent ?? {};
-      // Refresh rather than only create, so an update to the associate
-      // instructions reaches a host that already has the agent.
-      Object.assign(agents, { [ASSOCIATE_AGENT_ID]: associateAgentConfig() });
+      // Every agent Cubicore defines, refreshed rather than only created, so
+      // an update to the instructions reaches a host that already has them.
+      for (const agent of CUBICORE_AGENTS) {
+        agents[agent.id] = agent.config;
+      }
       (config as { agent?: Record<string, unknown> }).agent = agents;
     },
 

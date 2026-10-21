@@ -1,4 +1,4 @@
-import type { Contract } from "../contracts/types";
+import type { Contract } from "../../contracts/types";
 
 /**
  * opencode V2 permission rules for one worker.

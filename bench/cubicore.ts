@@ -1,10 +1,10 @@
 import type { ModelConfig } from "../src/dispatch/routing";
 import { WorkerSessions, type SessionSpawner } from "../src/dispatch/spawn";
-import { BudgetEnforcer } from "../src/dispatch/hooks";
+import { BudgetEnforcer } from "../src/adapters/opencode/hooks";
 import { RunObserver } from "../src/dispatch/observe";
 import { dispatch } from "../src/dispatch";
 import { parsePlan } from "../src/coordinator/parse";
-import { clientSpawner } from "../src/index";
+import { clientSpawner } from "../src/adapters/opencode/plugin";
 import { SqliteTokenSource } from "../src/telemetry/adapters/session-db";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../src/telemetry/types";
 import type { TaskSpec, Trial } from "../src/bench/types";

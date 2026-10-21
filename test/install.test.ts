@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { installAgent, findConfig } from "../src/mcp/install";
 import { researchAgentConfig, RESEARCH_MAX_STEPS } from "../src/mcp/research-agent";
+import { AGENT_PREFIX, CUBICORE_AGENTS } from "../src/mcp/agents";
 import { ASSOCIATE_AGENT_ID } from "../src/mcp/inline";
 
 /**
@@ -123,5 +124,34 @@ describe("the research sub-agent", () => {
     const prompt = String(researchAgentConfig().prompt);
     expect(prompt).toContain("You report; you never act");
     expect(prompt).toContain("cannot edit");
+  });
+});
+
+describe("the agent registry", () => {
+  it("is the single place agents are defined", () => {
+    // Adding an agent is one entry here. The installer and the config hook
+    // both read this list, so a third agent cannot be half-installed.
+    expect(CUBICORE_AGENTS.length).toBeGreaterThanOrEqual(2);
+    for (const agent of CUBICORE_AGENTS) {
+      expect(agent.id.startsWith(AGENT_PREFIX)).toBe(true);
+      expect(agent.config.mode).toBe("subagent");
+    }
+  });
+
+  it("gives every agent a unique id", () => {
+    const ids = CUBICORE_AGENTS.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("installs every registered agent, not just the ones someone remembered", () => {
+    const root = mkdtempSync(join(tmpdir(), "cubicore-reg-"));
+    const path = join(root, "opencode.json");
+    writeFileSync(path, JSON.stringify({}));
+
+    installAgent(path);
+    const written = JSON.parse(readFileSync(path, "utf8"));
+    for (const agent of CUBICORE_AGENTS) {
+      expect(written.agent[agent.id]).toBeDefined();
+    }
   });
 });

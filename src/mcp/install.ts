@@ -2,8 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { ASSOCIATE_AGENT_ID, associateAgentConfig } from "./inline";
-import { RESEARCH_AGENT_ID, researchAgentConfig } from "./research-agent";
+import { CUBICORE_AGENTS } from "./agents";
 
 /**
  * Installing the associate agent into the host's own config.
@@ -89,7 +88,6 @@ export const PRIMARY_MAX_STEPS = 40;
  */
 export function installAgent(explicitPath?: string): InstallResult {
   const location = findConfig(explicitPath);
-  const wanted = associateAgentConfig();
 
   let config: Record<string, unknown> = {};
   if (location.existed) {
@@ -106,14 +104,14 @@ export function installAgent(explicitPath?: string): InstallResult {
   }
 
   const agents = (config.agent ?? {}) as Record<string, unknown>;
-  const before = JSON.stringify({
-    associate: agents[ASSOCIATE_AGENT_ID] ?? null,
-    research: agents[RESEARCH_AGENT_ID] ?? null,
-  });
-  const after = JSON.stringify({
-    associate: wanted,
-    research: researchAgentConfig(),
-  });
+  // Every agent, from the one registry. Nothing here knows a sibling's name,
+  // so adding an agent cannot be half-done.
+  const before = JSON.stringify(
+    Object.fromEntries(CUBICORE_AGENTS.map((a) => [a.id, agents[a.id] ?? null])),
+  );
+  const after = JSON.stringify(
+    Object.fromEntries(CUBICORE_AGENTS.map((a) => [a.id, a.config])),
+  );
 
   // Bound the primary agent too, so the planning phase cannot loop. This is
   // computed before the "already up to date" check: an agent that is already
@@ -129,9 +127,9 @@ export function installAgent(explicitPath?: string): InstallResult {
     agents.build = primary;
   }
 
-  agents[ASSOCIATE_AGENT_ID] = wanted;
-  // The read-only research associate, for the planning phase.
-  agents[RESEARCH_AGENT_ID] = researchAgentConfig();
+  for (const agent of CUBICORE_AGENTS) {
+    agents[agent.id] = agent.config;
+  }
   config.agent = agents;
 
 
@@ -174,7 +172,12 @@ export async function agentAvailable(
     }
     const list = (await response.json()) as Array<{ name?: string }>;
     const agents = list.map((a) => a.name ?? "").filter(Boolean);
-    return { present: agents.includes(ASSOCIATE_AGENT_ID), agents, checked: true };
+    // Any Cubicore agent being present is enough to say the host can dispatch one.
+    return {
+      present: CUBICORE_AGENTS.some((a) => agents.includes(a.id)),
+      agents,
+      checked: true,
+    };
   } catch (error) {
     return {
       present: false,

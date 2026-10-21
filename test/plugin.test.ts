@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CubicorePlugin } from "../src/index";
+import { CubicorePlugin } from "../src/adapters/opencode/plugin";
 
 /**
  * The plugin entry point had no tests, which is how it shipped without a

@@ -1,4 +1,4 @@
-import type { Caps } from "./budgets";
+import type { Caps } from "../../dispatch/budgets";
 
 /**
  * Budget enforcement through opencode hooks.

@@ -1,5 +1,5 @@
 import type { Check, Contract, Plan, WorkerResult } from "../contracts/types";
-import { workerPermissions } from "./permissions";
+import { workerPermissions } from "../adapters/opencode/permissions";
 import { runGates, type CommandRunner, type GateResult } from "../gate";
 import { effectiveMatrix } from "../validate/matrix";
 import { BudgetLedger, admit, type Caps } from "./budgets";

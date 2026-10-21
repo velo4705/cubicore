@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { workerPermissions, testerPermissions } from "../../src/dispatch/permissions";
+import { workerPermissions, testerPermissions } from "../../src/adapters/opencode/permissions";
 import type { Contract } from "../../src/contracts/types";
 
 function contract(overrides: Partial<Contract> = {}): Contract {

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk",
+    "build": "bun build src/adapters/opencode/plugin.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "bench": "bun run bench/run.ts"

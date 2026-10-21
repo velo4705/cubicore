@@ -1,5 +1,5 @@
 import type { Contract } from "../contracts/types";
-import { workerPermissions, type PermissionRule } from "./permissions";
+import { workerPermissions, type PermissionRule } from "../adapters/opencode/permissions";
 
 /**
  * A worker agent as plain data.

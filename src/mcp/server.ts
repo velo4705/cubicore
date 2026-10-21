@@ -8,7 +8,7 @@ import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
-import { findCallerSession, verifyModel } from "./runtime";
+import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { tryIt } from "../plan/try";
@@ -30,7 +30,7 @@ import {
   type TestFinding,
 } from "./protocol";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { runtimeFromEnv, workerSessions, type Runtime } from "./runtime";
+import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import type { Plan } from "../contracts/types";
 
 /**

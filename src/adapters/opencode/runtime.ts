@@ -1,10 +1,10 @@
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 
-import { clientSpawner } from "../index";
-import { WorkerSessions } from "../dispatch/spawn";
-import { SqliteTokenSource } from "../telemetry/adapters/session-db";
-import { DEFAULT_MODEL, resolveModel } from "./model";
-import { ProgressSink } from "./progress";
+import { clientSpawner } from "./plugin";
+import { WorkerSessions } from "../../dispatch/spawn";
+import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
+import { DEFAULT_MODEL, resolveModel } from "../../mcp/model";
+import { ProgressSink } from "../../mcp/progress";
 
 /**
  * Builds an opencode client from the environment an MCP server inherits.
