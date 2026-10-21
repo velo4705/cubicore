@@ -161,10 +161,10 @@ export const CubicorePlugin: Plugin = async (input) => {
   return {
     config: async (config) => {
       const agents = (config as { agent?: Record<string, unknown> }).agent ?? {};
-      if (!agents[ASSOCIATE_AGENT_ID]) {
-        Object.assign(agents, { [ASSOCIATE_AGENT_ID]: associateAgentConfig() });
-        (config as { agent?: Record<string, unknown> }).agent = agents;
-      }
+      // Refresh rather than only create, so an update to the associate
+      // instructions reaches a host that already has the agent.
+      Object.assign(agents, { [ASSOCIATE_AGENT_ID]: associateAgentConfig() });
+      (config as { agent?: Record<string, unknown> }).agent = agents;
     },
 
     /**

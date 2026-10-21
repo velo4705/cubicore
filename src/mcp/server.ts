@@ -9,6 +9,7 @@ import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession, verifyModel } from "./runtime";
+import { agentAvailable, installAgent } from "./install";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -483,6 +484,19 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
   const cycleGate = canExecute(readCycleState(`${directory}/.cubicore-cycle.json`));
   if (!cycleGate.allowed) return text(cycleGate.reason, true);
 
+  // The briefs are useless without the agent to dispatch them to. The host's
+  // task tool rejects an unknown agent name, and the run silently falls back
+  // to sessions -- so the check happens here, before six failed calls.
+  const runtime = runtimeFromEnv();
+  const agent = await agentAvailable(runtime.client as never, directory);
+  const inlineReady = agent.present;
+  if (!inlineReady) {
+    process.stderr.write(
+      `[cubicore] host has no ${ASSOCIATE_AGENT_ID} agent (found: ${agent.agents.join(", ") || "none"}). ` +
+        `Briefs will be written, but the host must dispatch them to an existing sub-agent.\n`,
+    );
+  }
+
   const written = briefs(loaded.plan, { projectKind: args.projectKind });
   mkdirSync(`${directory}/${BRIEF_DIR}`, { recursive: true });
   for (const file of written) {
@@ -495,8 +509,11 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
     [
       `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
       "",
-      `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving it its`,
-      `brief's path. An associate reads exactly one file and starts building.`,
+      inlineReady
+        ? `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving it its brief's path.`
+        : `NOTE: the host has no \`${ASSOCIATE_AGENT_ID}\` agent. Dispatch to whichever sub-agent it does have ` +
+          `(\`general\` works), keeping one brief each -- or call execute_file so Cubicore dispatches sessions itself.`,
+      `An associate reads exactly one file and starts building.`,
       "",
       `When they return, run each contract's blocking checks and record the results with the test tool.`,
       "",
@@ -618,6 +635,29 @@ export const TOOLS = [
     },
     handler: async (args: { findings?: TestFinding[]; directory?: string }) =>
       testRun(args, args.directory ?? process.cwd()),
+  },
+  {
+    name: "cubicore_install",
+    description:
+      "Install the cubicore-associate sub-agent into the host's own opencode config, so the " +
+      "host can dispatch briefs inline. Required once per host. Restart opencode afterwards.",
+    inputSchema: {
+      type: "object",
+      properties: { configPath: { type: "string", description: "Path to opencode.json; auto-detected otherwise" } },
+    },
+    handler: async (args: { configPath?: string }) => {
+      const result = installAgent(args.configPath);
+      if (!result.wrote) {
+        return text(`No change: ${result.reason ?? "unknown reason"} (${result.path})`, !result.changed);
+      }
+      return text(
+        [
+          `Wrote ${ASSOCIATE_AGENT_ID} to ${result.path}.`,
+          ``,
+          `Restart opencode so it picks the agent up, then run /cubicore:execute.`,
+        ].join("\n"),
+      );
+    },
   },
   {
     name: "dispatch_blueprint",
