@@ -10,6 +10,7 @@ import { ProgressSink } from "./progress";
 import { startRun, finishRun, failRun, describe, getRun } from "./runs";
 import { findCallerSession, verifyModel } from "./runtime";
 import { agentAvailable, installAgent } from "./install";
+import { deriveBaseline } from "../validate/baseline";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -106,7 +107,7 @@ function text(body: string, isError = false): ToolResult {
 }
 
 /** Validate without dispatching. Free, and the reason the split exists. */
-async function plan(raw: string): Promise<ToolResult> {
+async function plan(raw: string, dir: string): Promise<ToolResult> {
   let parsed: Plan;
   try {
     parsed = parsePlan(raw) as Plan;
@@ -122,7 +123,7 @@ async function plan(raw: string): Promise<ToolResult> {
     return text("This plan refuses to split. Nothing to dispatch, and that is a valid answer.");
   }
 
-  const validation = validatePlan(parsed, []);
+  const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
 
   const problems: string[] = validation.findings.map((f) => `- [${f.code}] ${f.message}`);
@@ -171,6 +172,7 @@ async function resolveParent(parentSessionID?: string): Promise<string | undefin
 async function runToCompletion(raw: string, runId: string, parentSessionID?: string): Promise<string> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
+  const dir = runtime.directory;
 
   let parsed: Plan;
   try {
@@ -184,7 +186,7 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
     return "This plan refuses to split. Nothing dispatched.";
   }
 
-  const validation = validatePlan(parsed, []);
+  const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
   if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
     return "Plan rejected before dispatch — nothing was spent. Run the plan tool to see why.";
@@ -270,7 +272,7 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
  * looks exactly like a hang. Returning a handle makes that unrepresentable:
  * there is nothing left to time out, and the caller decides how long to wait.
  */
-async function execute(raw: string, parentSessionID?: string): Promise<ToolResult> {
+async function execute(raw: string, parentSessionID?: string, dir = process.cwd()): Promise<ToolResult> {
   let parsed: Plan;
   try {
     parsed = parsePlan(raw) as Plan;
@@ -283,7 +285,7 @@ async function execute(raw: string, parentSessionID?: string): Promise<ToolResul
     return text("This plan refuses to split. Nothing dispatched.");
   }
 
-  const validation = validatePlan(parsed, []);
+  const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
   if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
     return text("Plan rejected before dispatch — nothing was spent. Run plan to see why.", true);
@@ -342,6 +344,7 @@ function status(runId: string): ToolResult {
  * A typo in the prose cannot silently change what gets built.
  */
 async function planWrite(raw: string, directory: string): Promise<ToolResult> {
+  const dir = directory;
   let parsed: Plan;
   try {
     parsed = parsePlan(raw) as Plan;
@@ -361,7 +364,7 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
     return text(explain(assessed.assessment), true);
   }
 
-  const validation = validatePlan(parsed, []);
+  const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
 
   if (parsed.topology === "refuse") {
@@ -557,10 +560,14 @@ export const TOOLS = [
       "Costs nothing. Call this before cubicore_execute so the founder can read the split.",
     inputSchema: {
       type: "object",
-      properties: { plan: { type: "string", description: "Plan JSON matching the Cubicore plan schema." } },
+      properties: {
+        plan: { type: "string", description: "Plan JSON matching the Cubicore plan schema." },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+      },
       required: ["plan"],
     },
-    handler: async (args: { plan: string }) => plan(args.plan),
+    handler: async (args: { plan: string; directory?: string }) =>
+      plan(args.plan, args.directory ?? process.cwd()),
   },
   {
     name: "execute",
@@ -575,8 +582,8 @@ export const TOOLS = [
       },
       required: ["plan"],
     },
-    handler: async (args: { plan: string; parentSessionID?: string }) =>
-      execute(args.plan, args.parentSessionID),
+    handler: async (args: { plan: string; parentSessionID?: string; directory?: string }) =>
+      execute(args.plan, args.parentSessionID, args.directory ?? process.cwd()),
   },
   {
     name: "plan_write",

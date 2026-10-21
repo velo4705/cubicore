@@ -381,7 +381,7 @@ describe("dependency stages", () => {
       },
     };
 
-    await dispatch(plan, runner, { async run() { return { exitCode: 0, output: "" }; } });
+    await dispatch(plan, runner as never, { async run() { return { exitCode: 0, output: "" }; } });
 
     expect(order.indexOf("end:types")).toBeLessThan(order.indexOf("start:route"));
     expect(order).toContain("types-present:true");
@@ -431,7 +431,7 @@ describe("dependency stages", () => {
       },
     };
 
-    await dispatch(plan, runner, { async run() { return { exitCode: 0, output: "" }; } });
+    await dispatch(plan, runner as never, { async run() { return { exitCode: 0, output: "" }; } });
     expect(started.sort()).toEqual(["a", "b", "c"]);
   });
 });

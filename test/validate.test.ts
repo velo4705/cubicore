@@ -1,3 +1,4 @@
+import { describe, expect, it, test } from "bun:test";
 import { validatePlan } from "../src/validate/plan";
 
 describe("graph budget", () => {
