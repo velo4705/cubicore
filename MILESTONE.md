@@ -93,6 +93,36 @@ That must be resolved before the orchestrated benchmark arm can report X and Y.
   listening position picks the print spooler; it has to be matched by owning
   process.
 
+## The first complete run
+
+A seven-contract plan ran to completion in two waves, and the result was
+verified three ways: the contract's own checks (21/21), the full suite
+(54 tests), and a script written independently of the associates' test
+files to confirm the founder's stated behaviours.
+
+What the run proved:
+
+- **Inline sub-tasks render in the host's own UI.** Five `Cubicore-Associate`
+  entries appeared in the conversation, each with its brief. That is the
+  visibility the session path could not give, and it came from a
+  config-registered agent rather than a plugin hook.
+- **Stage ordering is real.** Foundation landed, then the five route modules
+  together, then the dispatcher, which had to wait because it imports the
+  route descriptors at runtime.
+- **The plan's own checks were not enough, and the associates said so.** The
+  health contract's "uptime is non-decreasing" assertion passes against a
+  `Date.now()` implementation, because a real clock does not move backwards
+  in an ordinary run. An associate added a test that swaps in a
+  backwards-jumping clock, and that is the assertion that actually pins
+  monotonicity.
+- **Negative testing found a real hang.** Removing the 204 rule made the HTTP
+  client wait forever rather than fail, because an exception while writing
+  the response left the connection open with no body.
+
+Two defects were Cubicore's, not the associates': the brief could
+contradict itself about the files it owns, and the graph budget's edge
+ceiling was never checked against the number of edges the plan needed.
+
 ## Known state
 
 - Plugin and MCP front-ends both dispatch, gate and report a verdict
