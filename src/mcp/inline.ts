@@ -17,6 +17,21 @@ import type { Contract, Plan } from "../contracts/types";
 
 export const ASSOCIATE_AGENT_ID = "cubicore-associate";
 
+/**
+ * Does this forbidden entry name a path, or is it prose?
+ *
+ * A planner writes constraints as sentences -- "do not modify src/types.ts,
+ * src/counters.ts or package.json" -- and globs as paths. Treating a sentence
+ * as a path made a brief list a file it owns under "other associates own
+ * these", and the associate had to guess which half of the brief was true.
+ */
+function looksLikePath(entry: string): boolean {
+  const trimmed = entry.trim();
+  if (/\s/.test(trimmed)) return false;
+  if (!trimmed.includes("/") && !trimmed.includes(".")) return false;
+  return !trimmed.endsWith(".") && !trimmed.endsWith("!");
+}
+
 /** Directory the per-associate briefs are written to. */
 export const BRIEF_DIR = "CUBICORE_ASSOCIATES";
 
@@ -105,13 +120,50 @@ export function renderBrief(
     "",
   ];
 
-  if (contract.forbidden.length > 0) {
+  // The forbidden list mixes globs with prose, and rendering every entry as a
+  // path made a brief contradict itself: an entry that merely mentioned a
+  // file this contract owns was presented as "other associates own these",
+  // and the associate had to decide which half to believe. Paths are listed
+  // as off-limits; prose is listed as the constraint it actually is.
+  const offLimits = contract.forbidden.filter((f) => looksLikePath(f));
+  const constraints = contract.forbidden.filter((f) => !looksLikePath(f));
+
+  if (offLimits.length > 0) {
     lines.push(
       "## Explicitly off-limits",
       "",
       "Other associates own these. Touching them will collide.",
       "",
-      ...contract.forbidden.map((f) => `- \`${f}\``),
+      ...offLimits.map((f) => `- \`${f}\``),
+      "",
+    );
+  }
+
+  if (constraints.length > 0) {
+    lines.push(
+      "## Constraints",
+      "",
+      "These are rules, not paths. They bind you even where they name a file you own.",
+      "",
+      ...constraints.map((f) => `- ${f}`),
+      "",
+    );
+  }
+
+  // A constraint that names a file this contract owns is not a prohibition on
+  // it. Say so, or the brief contradicts itself and the associate has to guess
+  // which half is true.
+  const selfNamed = contract.forbidden.filter((f) =>
+    contract.writes.some((w) => f.includes(w)),
+  );
+  if (selfNamed.length > 0) {
+    lines.push(
+      "## Note on your own files",
+      "",
+      "A constraint above mentions a file you are writing. Read it as a rule about",
+      "how to write it, not as a prohibition on touching it -- you own that file.",
+      "",
+      ...selfNamed.map((f) => `- ${f}`),
       "",
     );
   }

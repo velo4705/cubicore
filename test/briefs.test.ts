@@ -144,3 +144,50 @@ describe("checks can be wrong", () => {
     expect(md).toContain("worth more than a green gate");
   });
 });
+
+describe("a brief cannot contradict itself", () => {
+  // Found in a real run: the metrics brief listed src/counters.ts under
+  // "other associates own these" while its own write scope assigned that
+  // file. The associate resolved the conflict in favour of the write scope,
+  // correctly -- but only because it noticed. A brief must not require that.
+  const selfNaming = {
+    id: "route-metrics",
+    objective: "o",
+    reads: ["src/types.ts"],
+    writes: ["src/counters.ts", "src/routes/metrics.ts"],
+    forbidden: [
+      "Do not import any other module under src/routes/ - route modules must stay independent of each other.",
+      "Do not modify src/types.ts, src/counters.ts or package.json - other contracts own those files.",
+      "src/routes/users.ts",
+    ],
+    deliverable: "report",
+    schema: {},
+    doneWhen: "d",
+    checks: [],
+    budget: {},
+  } as unknown as Contract;
+
+  it("lists prose constraints as constraints, not as off-limits paths", () => {
+    const md = renderBrief(selfNaming, 0, 1);
+    // The sentence mentioning src/counters.ts must not appear as a path
+    // another associate owns.
+    const offLimits = md.split("## Explicitly off-limits")[1]?.split("##")[0] ?? "";
+    expect(offLimits).toContain("src/routes/users.ts");
+    expect(offLimits).not.toContain("other contracts own those files");
+  });
+
+  it("says plainly that a constraint naming your own file is not a prohibition", () => {
+    const md = renderBrief(selfNaming, 0, 1);
+    expect(md).toContain("## Note on your own files");
+    expect(md).toContain("you own that file");
+  });
+
+  it("keeps the write scope and the constraints consistent", () => {
+    const md = renderBrief(selfNaming, 0, 1);
+    const scope = md.split("## Your write scope")[1]?.split("##")[0] ?? "";
+    expect(scope).toContain("src/counters.ts");
+    // And nothing in the off-limits section claims to own it.
+    const offLimits = md.split("## Explicitly off-limits")[1]?.split("##")[0] ?? "";
+    expect(offLimits).not.toContain("src/counters.ts");
+  });
+});
