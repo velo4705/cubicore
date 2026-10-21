@@ -152,6 +152,21 @@ export class SqliteTokenSource {
     return (sessionId) => this.read(sessionId);
   }
 
+  /**
+   * Sessions created in a directory since a moment.
+   *
+   * A benchmark arm is measured by the sessions it caused, and "since" is the
+   * only reliable way to attribute them: the database holds every session
+   * from every project, and the newest overall is usually unrelated.
+   */
+  sessionsSince(directory: string, since: number): string[] {
+    const sqlite = new Database(this.path, { readonly: true });
+    const rows = sqlite
+      .query("SELECT id, time_created FROM session WHERE directory = ? AND time_created >= ?")
+      .all(directory, since) as Array<{ id: string; time_created: number }>;
+    return rows.map((r) => r.id);
+  }
+
   private db(): TokenDb {
     if (this.connection) return this.connection;
 
