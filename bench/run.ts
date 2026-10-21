@@ -28,6 +28,35 @@ function flag(name: string, fallback: string): string {
 const REPS = Number(flag("reps", "2"));
 /** Simultaneous workers per arm. Keeps the machine usable. */
 const CONCURRENCY = Number(flag("concurrency", "4"));
+
+/**
+ * Run at most `size` tasks at a time.
+ *
+ * A limit that only staggers the starts is not a limit: every task is still
+ * running once the last one starts.
+ */
+function pLimit(size: number) {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+
+  const release = () => {
+    active--;
+    const next = waiting.shift();
+    if (next) next();
+  };
+
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active >= size) {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    active++;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
 const MODEL = flag("model", DEFAULT_MODEL);
 const CWD = flag("cwd", FIXTURE_DIR);
 /**
@@ -105,18 +134,22 @@ async function naiveFanOut(task: TaskSpec): Promise<Trial> {
   // machine saturates it, and a saturated machine produces a wall-clock
   // number that measures the saturation rather than the work. The cap
   // applies to every arm equally, so the comparison stays like-for-like.
+  // A real semaphore, not a start-stagger. Staggering the starts still
+  // leaves every worker running at once once the last one starts, and twelve
+  // simultaneous model sessions took the machine to load 70 -- which measures
+  // the saturation rather than the work.
+  const limit = pLimit(CONCURRENCY);
   const results = await Promise.all(
     Array.from({ length: task.expectedWorkers }, async (_, index) => {
       const runner = new CliRunner({ model: MODEL, cwd: CWD });
       try {
-        if (index >= CONCURRENCY) {
-          await Bun.sleep(index * 400);
-        }
-        return await runner.run({
-          taskId: task.id,
-          arm: "naive-fanout",
-          prompt: promptFor(task, index),
-        });
+        return await limit(async () =>
+          runner.run({
+            taskId: task.id,
+            arm: "naive-fanout",
+            prompt: promptFor(task, index),
+          }),
+        );
       } catch {
         return null;
       }
