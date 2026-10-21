@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 import { ASSOCIATE_AGENT_ID, associateAgentConfig } from "./inline";
+import { RESEARCH_AGENT_ID, researchAgentConfig } from "./research-agent";
 
 /**
  * Installing the associate agent into the host's own config.
@@ -105,8 +106,14 @@ export function installAgent(explicitPath?: string): InstallResult {
   }
 
   const agents = (config.agent ?? {}) as Record<string, unknown>;
-  const before = JSON.stringify(agents[ASSOCIATE_AGENT_ID] ?? null);
-  const after = JSON.stringify(wanted);
+  const before = JSON.stringify({
+    associate: agents[ASSOCIATE_AGENT_ID] ?? null,
+    research: agents[RESEARCH_AGENT_ID] ?? null,
+  });
+  const after = JSON.stringify({
+    associate: wanted,
+    research: researchAgentConfig(),
+  });
 
   // Bound the primary agent too, so the planning phase cannot loop. This is
   // computed before the "already up to date" check: an agent that is already
@@ -123,6 +130,8 @@ export function installAgent(explicitPath?: string): InstallResult {
   }
 
   agents[ASSOCIATE_AGENT_ID] = wanted;
+  // The read-only research associate, for the planning phase.
+  agents[RESEARCH_AGENT_ID] = researchAgentConfig();
   config.agent = agents;
 
 

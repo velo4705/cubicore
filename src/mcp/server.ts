@@ -931,6 +931,16 @@ yourself. Do not go exploring with the shell afterwards: the research output
 already contains what you need, and a shell search for something that is not
 there does not end.
 
+Fan out to \`cubicore-research\` sub-agents only when the survey is genuinely too big
+for one pass -- a dozen-plus modules, or several independent questions about the
+design. Each one is a separate session and pays its own bootstrap, so fanning
+out to read three files costs more than reading them yourself. When in doubt,
+one call to the research tool.
+
+Give each sub-agent a slice and a question. Ask for what changes a plan: the
+exported surface, the dependencies between modules, and what looks unfinished
+or likely to collide with another slice.
+
 **2. Decide what kind of request this is, and how much the founder wants to be
 involved.**
 

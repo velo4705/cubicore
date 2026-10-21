@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { installAgent, findConfig } from "../src/mcp/install";
+import { researchAgentConfig, RESEARCH_MAX_STEPS } from "../src/mcp/research-agent";
 import { ASSOCIATE_AGENT_ID } from "../src/mcp/inline";
 
 /**
@@ -98,5 +99,29 @@ describe("agent availability", () => {
     expect(result.checked).toBe(false);
     expect(result.present).toBe(false);
     expect(result.reason).toBeTruthy();
+  });
+});
+
+describe("the research sub-agent", () => {
+  it("is read-only, so it cannot act while surveying", () => {
+    const config = researchAgentConfig();
+    const permission = config.permission as Record<string, string>;
+    expect(permission.edit).toBe("deny");
+    expect(permission.bash).toBe("deny");
+    expect(permission.external_directory).toBe("deny");
+  });
+
+  it("is bounded, so it cannot wander", () => {
+    expect(researchAgentConfig().maxSteps).toBe(RESEARCH_MAX_STEPS);
+  });
+
+  it("is a subagent, so the host can fan it out", () => {
+    expect(researchAgentConfig().mode).toBe("subagent");
+  });
+
+  it("tells it to report rather than act", () => {
+    const prompt = String(researchAgentConfig().prompt);
+    expect(prompt).toContain("You report; you never act");
+    expect(prompt).toContain("cannot edit");
   });
 });
