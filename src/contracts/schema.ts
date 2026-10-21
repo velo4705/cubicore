@@ -110,7 +110,7 @@ export const planSchema = {
       required: ["nodes", "edges", "tokens", "wallMs"],
       properties: {
         nodes: { type: "integer", exclusiveMinimum: 0 },
-        edges: { type: "integer", exclusiveMinimum: 0 },
+        edges: { type: "integer", minimum: 0 },
         tokens: { type: "integer", exclusiveMinimum: 0 },
         wallMs: { type: "integer", exclusiveMinimum: 0 },
       },

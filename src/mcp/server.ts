@@ -327,15 +327,37 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   );
 }
 
-function status(runId: string): ToolResult {
-  const run = getRun(runId);
-  if (!run) {
-    return text(
-      `Unknown run ${runId}. Run ids are process-local, so a restarted MCP server loses them.`,
-      true,
-    );
+/**
+ * Poll a run, optionally waiting for it.
+ *
+ * Polling in a loop costs the agent a step each time, and the step budget is
+ * finite: a run that took twenty polls could exhaust the budget before the
+ * verdict arrived, leaving the agent with a dispatched run and no result. The
+ * wait parameter makes one call enough.
+ */
+async function status(runId: string, waitMs = 0): Promise<ToolResult> {
+  const find = () => {
+    const run = getRun(runId);
+    if (!run) {
+      return text(
+        `Unknown run ${runId}. Run ids are process-local, so a restarted MCP server loses them.`,
+        true,
+      );
+    }
+    return null;
+  };
+
+  const missing = find();
+  if (missing) return missing;
+
+  const deadline = Date.now() + Math.max(0, Math.min(waitMs, 600_000));
+  while (Date.now() < deadline) {
+    const run = getRun(runId);
+    if (run && run.state !== "running") break;
+    await Bun.sleep(1000);
   }
-  return text(describe(run));
+
+  return text(describe(getRun(runId)!));
 }
 
 /**
@@ -651,7 +673,9 @@ export const TOOLS = [
       WHEN +
       "Dispatches a validated plan across parallel associates, gates each result, " +
       "and aggregates the artifacts. Progress streams to stderr while it runs. " +
-      "Returns a run id immediately -- poll it with status.",
+      "Returns a run id immediately. Then call status with that id and a generous " +
+      "waitMs so one call returns the verdict -- polling in a loop spends the agent's " +
+      "step budget, and a run can outlive it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -685,7 +709,8 @@ export const TOOLS = [
     description:
       WHEN +
       "Dispatches CUBICORE_PLAN.json across parallel associates. Returns a run id " +
-      "immediately; poll it with status. Bounded by a cycle budget so fixes cannot " +
+      "immediately; call status with that id and a generous waitMs to get the verdict in " +
+      "one call. Bounded by a cycle budget so fixes cannot " +
       "loop without end.",
     inputSchema: {
       type: "object",
@@ -888,10 +913,19 @@ export const TOOLS = [
       "once it finishes. Event-fed progress is not available here; the server log has it.",
     inputSchema: {
       type: "object",
-      properties: { runId: { type: "string", description: "Run id returned by execute." } },
+      properties: {
+        runId: { type: "string", description: "Run id returned by execute." },
+        waitMs: {
+          type: "integer",
+          description:
+            "How long to wait for the run to finish, in milliseconds. Pass a generous " +
+            "value so one call returns the verdict instead of a loop of polls -- each " +
+            "poll costs a step from the agent's budget. Zero returns the current state.",
+        },
+      },
       required: ["runId"],
     },
-    handler: async (args: { runId: string }) => status(args.runId),
+    handler: async (args: { runId: string; waitMs?: number }) => status(args.runId, args.waitMs),
   },
 ];
 

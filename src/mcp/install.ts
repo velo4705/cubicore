@@ -78,7 +78,10 @@ export interface InstallResult {
  * cannot call another tool, so it has to answer -- which is the shape we
  * want, because the answer is the question we meant to ask.
  */
-export const PRIMARY_MAX_STEPS = 40;
+export const PRIMARY_MAX_STEPS = 120;
+
+/** The bound Cubicore previously wrote, so it can be raised rather than mistaken for the founder's own. */
+const PRIMARY_MAX_STEPS_PREVIOUS = 40;
 
 /**
  * Add the associate agent to the host config, preserving everything else.
@@ -120,12 +123,23 @@ export function installAgent(explicitPath?: string): InstallResult {
   let maxSteps: number | undefined;
   let maxStepsPreserved = false;
   if (typeof primary.maxSteps === "number") {
-    maxStepsPreserved = true;
+    if (primary.maxSteps < PRIMARY_MAX_STEPS) {
+      // A bound Cubicore wrote earlier is ours to raise. A bound the founder
+      // wrote themselves is theirs to keep.
+      if (primary.maxSteps === PRIMARY_MAX_STEPS_PREVIOUS) {
+        primary.maxSteps = PRIMARY_MAX_STEPS;
+        maxSteps = PRIMARY_MAX_STEPS;
+      } else {
+        maxStepsPreserved = true;
+      }
+    } else {
+      maxStepsPreserved = true;
+    }
   } else {
     primary.maxSteps = PRIMARY_MAX_STEPS;
     maxSteps = PRIMARY_MAX_STEPS;
-    agents.build = primary;
   }
+  agents.build = primary;
 
   for (const agent of CUBICORE_AGENTS) {
     agents[agent.id] = agent.config;

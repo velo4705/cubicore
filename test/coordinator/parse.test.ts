@@ -129,6 +129,35 @@ describe("the emitted schema matches the parser", () => {
     expect(contractProps.sort()).toEqual(Object.keys(VALID.contracts[0]).sort());
   });
 
+  test("the plan's top-level keys are the same in the schema and the parser", () => {
+    // The agreement test only ever covered the contract's properties, so
+    // adding `try` to the schema did not have to be added to the parser
+    // either. Every plan carrying a try block was rejected as "plan has
+    // unknown field try", and the planner had to discover that by trying.
+    const schemaKeys = Object.keys(planSchema.properties).sort();
+    const parserKeys = ["contracts", "graphBudget", "topology", "try"].sort();
+    expect(schemaKeys).toEqual(parserKeys);
+
+    // And the parser must accept a plan carrying every key the schema offers.
+    const withTry = parsePlan(
+      JSON.stringify({
+        ...VALID,
+        try: { command: "npm start", url: "http://127.0.0.1:3000/health" },
+      }),
+    );
+    expect(withTry.try?.command).toBe("npm start");
+  });
+
+  test("a graph with no dependencies may declare zero edges", () => {
+    // A fan-out with no dependencies between its contracts has exactly zero
+    // edges. Requiring a positive number made that unrepresentable, and the
+    // planner declared an edge that did not exist to get past it.
+    const parsed = parsePlan(
+      JSON.stringify({ ...VALID, graphBudget: { ...VALID.graphBudget, edges: 0 } }),
+    );
+    expect(parsed.graphBudget.edges).toBe(0);
+  });
+
   test("the check enum in the schema matches what the planner prompt tells it", () => {
     const checkEnum = (
       planSchema.properties.contracts as {
