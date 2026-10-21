@@ -52,9 +52,24 @@ export class CliRunner implements Runner {
 
     let output = "";
     try {
+      // A worker that hangs must not hang the arm. Without a deadline one
+      // stalled model session holds the whole benchmark open indefinitely, and
+      // a run that never finishes measures nothing. The killed worker is
+      // reported as failed rather than silently dropped.
+      const timeoutMs = this.options.timeoutMs ?? 300_000;
+      const timedOut = Symbol("timeout");
+      const exit = await Promise.race([
+        proc.exited,
+        Bun.sleep(timeoutMs).then(() => timedOut),
+      ]);
+
+      if (exit === timedOut) {
+        proc.kill();
+        throw new Error(`worker exceeded ${timeoutMs}ms and was terminated`);
+      }
+
       output = await new Response(proc.stdout).text();
       this.options.onOutput?.(output);
-      await proc.exited;
     } finally {
       proc.kill();
     }
