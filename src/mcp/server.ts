@@ -748,9 +748,10 @@ async function research(directory: string): Promise<ToolResult> {
  * command has to be stated in the reply. The tools also carry it -- derived
  * from the state on disk -- and the agent is told to repeat what they say.
  */
-const ENDING = "End your reply with the next command on its own line, exactly as the tool " +
-  "reported it. Do not invent one: the tool knows what is true, because it reads the " +
-  "state on disk. If the tool reported no next command, say the work is done. ";
+const ENDING = "End your reply by offering the next steps, exactly as the tool reported " +
+  "them -- the recommended one first, then the alternatives. Do not invent them: the tool " +
+  "knows what is true, because it reads the state on disk. If it reported none, say the " +
+  "work is done. Let the founder choose; do not run the next step for them. ";
 
 const WHEN = "Call this when the founder asks to use Cubicore, " +
   "or to plan, dispatch, test or check work that should be split across " +

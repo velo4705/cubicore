@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { blockingFindings, nextCommand, nextLine, nextStep } from "../src/mcp/next";
+import { blockingFindings, nextCommand, nextLine, nextOptions, nextStep } from "../src/mcp/next";
 import { startRun } from "../src/mcp/runs";
 import type { Plan } from "../src/contracts/types";
 
@@ -91,6 +91,24 @@ describe("the next step", () => {
     const run = startRun(plan(), d);
     writeFileSync(join(d, ".cubicore", "runs.json"), JSON.stringify([{ ...run, state: "cancelled" }]));
     expect(nextStep(d)).toBe("undo");
+  });
+
+  it("offers a choice, with the recommended one first", () => {
+    const d = dir();
+    writeFileSync(join(d, "CUBICORE_PLAN.json"), "{}");
+    const options = nextOptions(d);
+    expect(options.length).toBeGreaterThan(1);
+    expect(options[0].step).toBe("execute");
+    expect(options[0].recommended).toBe(true);
+    // Every option is a real command, and the alternatives are named.
+    expect(options.map((o) => o.step)).toContain("refine");
+    expect(nextLine(d)).toContain("Or:");
+  });
+
+  it("offers only the one thing worth doing when there is nothing to choose", () => {
+    // No plan: there is no meaningful alternative, so a list of nine would
+    // be noise.
+    expect(nextOptions(dir()).map((o) => o.step)).toEqual(["plan"]);
   });
 
   it("names the command, not just the step", () => {
