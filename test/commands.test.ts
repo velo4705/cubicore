@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -143,5 +143,87 @@ describe("pause", () => {
     const paused = pauseRun(run.id, dir)!;
     expect(paused.state).toBe("paused");
     expect(describeRun(paused)).toContain("paused");
+  });
+});
+
+describe("refine does not re-run what already worked", () => {
+  // Refining a plan to add a feature produces a plan containing every
+  // contract -- the ones that passed and the new ones. Dispatching all of
+  // them re-runs the ones that already worked, which is the whole cost of
+  // the second cycle.
+  it("skips a contract an earlier run satisfied and the refine left alone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-refine-"));
+    const plan = planOf([contract("a"), contract("b")]);
+    const run = startRun(plan, dir);
+
+    // Mark both contracts as done by that run.
+    writeFileSync(
+      join(dir, ".cubicore", "runs.json"),
+      JSON.stringify([
+        {
+          ...run,
+          state: "done",
+          progress: [
+            { contractId: "a", state: "done" },
+            { contractId: "b", state: "done" },
+          ],
+        },
+      ]),
+    );
+
+    let dispatched = 0;
+    await dispatch(
+      planOf([contract("a"), contract("b")]),
+      {
+        async run(c: Contract) {
+          dispatched++;
+          return {
+            contractId: c.id, status: "accepted" as const, changedFiles: c.writes,
+            artifact: { contractId: c.id, deliverable: "diff", raw: "x" },
+            usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+            ms: 1, toolCalls: 0, cancelled: false,
+          };
+        },
+      },
+      { async run() { return { exitCode: 0, output: "" }; } },
+      { satisfiedContracts: ["a", "b"] },
+    );
+
+    expect(dispatched).toBe(0);
+  });
+
+  it("still runs a contract the refine changed", async () => {
+    // Identical scope and checks means done. Different means it has to run
+    // again -- the old result says nothing about the new contract.
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-refine-"));
+    const plan = planOf([contract("a")]);
+    const run = startRun(plan, dir);
+    writeFileSync(
+      join(dir, ".cubicore", "runs.json"),
+      JSON.stringify([
+        { ...run, state: "done", progress: [{ contractId: "a", state: "done" }] },
+      ]),
+    );
+
+    let dispatched = 0;
+    await dispatch(
+      planOf([contract("a")]),
+      {
+        async run(c: Contract) {
+          dispatched++;
+          return {
+            contractId: c.id, status: "accepted" as const, changedFiles: c.writes,
+            artifact: { contractId: c.id, deliverable: "diff", raw: "x" },
+            usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+            ms: 1, toolCalls: 0, cancelled: false,
+          };
+        },
+      },
+      { async run() { return { exitCode: 0, output: "" }; } },
+      // The refine changed the scope, so it is not satisfied.
+      { satisfiedContracts: [] },
+    );
+
+    expect(dispatched).toBe(1);
   });
 });

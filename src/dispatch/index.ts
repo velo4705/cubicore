@@ -55,6 +55,15 @@ export interface DispatchOutcome {
 
 export interface DispatchOptions {
   /**
+   * Contracts an earlier run already satisfied, unchanged.
+   *
+   * Ids only, and only for contracts the caller has confirmed are identical
+   * to the ones that passed. A refine that adds a feature produces a plan
+   * containing every contract, and dispatching all of them re-runs the ones
+   * that already worked.
+   */
+  satisfiedContracts?: readonly string[];
+  /**
    * Reports whether the run has been cancelled or paused.
    *
    * Checked between stages. A cancel that only records the request without
@@ -103,7 +112,31 @@ export async function dispatch(
   const ledger = new BudgetLedger(plan.graphBudget);
   const { admitted, deferred } = admit(plan.contracts, ledger);
 
-  options.trace?.("dispatch.admitted", { admitted: admitted.length, deferred: deferred.length });
+  // Contracts a previous run already satisfied are not run again.
+  //
+  // Refining a plan to add a feature is the common case, and the plan it
+  // produces contains every contract -- the eight that passed and the two
+  // that are new. Dispatching all ten re-runs the eight for nothing, which
+  // is five times the spend on the second cycle.
+  //
+  // A contract is skipped only when it is unchanged: same id, same write
+  // scope, same checks, and it passed last time. If the refine touched it,
+  // it runs again.
+  const satisfied = options.satisfiedContracts ?? [];
+  const fresh = admitted.filter((c) => !satisfied.includes(c.id));
+  const reused = admitted.filter((c) => satisfied.includes(c.id));
+
+  options.trace?.("dispatch.admitted", {
+    admitted: fresh.length,
+    deferred: deferred.length,
+    reused: reused.length,
+  });
+
+  for (const contract of reused) {
+    unresolved.push(
+      `${contract.id} — not re-run: unchanged and already satisfied by an earlier run`,
+    );
+  }
 
   for (const contract of deferred) {
     unresolved.push(
@@ -131,7 +164,7 @@ export async function dispatch(
   let halted: "cancelled" | "paused" | null = null;
 
   for (const stage of pipeline.stages) {
-    const batch = admitted.filter((c) => stageOf.get(c.id) === stage.index);
+    const batch = fresh.filter((c) => stageOf.get(c.id) === stage.index);
     if (batch.length === 0) continue;
 
     // A cancelled or paused run stops here. Checked between stages, so

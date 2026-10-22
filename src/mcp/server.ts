@@ -35,7 +35,7 @@ import {
 } from "./protocol";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
-import type { Plan } from "../contracts/types";
+import type { Contract, Plan } from "../contracts/types";
 
 /**
  * Cubicore's MCP front-end.
@@ -111,6 +111,41 @@ async function pumpEvents(
 
 function text(body: string, isError = false): ToolResult {
   return { content: [{ type: "text", text: body }], isError };
+}
+
+
+/**
+ * Contracts an earlier run already satisfied, and which are unchanged.
+ *
+ * Both halves matter. "Passed last time" is not enough: if the refine
+ * changed a contract's scope or its checks, it has to run again. So the
+ * contract is compared field by field against the one that passed, and
+ * only an identical contract is treated as done.
+ */
+export function satisfiedContracts(directory: string, plan: Plan): string[] {
+  const runs = loadRuns(directory);
+  const last = runs.find((r) => r.state === "done");
+  if (!last) return [];
+
+  const done = new Set(last.progress.filter((p) => p.state === "done").map((p) => p.contractId));
+  if (done.size === 0) return [];
+
+  const same = (a: Contract, b: Contract): boolean =>
+    JSON.stringify([...a.writes].sort()) === JSON.stringify([...b.writes].sort()) &&
+    JSON.stringify(
+      a.checks.map((c) => [c.id, c.command, c.gating, c.convergent]).sort(),
+    ) ===
+      JSON.stringify(
+        b.checks.map((c) => [c.id, c.command, c.gating, c.convergent]).sort(),
+      );
+
+  const satisfied: string[] = [];
+  for (const contract of plan.contracts) {
+    if (!done.has(contract.id)) continue;
+    const previous = last.plan.contracts.find((c) => c.id === contract.id);
+    if (previous && same(previous, contract)) satisfied.push(contract.id);
+  }
+  return satisfied;
 }
 
 /**
@@ -248,6 +283,8 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
       },
       // A cancelled or paused run stops dispatching at the next stage.
       halt: () => haltState(runId, dir),
+      // Contracts an earlier run already satisfied, unchanged, are not re-run.
+      satisfiedContracts: satisfiedContracts(dir, parsed),
     },
   );
 
@@ -464,6 +501,12 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
 
   writeFileSync(`${directory}/${PLAN_JSON}`, raw);
   writeFileSync(`${directory}/${PLAN_MD}`, renderPlanMd(parsed, validation));
+
+  if (problems.length === 0) {
+    // A good plan clears the budget. Without this a refine would start at
+    // attempt four and be accepted with findings even when it is perfect.
+    planAttempts.delete(dir);
+  }
 
   if (problems.length > 0) {
     const attempts = attemptCount(dir) + 1;
@@ -1371,18 +1414,29 @@ the results with the test tool.`,
             text:
 `${ENDING}Improve the current plan${args.change ? ` to: ${args.change}` : ""}.
 
-${args.change ? "" : "Ask what should change, or work it out from the plan and the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then:
+${args.change ? "" : "Ask what should change, or work it out from the plan and from the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then decide which of two things this is.
 
-1. Work out what has to change. Contracts that no longer apply are removed; contracts
-   that overlap a neighbour are merged. Every write scope stays disjoint and concrete.
-2. Produce the new plan and pass it to the plan tool. It overwrites the previous one.
-3. Say what changed and why, in a few lines. The founder is deciding whether to spend
-   tokens on this, so the reasoning matters more than the plan.
+**Adding.** The existing work stays and something new is added. Keep every existing contract
+exactly as it is -- same id, same write scope, same checks -- and add contracts for the new
+work. An existing contract that passed is not re-run, so do not restate it or change its
+scope to make room: the new contracts must be disjoint from the old ones on their own.
 
-Do not dispatch. Refining is a decision the founder makes after reading the diff.
+**Changing.** The existing work is wrong or the approach is different. Then rewrite the
+contracts it affects, remove the ones that no longer apply, and merge any that would overlap
+a neighbour.
 
-If the plan is for a project that was already built, the new contracts must not assume
-the old ones still exist -- read the files, not just the plan.`,
+Either way, the new plan describes the whole project. Do not write a plan containing only the
+new contracts -- the plan is what the founder reads to understand the project.
+
+Every write scope stays disjoint and concrete, and every contract still has a check that can
+fail. A contract that passed before and is unchanged is not re-run, so a contract you did not
+touch costs nothing; a contract you did touch is run again from scratch.
+
+Do not dispatch. Refining is a decision the founder makes after reading the diff, and the
+next command will say so.
+
+If the plan is for a project that was already built, read the files and not just the plan --
+the new contracts must not assume the old ones still exist.`,
           },
         },
       ],
