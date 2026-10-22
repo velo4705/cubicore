@@ -71,6 +71,15 @@ export interface DispatchOptions {
    * passes because it learned nothing.
    */
   halt?: () => "cancelled" | "paused" | null;
+  /**
+   * Integrate a passed worker's work, and discard a failed one's.
+   *
+   * The lifecycle is: collect changes, check permissions, validate results,
+   * then integrate the approved changes. Integration is last, and only for
+   * what passed.
+   */
+  collect?: (contractId: string) => void;
+  discard?: (contractId: string) => void;
   baseline?: readonly Check[];
   /** Revise rounds. One is the designed maximum (D6). */
   maxRetries?: number;
@@ -205,9 +214,17 @@ export async function dispatch(
           passed,
           gates: gates.map((g) => `${g.gate}:${g.passed ? "ok" : "fail"}`),
         });
-        if (passed) return { contract, result, gates, passed };
+
+        // Integrate only what passed. A worker whose checks failed keeps its
+        // work in its own worktree, so an unapproved change never reaches the
+        // shared tree -- and when it retries, it retries from a clean copy.
+        if (passed) {
+          options.collect?.(contract.id);
+          return { contract, result, gates, passed };
+        }
 
         if (!shouldRetry(gates) || attempt === maxRetries) {
+          options.discard?.(contract.id);
           return { contract, result, gates, passed };
         }
 
@@ -224,6 +241,10 @@ export async function dispatch(
         // The retry is the only moment a stronger model can change the
         // outcome, so the attempt number is passed down and routing escalates
         // rather than the first attempt paying frontier tokens.
+        // The failed attempt's work is not integrated and is not carried
+        // forward: the retry starts from the baseline, so a change that broke
+        // a check cannot be inherited by the attempt that fixes it.
+        options.discard?.(contract.id);
         result = await runner.run(contract, attempt + 1);
 
         if (before && options.repo) {

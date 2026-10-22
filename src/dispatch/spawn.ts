@@ -2,6 +2,7 @@ import type { Artifact, Contract, WorkerResult } from "../contracts/types";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
 import { changedFilesSince } from "./changes";
+import { collectWorktree, createWorktree, removeWorktree, type Worktree } from "./worktree";
 import { routeModel, type ModelConfig } from "./routing";
 import { BudgetEnforcer } from "../adapters/opencode/hooks";
 import { deriveCaps } from "./budgets";
@@ -61,6 +62,8 @@ export interface SessionSpawner {
  */
 export class WorkerSessions {
   private readonly observers = new Map<string, RunObserver>();
+  /** The worktree each associate worked in, so only approved work is collected. */
+  private readonly worktrees = new Map<string, Worktree>();
   /** Finished workers, so run-level cost can be reported after dispatch. */
   private readonly settled: WorkerResult[] = [];
 
@@ -78,6 +81,8 @@ export class WorkerSessions {
     /** The project root, and the baseline commit its changes are measured against. */
     private readonly root: string = process.cwd(),
     private readonly baseline?: string,
+    /** Give each associate its own worktree. Off means they share the tree. */
+    private readonly isolate = true,
   ) {}
 
   /** Wire this to the plugin's `event` hook, once. */
@@ -96,12 +101,20 @@ export class WorkerSessions {
       ? routeModel(contract, this.models, { attempt })
       : undefined;
 
+    // Isolation first: the associate works in its own checkout of the
+    // repository, so two workers cannot be in the same file at the same
+    // moment. opencode 1.18.x cannot restrict an agent to a path, so the
+    // boundary has to be the filesystem.
+    const worktree = this.isolate ? createWorktree(this.root, contract) : undefined;
+
     const { sessionId } = await this.spawner.create({
       title: `${contract.id} (associate)`,
+      ...(worktree && !worktree.degraded ? { directory: worktree.path } : {}),
     });
     observer.attach(sessionId);
     this.trace?.("worker.created", { contractId: contract.id, sessionId, attempt });
     this.observers.set(contract.id, observer);
+    if (worktree) this.worktrees.set(contract.id, worktree);
     this.enforcer?.register(sessionId, contract.id, deriveCaps(contract));
 
     try {
@@ -183,6 +196,32 @@ export class WorkerSessions {
     let total = EMPTY_USAGE;
     for (const result of this.settled) total = addUsage(total, result.usage);
     return total;
+  }
+
+  /**
+   * Collect a finished worker's work, once the gates have passed.
+   *
+   * The order matters and it is the whole point of a worktree: the worker's
+   * files stay in its own checkout until its checks have passed. Collecting in
+   * a `finally` would integrate the changes of a worker whose gates failed,
+   * which is integrating unapproved work.
+   */
+  collect(contractId: string): { copied: string[]; missing: string[] } {
+    const worktree = this.worktrees.get(contractId);
+    if (!worktree) return { copied: [], missing: [] };
+
+    const result = collectWorktree(worktree, this.root);
+    removeWorktree(worktree, this.root);
+    this.worktrees.delete(contractId);
+    return result;
+  }
+
+  /** Discard a finished worker's work without integrating it. */
+  discard(contractId: string): void {
+    const worktree = this.worktrees.get(contractId);
+    if (!worktree) return;
+    removeWorktree(worktree, this.root);
+    this.worktrees.delete(contractId);
   }
 
   asRunner(): WorkerRunner {

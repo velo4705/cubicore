@@ -30,7 +30,7 @@ Once done, Hit the "execute" command - The Main agents summon the N "cubicores" 
 
 In the end, It finally gives the result you (the founder) wanted. You can try the "test" command to go even further, by asking the Main agent to summon testers for your project, to make sure all broken interactions, and errors, and fixable warnings are recorded in the DEBUG file. Again, anyone is free to see the DEBUG file, as it shows how many problems it has been encountered through the corners of your masterpiece.
 
-After this, Run the "execute" command again, and it starts fixing the issues once again, same procedures as it was. Basically a "rinse-and-repeat" -- with one difference from the original sketch: the loop is **capped at three cycles**. The bound lives in code rather than in a prompt, so it cannot be talked out of. After the cap, the remaining findings are reported as unresolved for a human to triage rather than fixed by another agent that keeps finding new things to complain about.
+After this, Run the "fix" command, and it starts fixing the issues by reading the DEBUG file. These two commands: "test" and "fix" are 
 
 About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
 

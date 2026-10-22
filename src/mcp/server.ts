@@ -283,6 +283,9 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
       },
       // A cancelled or paused run stops dispatching at the next stage.
       halt: () => haltState(runId, dir),
+      // Integrate only what passed; discard what did not.
+      collect: (contractId) => workers.collect(contractId),
+      discard: (contractId) => workers.discard(contractId),
       // Contracts an earlier run already satisfied, unchanged, are not re-run.
       satisfiedContracts: satisfiedContracts(dir, parsed),
     },

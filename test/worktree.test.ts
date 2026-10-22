@@ -99,3 +99,54 @@ describe("one worktree per associate", () => {
     expect(existsSync(a.path)).toBe(false);
   });
 });
+
+describe("only approved work is integrated", () => {
+  // The lifecycle is: collect changes, check permissions, validate results,
+  // then integrate the approved changes. Integration is last, and only for
+  // what passed. A worker whose checks failed must not leave its changes in
+  // the shared tree.
+  it("integrates a passed worker and discards a failed one", async () => {
+    const { dispatch } = await import("../src/dispatch");
+    const collected: string[] = [];
+    const discarded: string[] = [];
+
+    const good = { ...contract("good", ["src/good.ts"]), checks: [
+      { id: "k", kind: "intent", command: "check src/good.ts", expectation: "e", gating: "blocking", convergent: true },
+    ] };
+    const bad = { ...contract("bad", ["src/bad.ts"]), checks: [
+      { id: "k", kind: "intent", command: "check src/bad.ts", expectation: "e", gating: "blocking", convergent: true },
+    ] };
+
+    const outcome = await dispatch(
+      {
+        topology: "fan-out",
+        contracts: [good, bad],
+        graphBudget: { nodes: 2, edges: 1, tokens: 2000, wallMs: 20000 },
+      } as never,
+      {
+        async run(c: Contract) {
+          return {
+            contractId: c.id, status: "accepted" as const, changedFiles: c.writes,
+            artifact: { contractId: c.id, deliverable: "diff", raw: "x" },
+            usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+            ms: 1, toolCalls: 0, cancelled: false,
+          };
+        },
+      },
+      {
+        // The bad contract's check fails; the good one's passes.
+        async run(command: string) {
+          return { exitCode: command.includes("src/bad.ts") ? 1 : 0, output: "" };
+        },
+      },
+      {
+        collect: (id) => collected.push(id),
+        discard: (id) => discarded.push(id),
+      },
+    );
+
+    expect(collected).toEqual(["good"]);
+    expect(discarded).toContain("bad");
+    expect(outcome.accepted.map((r) => r.contractId)).toEqual(["good"]);
+  });
+});
