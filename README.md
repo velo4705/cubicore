@@ -30,7 +30,7 @@ Once done, Hit the "execute" command - The Main agents summon the N "cubicores" 
 
 In the end, It finally gives the result you (the founder) wanted. You can try the "test" command to go even further, by asking the Main agent to summon testers for your project, to make sure all broken interactions, and errors, and fixable warnings are recorded in the DEBUG file. Again, anyone is free to see the DEBUG file, as it shows how many problems it has been encountered through the corners of your masterpiece.
 
-After this, Run the "fix" command, and it starts fixing the issues by reading the DEBUG file. These two commands: "test" and "fix" are 
+After this, Run the "fix" command, and it starts fixing the issues by reading the DEBUG file. These two commands: "test" and "fix" are basically "rinse-and-repeat" - which means once errors are fixed, the next time when the user retests the project and its codebase, it shouldnt have a DEBUG file present.
 
 About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
 
@@ -50,9 +50,40 @@ Currently, we only support Opencode for now.
 
 | Command | What it does |
 |---|---|
-| `/cubicore:plan` | Research the repository, ask what the repo cannot answer, write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json` |
-| `/cubicore:execute` | Write one brief per associate, summon them in parallel, gate each result |
-| `/cubicore:test` | Run the mechanical matrix, write `CUBICORE_DEBUG.md` |
+| `/cubicore:plan` | Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
+| `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Prefers the host's own inline sub-agents so every associate renders as a visible step; falls back to Cubicore's own sessions when the host has none. |
+| `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
+| `/cubicore:refine` | Change the current plan before running it, or add a feature to a project that has already been built. Contracts that already passed and were left alone are not re-run, so the second cycle costs the change and not the project. |
+| `/cubicore:fix` | Fix what the test command found. Reads `CUBICORE_DEBUG.md`, plans the fixes and dispatches them — the work is already decided, so it skips the re-planning and the checks that are already green. |
+| `/cubicore:estimate` | What the plan will cost before anything is spent: how many associates, the token and wall ceilings, and who owns what. It is the plan's own budget, not a forecast. |
+| `/cubicore:undo` | Undo the last execution — discard its changes and return the tree to the baseline commit Cubicore recorded. Destroys work, so it says what it will destroy first. |
+| `/cubicore:cancel` | Cancel a run. The associates that have not finished are stopped and the rest are marked skipped. The work already on disk stays. |
+| `/cubicore:deploy` | Plan the deployment. Asks about the tier, offers stacks with a recommendation, writes the deploy files, and explains the manual steps. Deploys nothing. |
+
+### The flow guides itself
+
+After every step the agent ends its reply with what to type next, and the alternatives — the recommended one first. It is derived from the state on disk, so it survives a restart and a new session days later.
+
+```
+no plan            /cubicore:plan
+after plan         /cubicore:execute   · estimate · refine
+run in flight      /cubicore:status
+after the run      /cubicore:test      · refine · undo
+blocking findings  /cubicore:fix       · refine · undo
+everything passes  /cubicore:deploy    · refine · undo
+```
+
+### How the associates are kept apart
+
+Three layers, and only the first was ever airtight.
+
+**At plan time**, the validator rejects overlapping write scopes before a token is spent. It is a conservative over-approximation — `src/routes/` and `src/routes/users.ts` collide, `src/a.ts` and `src/b.ts` do not — because over-reporting costs one re-plan while under-reporting costs a merge conflict.
+
+**During the work**, each associate gets its own git worktree, so two workers cannot be in one file at the same moment. The session is created and prompted there, and the contract's declared writes are copied back only after its checks pass. Because the scopes are disjoint, that copy cannot conflict. Where git is unavailable the isolate degrades to the shared tree and says so.
+
+**After the work**, the scope gate checks what actually changed against what was declared. A worker that strayed is caught, and a check that could not run at all is reported as unverified rather than as a failure — no evidence either way, and not retryable, because a revision cannot install a missing dependency.
+
+opencode 1.18.x cannot restrict an agent to a path — its permissions are per-action, not per-resource — so the filesystem is the only boundary available.
 
 ## What Cubicore is for
 
@@ -101,6 +132,13 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
   not divide-and-conquer.
 - **Two dispatch paths.** Inline sub-tasks where the host supports them, sessions
   where it does not. Both gate the same way.
+- **One worktree per associate.** opencode 1.18.x cannot restrict an agent to
+  a path, so the filesystem is the boundary: two workers cannot be in one file
+  at the same moment. A worker's files are copied back only after its checks
+  pass, so an unapproved change never reaches the shared tree.
+- **Nine commands, and the flow guides itself.** Every reply ends with the
+  next step and the alternatives, derived from the state on disk rather than
+  remembered.
 - **A bounded loop.** `plan → execute → test → execute`, capped at three
   cycles. Not "until the debug file is empty" — that is an unbounded loop whose
   terminal case is an agent that never stops finding things to fix.
@@ -112,11 +150,15 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
 - **v1 catches mechanical failures only.** No `judgment` checks are admitted;
   the validator rejects them. Whether a feature is *useful* is not something
   the matrix can decide.
-- **Inline dispatch enforces scope after the fact.** A startup hook cannot know
-  the contracts, so per-contract permissions are unavailable there. The scope
-  gate catches a violation rather than preventing it. The session path prevents.
-- **X and Y are unmeasured.** The cost claim has one arm of three. The
-  orchestrated benchmark arm now dispatches and gates, but a completed
-  three-arm run has not been recorded.
-- **Workers get `shell: *`.** Scope violations are detected after the fact.
+- **X and Y are measured, but not in one controlled run.** The three arms have
+  each run against the same fixture, and the ratios are large enough to
+  survive that — but the digits do not come from one clock.
+  - **Y**, total tokens against naive fan-out: **0.29**
+  - **X**, per-worker cost against naive fan-out: **0.29**
+  - Wall clock against naive fan-out: **2.9× faster**
+  - Against a *single* agent: parity on wall clock and **3.1× more tokens**
+- **The inline path's shell is still unrestricted.** opencode 1.18.x cannot
+  restrict an agent to a path, so a worker with a shell can run anything. The
+  worktree contains the damage — a stray file stays in the worker's own
+  checkout and is not copied back — but the command still ran.
 
