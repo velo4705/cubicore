@@ -7,12 +7,15 @@ import { RunRecorder } from "../telemetry/report";
 import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
-import { startRun, finishRun, failRun, describe, getRun } from "./runs";
+import {
+  cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
+  recordProgress, resumeRun, startRun,
+} from "./runs";
 import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { tryIt } from "../plan/try";
-import { prepareRepository } from "../dispatch/changes";
+import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
@@ -172,10 +175,9 @@ async function resolveParent(parentSessionID?: string): Promise<string | undefin
   }
 }
 
-async function runToCompletion(raw: string, runId: string, parentSessionID?: string): Promise<string> {
+async function runToCompletion(raw: string, runId: string, parentSessionID?: string, dir = process.cwd()): Promise<string> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
-  const dir = runtime.directory;
 
   let parsed: Plan;
   try {
@@ -229,6 +231,8 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
         anchors: () => new Map(),
         testFiles: () => [],
       },
+      // A cancelled or paused run stops dispatching at the next stage.
+      halt: () => haltState(runId, dir),
     },
   );
 
@@ -321,13 +325,13 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
     process.stderr.write(`[cubicore] ${model.reason}\n`);
   }
 
-  const run = startRun(parsed);
+  const run = startRun(parsed, dir);
   // Nest under the Main agent's session so each associate appears in the host's
   // sub-agent view. A caller may pass one explicitly; otherwise the newest
   // session in this directory is almost always the caller.
-  void resolveParent(parentSessionID).then((parent) => runToCompletion(raw, run.id, parent))
-    .then((summary) => finishRun(run.id, summary))
-    .catch((error) => failRun(run.id, error instanceof Error ? error.message : String(error)));
+  void resolveParent(parentSessionID).then((parent) => runToCompletion(raw, run.id, parent, dir))
+    .then((summary) => finishRun(run.id, dir, summary))
+    .catch((error) => failRun(run.id, dir, error instanceof Error ? error.message : String(error)));
 
   return text(
     [
@@ -495,13 +499,13 @@ async function executeFile(directory: string, parentSessionID?: string): Promise
   if (!loaded.ok) return text(`Refusing to dispatch: ${loaded.reason}`, true);
 
   const parsed = loaded.plan;
-  const run = startRun(parsed);
+  const run = startRun(parsed, directory);
   writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
 
   void resolveParent(parentSessionID)
-    .then((parent) => runToCompletion(raw, run.id, parent))
-    .then((summary) => finishRun(run.id, summary))
-    .catch((error) => failRun(run.id, error instanceof Error ? error.message : String(error)));
+    .then((parent) => runToCompletion(raw, run.id, parent, directory))
+    .then((summary) => finishRun(run.id, directory, summary))
+    .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
 
   return text(
     [`${gate.reason}`, `Started ${run.id} -- ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
@@ -736,6 +740,119 @@ export const TOOLS = [
       executeFile(args.directory ?? process.cwd(), args.parentSessionID),
   },
   {
+    name: "refine",
+    description:
+      "Improve the current plan before running it, or add features to a project that has " +
+      "already been built. Reads the existing plan, works out what should change, and " +
+      "rewrites the plan.",
+    arguments: [{ name: "change", description: "What to change or add", required: false }],
+  },
+  {
+    name: "fix",
+    description:
+      "Fixes what the test command found. Reads CUBICORE_DEBUG.md, plans the fixes, and " +
+      "dispatches them. Simpler than the full execute cycle because the work is already " +
+      "decided.",
+    arguments: [],
+  },
+  {
+    name: "undo",
+    description:
+      "Undoes the last execution, discarding its changes and returning the tree to the " +
+      "baseline commit. Destroys work, so it says what it would do first.",
+    arguments: [],
+  },
+  {
+    name: "estimate",
+    description:
+      "Estimates what the current plan will cost before anything is spent: how many " +
+      "associates, the token and wall ceilings, and the shape of the pipeline.",
+    arguments: [],
+  },
+  {
+    name: "pause",
+    description:
+      "Pauses a run between associates. Work already in flight finishes; nothing new starts.",
+    arguments: [],
+  },
+  {
+    name: "resume",
+    description: "Resumes a paused run, picking up where it stopped.",
+    arguments: [],
+  },
+  {
+    name: "pause",
+    description:
+      WHEN +
+      "Pauses a run between associates. Work already in flight finishes; nothing new " +
+      "starts. Pass a run id, or nothing to pause the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to pause; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "running") {
+        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
+      }
+      const paused = pauseRun(run.id, dir);
+      return text(
+        paused
+          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
+          : `Could not pause ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "resume",
+    description:
+      WHEN +
+      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
+      "to resume the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to resume; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "paused") {
+        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
+      }
+      const resumed = resumeRun(run.id, dir);
+      return text(
+        resumed
+          ? `Resumed ${run.id}. The remaining associates will dispatch.`
+          : `Could not resume ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "cancel",
+    description: "Cancels a run. Stops the associates that have not finished.",
+    arguments: [],
+  },
+  {
+    name: "deploy",
+    description:
+      "Plans how to deploy the project. Asks about the tier, offers deployment stacks with a " +
+      "recommendation, writes the deploy files, and explains the manual steps.",
+    arguments: [],
+  },
+  {
     name: "test",
     description:
       WHEN +
@@ -919,6 +1036,197 @@ export const TOOLS = [
     handler: async (args: { directory?: string; projectKind?: string }) => research(args.directory ?? process.cwd()),
   },
   {
+    name: "pause",
+    description:
+      WHEN +
+      "Pauses a run between associates. Work already in flight finishes; nothing new " +
+      "starts. Pass a run id, or nothing to pause the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to pause; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "running") {
+        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
+      }
+      const paused = pauseRun(run.id, dir);
+      return text(
+        paused
+          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
+          : `Could not pause ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "resume",
+    description:
+      WHEN +
+      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
+      "to resume the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to resume; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "paused") {
+        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
+      }
+      const resumed = resumeRun(run.id, dir);
+      return text(
+        resumed
+          ? `Resumed ${run.id}. The remaining associates will dispatch.`
+          : `Could not resume ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "cancel",
+    description:
+      WHEN +
+      "Cancels a run, a plan, or both. Stops the associates that have not finished, " +
+      "marks the rest skipped, and records why. The run stays on disk so it can be " +
+      "inspected. Pass a run id, or nothing to cancel the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to cancel; omit for the most recent." },
+        reason: { type: "string", description: "Why it is being cancelled." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; reason?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to cancel.", true);
+
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state === "done") {
+        return text(`Run ${run.id} already finished. Cancelling it would change nothing.`);
+      }
+
+      const cancelled = cancelRun(run.id, dir, args.reason ?? "cancelled by the founder");
+      if (!cancelled) return text(`Could not cancel ${run.id}.`, true);
+
+      // The plan on disk is a separate thing from the run: cancelling the work
+      // should not silently delete the plan, but it should stop the next
+      // dispatch from picking it up by accident.
+      return text(
+        [
+          `Cancelled ${run.id}: ${cancelled.cancelledBecause}.`,
+          `${cancelled.progress.filter((p) => p.state === "skipped").length} associate(s) skipped.`,
+          `The plan is still on disk. Use undo to discard it as well, or execute to run it again.`,
+        ].join("\n"),
+      );
+    },
+  },
+  {
+    name: "estimate",
+    description:
+      WHEN +
+      "Estimates what a plan will cost before anything is spent: how many associates, " +
+      "the token and wall ceilings, and the shape of the pipeline. This is the plan's own " +
+      "budget, not a prediction -- a free model's latency varies by more than the " +
+      "difference between the arms, so read the time as a floor.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plan: { type: "string", description: "Plan JSON; omit to use CUBICORE_PLAN.json" },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { plan?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      let raw = args.plan;
+      if (!raw) {
+        try {
+          raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+        } catch {
+          return text(`No ${PLAN_JSON} in ${dir}. Plan first, or pass the plan.`, true);
+        }
+      }
+      const loaded = loadPlan(raw);
+      if (!loaded.ok) return text(`Cannot estimate: ${loaded.reason}`, true);
+
+      const plan = loaded.plan;
+      const tokens = plan.contracts.reduce((sum, c) => sum + (c.budget?.tokens ?? 0), 0);
+      const wall = plan.contracts.reduce((sum, c) => sum + (c.budget?.wallMs ?? 0), 0);
+      const perContract = plan.contracts.map(
+        (c) => `  - ${c.id}: ${c.writes.join(", ") || "(report)"} -- ${Math.round((c.budget?.wallMs ?? 0) / 1000)}s, ${(c.budget?.tokens ?? 0).toLocaleString()} tokens`,
+      );
+
+      return text(
+        [
+          `Estimate for ${plan.contracts.length} associate(s), topology ${plan.topology}.`,
+          ``,
+          `  token ceiling: ${tokens.toLocaleString()}`,
+          `  wall ceiling:  ${Math.round(wall / 1000)}s across the plan`,
+          `  graph budget:  ${plan.graphBudget.nodes} nodes, ${plan.graphBudget.edges} edges`,
+          ``,
+          ...perContract,
+          ``,
+          `This is the plan's own budget, not a prediction. Treat the time as a floor: a free`,
+          `model's latency has been observed to vary by more than half between identical runs.`,
+        ].join("\n"),
+      );
+    },
+  },
+  {
+    name: "undo",
+    description:
+      WHEN +
+      "Undoes the last execution, discarding the changes it made and returning the tree to " +
+      "the baseline commit Cubicore recorded. Also removes the plan files. This destroys " +
+      "work, so it asks for confirmation in the response rather than doing it silently.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to undo; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+        discardPlan: { type: "boolean", description: "Also remove the plan files." },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string; discardPlan?: boolean }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+
+      if (!run) return text("There is nothing to undo in this directory.", true);
+
+      const undone = await discardChanges(run, dir);
+      if (args.discardPlan) {
+        for (const file of [PLAN_JSON, PLAN_MD, DEBUG_MD]) {
+          try { await Bun.file(`${dir}/${file}`).unlink(); } catch {}
+        }
+      }
+
+      return text(
+        [
+          undone.ok
+            ? `Undid ${run.id}: the tree is back at the baseline commit.`
+            : `Could not discard the changes: ${undone.reason}`,
+          args.discardPlan ? "The plan files were removed as well." : "The plan files are still there.",
+        ].join("\n"),
+      );
+    },
+  },
+  {
     name: "status",
     description:
       WHEN +
@@ -955,7 +1263,7 @@ export const TOOLS = [
  * choice, so the tools remain the reliable path and these are an improvement
  * where supported.
  */
-const PROMPTS = [
+export const PROMPTS = [
   {
     name: "plan",
     description:
@@ -969,6 +1277,119 @@ const PROMPTS = [
       "Dispatch a plan. Prefers the host's inline sub-agents so each associate renders as a " +
       "visible step; falls back to Cubicore's own sessions when the host has none.",
     arguments: [{ name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" }],
+  },
+  {
+    name: "refine",
+    description:
+      "Improve the current plan before running it, or add features to a project that has " +
+      "already been built. Reads the existing plan, works out what should change, and " +
+      "rewrites the plan.",
+    arguments: [{ name: "change", description: "What to change or add", required: false }],
+  },
+  {
+    name: "fix",
+    description:
+      "Fixes what the test command found. Reads CUBICORE_DEBUG.md, plans the fixes, and " +
+      "dispatches them. Simpler than the full execute cycle because the work is already " +
+      "decided.",
+    arguments: [],
+  },
+  {
+    name: "undo",
+    description:
+      "Undoes the last execution, discarding its changes and returning the tree to the " +
+      "baseline commit. Destroys work, so it says what it would do first.",
+    arguments: [],
+  },
+  {
+    name: "estimate",
+    description:
+      "Estimates what the current plan will cost before anything is spent: how many " +
+      "associates, the token and wall ceilings, and the shape of the pipeline.",
+    arguments: [],
+  },
+  {
+    name: "pause",
+    description:
+      "Pauses a run between associates. Work already in flight finishes; nothing new starts.",
+    arguments: [],
+  },
+  {
+    name: "resume",
+    description: "Resumes a paused run, picking up where it stopped.",
+    arguments: [],
+  },
+  {
+    name: "pause",
+    description:
+      WHEN +
+      "Pauses a run between associates. Work already in flight finishes; nothing new " +
+      "starts. Pass a run id, or nothing to pause the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to pause; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "running") {
+        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
+      }
+      const paused = pauseRun(run.id, dir);
+      return text(
+        paused
+          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
+          : `Could not pause ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "resume",
+    description:
+      WHEN +
+      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
+      "to resume the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to resume; omit for the most recent." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state !== "paused") {
+        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
+      }
+      const resumed = resumeRun(run.id, dir);
+      return text(
+        resumed
+          ? `Resumed ${run.id}. The remaining associates will dispatch.`
+          : `Could not resume ${run.id}.`,
+      );
+    },
+  },
+  {
+    name: "cancel",
+    description: "Cancels a run. Stops the associates that have not finished.",
+    arguments: [],
+  },
+  {
+    name: "deploy",
+    description:
+      "Plans how to deploy the project. Asks about the tier, offers deployment stacks with a " +
+      "recommendation, writes the deploy files, and explains the manual steps.",
+    arguments: [],
   },
   {
     name: "test",
@@ -1132,6 +1553,214 @@ the results with the test tool.`,
     };
   }
 
+  if (name === "refine") {
+    return {
+      description: "Improve the plan, or add features to what was built.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Improve the current plan${args.change ? ` to: ${args.change}` : ""}.
+
+${args.change ? "" : "Ask what should change, or work it out from the plan and the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then:
+
+1. Work out what has to change. Contracts that no longer apply are removed; contracts
+   that overlap a neighbour are merged. Every write scope stays disjoint and concrete.
+2. Produce the new plan and pass it to the plan tool. It overwrites the previous one.
+3. Say what changed and why, in a few lines. The founder is deciding whether to spend
+   tokens on this, so the reasoning matters more than the plan.
+
+Do not dispatch. Refining is a decision the founder makes after reading the diff.
+
+If the plan is for a project that was already built, the new contracts must not assume
+the old ones still exist -- read the files, not just the plan.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "fix") {
+    return {
+      description: "Fix what the test command found.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Fix what the test command found.
+
+Read CUBICORE_DEBUG.md. It lists the findings, each with a source and a suggested fix.
+Turn each one into a contract:
+
+- One contract per finding that needs a code change, scoped to the files that fix it.
+- Keep the scopes disjoint. Two findings in the same file are one contract, not two.
+- The check that caught it becomes the check that guards it, so the same failure cannot
+  come back silently. A grep is not enough -- the check has to be able to fail.
+
+Then pass the plan to the plan tool and dispatch it. This is the same loop as execute,
+with the work already decided, so do not re-plan from scratch and do not re-run the
+checks that are already green.
+
+Findings marked advisory are judgement calls, not defects. They are not yours to fix
+unless the founder asks.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "undo") {
+    return {
+      description: "Undo the last execution.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Undo the last execution.
+
+Call the undo tool. It discards the changes the last run made and returns the tree to
+the baseline commit Cubicore recorded before any associate started, and removes the files
+that run created.
+
+This destroys work, so before calling it, say in one line what will be discarded --
+which files, and whether the plan files go too. Then call the tool and report what it
+actually did. If the tool could not do it, say so plainly rather than claiming the
+tree is clean.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "estimate") {
+    return {
+      description: "What the plan will cost.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Estimate what the current plan will cost.
+
+Call the estimate tool and report what it says: how many associates, the token and
+wall ceilings, and which files each one owns.
+
+Then add one line of honest interpretation. The time figure is the plan's own budget,
+not a prediction -- a free model's latency has been observed to vary by more than half
+between identical runs, so it is a floor, not an estimate of what will happen.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "pause") {
+    return {
+      description: "Pause a run between associates.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Pause the current run.
+
+Call the cancel tool's sibling -- pause the run. Work already in flight finishes;
+nothing new starts. Tell the founder which associates have finished and which are
+still to come, and that a run can be resumed.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "resume") {
+    return {
+      description: "Resume a paused run.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Resume the paused run.
+
+Call the resume tool, then report the state. If the run had already finished, say so
+rather than restarting it.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "cancel") {
+    return {
+      description: "Cancel the current run.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Cancel the current run.
+
+Call the cancel tool. Associates that have not finished are stopped and the rest are
+marked skipped. The run stays on disk so it can be inspected, and the plan files stay
+too -- cancelling the work is not the same as discarding the plan.
+
+Say what was cancelled and how much of the work had already landed.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "deploy") {
+    return {
+      description: "Plan the deployment.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Plan how to deploy this project.
+
+Work in this order.
+
+**1. Ask about the tier.** Free or paid, and what it has to include. A free tier
+usually means a static host, a managed free database and a free CI tier; a paid one
+buys a server, a managed database and a preview environment. This changes every later
+answer, so ask before offering anything.
+
+**2. Offer the stacks.** Three or four real options, each with what it costs, what it
+gives up, and what it is annoying about. Name one as the recommendation and say why --
+the founder can pick differently. Some things worth knowing: a container platform is
+the most portable and the most fiddly; a serverless platform is the cheapest and the
+least flexible; a static host is free and will not run a server; a VPS is boring,
+predictable and yours to maintain.
+
+**3. Write the deploy files.** A plan of contracts, one per file: the container
+definition, the platform configuration, the environment example, the health check, the
+CI workflow. Concrete paths, disjoint scopes, and a check that can fail.
+
+**4. Explain it.** The manual steps to deploy by hand, in order, with the environment
+variables the founder has to set. Assume they have never deployed this stack before.
+
+Do not deploy anything. Write the files and explain the steps.`,
+          },
+        },
+      ],
+    };
+  }
+
   if (name === "test") {
     return {
       description: "Test the delivered work and record findings.",
@@ -1217,7 +1846,7 @@ export async function serve(): Promise<void> {
         // read at all -- a status poll behind a long wait never arrived.
         void (async () => {
           try {
-            respond(await tool.handler((params.arguments ?? {}) as never));
+            respond(await tool.handler!((params.arguments ?? {}) as never));
           } catch (error) {
             respond({
               content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],

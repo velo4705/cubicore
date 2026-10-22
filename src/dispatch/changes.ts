@@ -162,3 +162,39 @@ export async function prepareRepository(root: string): Promise<PrepareResult> {
     baseline: head.ok ? head.out.trim() : undefined,
   };
 }
+
+/**
+ * Discard everything a run changed, returning the tree to the baseline.
+ *
+ * Only safe because the baseline exists: Cubicore made a commit before any
+ * associate ran, so "before" is a commit rather than a recollection. Untracked
+ * files are removed as well, since that is where a new module ends up.
+ */
+export async function discardChanges(
+  run: { baseline?: string },
+  root: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!(await isRepository(root))) {
+    return { ok: false, reason: "not a git repository, so there is no baseline to go back to" };
+  }
+
+  const baseline = run.baseline;
+  if (!baseline) {
+    return {
+      ok: false,
+      reason:
+        "this run has no baseline commit, so there is nothing to go back to. The project " +
+        "was probably not a git repository when the plan was written.",
+    };
+  }
+
+  // Tracked changes go back to the baseline.
+  const reset = await git(["reset", "--hard", baseline], root);
+  if (!reset.ok) return { ok: false, reason: "git reset failed" };
+
+  // Files the run created were never in the baseline, so reset leaves them.
+  const clean = await git(["clean", "-fd"], root);
+  if (!clean.ok) return { ok: false, reason: "git reset worked but untracked files could not be removed" };
+
+  return { ok: true };
+}

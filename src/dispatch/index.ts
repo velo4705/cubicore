@@ -45,6 +45,14 @@ export interface DispatchOutcome {
 }
 
 export interface DispatchOptions {
+  /**
+   * Reports whether the run has been cancelled or paused.
+   *
+   * Checked between stages. A cancel that only records the request without
+   * stopping the dispatch would be the same class of lie as a gate that
+   * passes because it learned nothing.
+   */
+  halt?: () => "cancelled" | "paused" | null;
   baseline?: readonly Check[];
   /** Revise rounds. One is the designed maximum (D6). */
   maxRetries?: number;
@@ -115,6 +123,23 @@ export async function dispatch(
   for (const stage of pipeline.stages) {
     const batch = admitted.filter((c) => stageOf.get(c.id) === stage.index);
     if (batch.length === 0) continue;
+
+    // A cancelled or paused run stops here. Checked between stages, so
+    // cancelling actually stops the spending rather than only recording
+    // that it was asked to.
+    const halt = options.halt?.();
+    if (halt === "cancelled") {
+      for (const contract of batch) {
+        unresolved.push(`${contract.id} — skipped: the run was cancelled`);
+      }
+      break;
+    }
+    if (halt === "paused") {
+      for (const contract of batch) {
+        unresolved.push(`${contract.id} — deferred: the run was paused`);
+      }
+      break;
+    }
 
     const results = await Promise.all(
       batch.map(async (contract) => {
