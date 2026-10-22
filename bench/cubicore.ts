@@ -90,6 +90,8 @@ export class OrchestratedRunner {
       // Event-fed usage is zero; the session row is the truth.
       this.usage.resolver(),
       this.trace,
+      // The project root, so the scope check reads the tree the work is in.
+      directory,
     );
     this.workerOnEvent = (event: unknown) => sessions.onEvent(event);
 

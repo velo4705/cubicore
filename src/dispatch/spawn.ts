@@ -154,10 +154,17 @@ export class WorkerSessions {
       // manufacture exactly that false positive.
       const observed = snapshot.changedFiles;
       const fromSpawner = observed.length > 0 ? [] : await this.spawner.changedFiles(sessionId);
+      // The diff runs inside the worktree, where the worker actually worked.
+      // Run in the main tree instead, it sees everything -- Cubicore's own
+      // plan and run state included -- and reports another worker's files as
+      // a scope violation.
       const fromGit =
         observed.length > 0 || fromSpawner.length > 0
           ? { files: [], unknown: false }
-          : await changedFilesSince(this.root, this.baseline);
+          : await changedFilesSince(
+              worktree && !worktree.degraded ? worktree.path : this.root,
+              this.baseline,
+            );
       const changedFiles =
         observed.length > 0 ? observed : fromSpawner.length > 0 ? fromSpawner : fromGit.files;
       const changesUnknown =

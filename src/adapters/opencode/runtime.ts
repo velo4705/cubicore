@@ -198,7 +198,18 @@ export async function verifyModel(
   }
 }
 
-export function workerSessions(runtime: Runtime, progress?: ProgressSink): WorkerSessions {
+export function workerSessions(
+  runtime: Runtime,
+  progress?: ProgressSink,
+  /**
+   * The project the work happens in.
+   *
+   * Distinct from the server's own working directory. The scope check reads
+   * git status, and the worktrees are created under this root, so getting it
+   * wrong means checking one repository while working in another.
+   */
+  root?: string,
+): WorkerSessions {
   const db = new SqliteTokenSource();
 
   return new WorkerSessions(
@@ -213,5 +224,6 @@ export function workerSessions(runtime: Runtime, progress?: ProgressSink): Worke
       }
     },
     progress?.trace,
+    root ?? runtime.directory,
   );
 }

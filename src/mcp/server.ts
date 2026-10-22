@@ -252,7 +252,7 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
     `[cubicore ${parsed.contracts.length} associates, topology ${parsed.topology}]\n`,
   );
 
-  const workers = workerSessions(runtime, progress);
+  const workers = workerSessions(runtime, progress, dir);
   // The event connection never closes on its own, so it is aborted once
   // dispatch returns. Without this the process lives forever and the client
   // waits on a response it already has.
@@ -417,14 +417,16 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
  * verdict arrived, leaving the agent with a dispatched run and no result. The
  * wait parameter makes one call enough.
  */
-async function status(runId: string, waitMs = 0): Promise<ToolResult> {
+async function status(runId: string, waitMs = 0, directory?: string): Promise<ToolResult> {
+  // Runs are stored per directory. Without one the tool looked in the server's
+  // own working directory, which is usually not the project -- so a live run
+  // was reported as unknown, and the message blamed a restarted server rather
+  // than the wrong directory.
+  const where = directory ?? process.cwd();
   const find = () => {
-    const run = getRun(runId);
+    const run = getRun(runId, where);
     if (!run) {
-      return text(
-        `Unknown run ${runId}. Run ids are process-local, so a restarted MCP server loses them.`,
-        true,
-      );
+      return text(`No run ${runId} in ${where}. Pass the directory the run belongs to.`, true);
     }
     return null;
   };
@@ -436,12 +438,12 @@ async function status(runId: string, waitMs = 0): Promise<ToolResult> {
   // client's patience is a transport error, not a verdict.
   const deadline = Date.now() + Math.max(0, Math.min(waitMs, 20_000));
   while (Date.now() < deadline) {
-    const run = getRun(runId);
+    const run = getRun(runId, where);
     if (run && run.state !== "running") break;
     await Bun.sleep(1000);
   }
 
-  return text(describe(getRun(runId)!));
+  return text(describe(getRun(runId, where)!));
 }
 
 /**
@@ -509,6 +511,13 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
     // A good plan clears the budget. Without this a refine would start at
     // attempt four and be accepted with findings even when it is perfect.
     planAttempts.delete(dir);
+    // And it starts a new cycle. The budget is on one plan's revisions, not
+    // on the project -- a fresh plan is a fresh set of chances.
+    writeCycleState(`${directory}/.cubicore-cycle.json`, {
+      cycle: 0,
+      maxCycles: readCycleState(`${directory}/.cubicore-cycle.json`).maxCycles,
+      fromDebug: false,
+    });
   }
 
   if (problems.length > 0) {
@@ -1153,6 +1162,13 @@ export const TOOLS = [
       type: "object",
       properties: {
         runId: { type: "string", description: "Run id returned by execute." },
+        directory: {
+          type: "string",
+          description:
+            "Working directory the run belongs to. Runs are stored per directory, and " +
+            "without this the tool looks in the server's own working directory, which is " +
+            "usually not the project.",
+        },
         waitMs: {
           type: "integer",
           description:
@@ -1163,7 +1179,8 @@ export const TOOLS = [
       },
       required: ["runId"],
     },
-    handler: async (args: { runId: string; waitMs?: number }) => status(args.runId, args.waitMs),
+    handler: async (args: { runId: string; waitMs?: number; directory?: string }) =>
+      status(args.runId, args.waitMs, args.directory),
   },
 ];
 

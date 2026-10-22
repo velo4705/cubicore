@@ -280,6 +280,10 @@ export const CubicorePlugin: Plugin = async (input) => {
             // Live events report zero usage; the session row is the truth.
             usage.resolver(),
             progress.trace,
+            // The project the work happens in, not the server's own cwd. The
+            // scope check reads git status here and the worktrees live under
+            // this root, so the two have to be the same tree.
+            directory,
           );
           eventTargets.push(workers);
 
