@@ -16,6 +16,7 @@ import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { tryIt } from "../plan/try";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
+import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
@@ -110,6 +111,20 @@ async function pumpEvents(
 
 function text(body: string, isError = false): ToolResult {
   return { content: [{ type: "text", text: body }], isError };
+}
+
+/**
+ * A reply that ends by saying what to type next.
+ *
+ * The founder should never have to remember the order -- fix is only
+ * meaningful after a test found something, execute is wrong before a plan
+ * exists. The next command is derived from what is on disk, so it stays
+ * right after a restart.
+ */
+function reply(body: string, directory: string, isError = false): ToolResult {
+  const next = nextLine(directory);
+  const tail = next ? `\n\n---\n${next}` : "";
+  return { content: [{ type: "text", text: `${body}${tail}` }], isError };
 }
 
 /** Validate without dispatching. Free, and the reason the split exists. */
@@ -527,9 +542,10 @@ async function executeFile(directory: string, parentSessionID?: string): Promise
     })
     .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
 
-  return text(
+  return reply(
     [`${gate.reason}`, `Started ${run.id} -- ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
      `Poll with status using ${run.id}.`].join("\n"),
+    directory,
   );
 }
 
@@ -553,11 +569,12 @@ async function testRun(args: { findings?: TestFinding[] }, directory: string): P
   writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(findings, state.cycle, state.maxCycles));
 
   if (blocking.length === 0) {
-    return text(
+    return reply(
       [`No blocking findings. Wrote ${DEBUG_MD} listing ${advisory.length} advisory item(s).`,
        advisory.length === 0
          ? "Nothing mechanical and nothing judgement-worthy was found."
          : "Advisory items are for a human to judge -- Test does not block on them."].join("\n"),
+      directory,
     );
   }
 
@@ -681,6 +698,17 @@ async function research(directory: string): Promise<ToolResult> {
  * name. So every tool declares the trigger, in the same words, so the model
  * connects the phrase to the whole set rather than to one arbitrary tool.
  */
+/**
+ * How the agent ends a turn.
+ *
+ * The founder reads the agent's reply, not the tool output, so the next
+ * command has to be stated in the reply. The tools also carry it -- derived
+ * from the state on disk -- and the agent is told to repeat what they say.
+ */
+const ENDING = "End your reply with the next command on its own line, exactly as the tool " +
+  "reported it. Do not invent one: the tool knows what is true, because it reads the " +
+  "state on disk. If the tool reported no next command, say the work is done. ";
+
 const WHEN = "Call this when the founder asks to use Cubicore, " +
   "or to plan, dispatch, test or check work that should be split across " +
   "parallel agents. ";
@@ -969,12 +997,13 @@ export const TOOLS = [
       }
       const cancelled = cancelRun(run.id, dir, args.reason ?? "cancelled by the founder");
       if (!cancelled) return text(`Could not cancel ${run.id}.`, true);
-      return text(
+      return reply(
         [
           `Cancelled ${run.id}: ${cancelled.cancelledBecause}.`,
           `${cancelled.progress.filter((p) => p.state === "skipped").length} associate(s) skipped.`,
           `The plan is still on disk. Use undo to discard it as well, or execute to run it again.`,
         ].join("\n"),
+        dir,
       );
     },
   },
@@ -1170,7 +1199,7 @@ export const PROMPTS = [
   },
 ];
 
-function promptFor(name: string, args: Record<string, string>) {
+export function promptFor(name: string, args: Record<string, string>) {
   if (name === "plan") {
     return {
       description: "Research, question, and plan in one pass.",
@@ -1181,6 +1210,8 @@ function promptFor(name: string, args: Record<string, string>) {
             type: "text",
             text:
 `Plan this request:
+
+${ENDING}
 
 ${args.request ?? "(the current request in this conversation)"}
 
@@ -1290,6 +1321,8 @@ ${PLAN_SCHEMA_JSON}`,
             text:
 `Execute CUBICORE_PLAN.md.
 
+
+${ENDING}
 **What kind of project is this?** A web app, a CLI, a library, a plugin, a service — the
 categories are whatever this project actually is, and you already know. Pass that to
 \`dispatch_blueprint\` as projectKind so each associate knows what it is building toward.
@@ -1336,7 +1369,7 @@ the results with the test tool.`,
           content: {
             type: "text",
             text:
-`Improve the current plan${args.change ? ` to: ${args.change}` : ""}.
+`${ENDING}Improve the current plan${args.change ? ` to: ${args.change}` : ""}.
 
 ${args.change ? "" : "Ask what should change, or work it out from the plan and the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then:
 
@@ -1367,6 +1400,8 @@ the old ones still exist -- read the files, not just the plan.`,
             text:
 `Fix what the test command found.
 
+
+${ENDING}
 Read CUBICORE_DEBUG.md. It lists the findings, each with a source and a suggested fix.
 Turn each one into a contract:
 
@@ -1396,7 +1431,7 @@ unless the founder asks.`,
           content: {
             type: "text",
             text:
-`Undo the last execution.
+`${ENDING}Undo the last execution.
 
 Call the undo tool. It discards the changes the last run made and returns the tree to
 the baseline commit Cubicore recorded before any associate started, and removes the files
@@ -1421,7 +1456,7 @@ tree is clean.`,
           content: {
             type: "text",
             text:
-`Estimate what the current plan will cost.
+`${ENDING}Estimate what the current plan will cost.
 
 Call the estimate tool and report what it says: how many associates, the token and
 wall ceilings, and which files each one owns.
@@ -1446,6 +1481,8 @@ between identical runs, so it is a floor, not an estimate of what will happen.`,
             text:
 `Cancel the current run.
 
+
+${ENDING}
 Call the cancel tool. Associates that have not finished are stopped and the rest are
 marked skipped. The run stays on disk so it can be inspected, and the plan files stay
 too -- cancelling the work is not the same as discarding the plan.
@@ -1468,6 +1505,8 @@ Say what was cancelled and how much of the work had already landed.`,
             text:
 `Plan how to deploy this project.
 
+
+${ENDING}
 Work in this order.
 
 **1. Ask about the tier.** Free or paid, and what it has to include. A free tier
@@ -1505,7 +1544,7 @@ Do not deploy anything. Write the files and explain the steps.`,
           content: {
             type: "text",
             text:
-`Run the test tool over the work that was just delivered.
+`${ENDING}Run the test tool over the work that was just delivered.
 
 First, execute the blocking checks from every contract in ${PLAN_JSON} yourself and record what
 actually happened -- the tool records findings, it does not discover them.
