@@ -206,6 +206,98 @@ of Cubicore's cost is not Cubicore's, it is the tool surface the host hands
 to every agent. If the restriction works, the installer should recommend the
 same lean profile for the Main agent.
 
+## Deferred: a speed and cost budget for every step
+
+Recorded, not started. This is the per-procedure breakdown of the plan above:
+what each step of the pipeline costs, what makes it slow, and what would make
+it faster or cheaper. It exists because the earlier note concentrated on one
+hypothesis (worker context) and a per-step view is what actually decides where
+to spend effort.
+
+The two currencies are different and get confused. **Tokens** are dominated by
+context re-reads; **wall clock** is dominated by the serial phases. A change
+that helps one can do nothing for the other, so they are listed separately.
+
+### Where the pipeline spends
+
+| Step | Serial? | Token cost | Wall clock | The improvement |
+|---|---|---|---|---|
+| `prepare` | yes | none | one `git add -A` + commit | already idempotent; a baseline only needs writing once |
+| `research` | yes | one Main-agent turn | one tree walk | cache the survey per directory; a re-plan should not re-walk |
+| `plan` | **yes** | one Main-agent turn + the plan schema | the largest serial phase | let the tool fill in the mechanical parts of the plan |
+| `execute` — worktrees | no | none | N × 3 git subprocesses | scope the checkout to the files a contract owns |
+| `execute` — workers | no | **the whole bill** | the parallel phase | the tool restriction, above |
+| `execute` — gates | no | none | N check commands | dedupe identical commands |
+| `execute` — collect | no | none | N × git read | scope the read to the contract's own paths |
+| `test` | no | none | N check commands | dedupe identical commands |
+| `try` | yes | none | one run | fine as it is |
+| `aggregate` | **yes** | one Main-agent turn | the second serial phase | aggregate machine-readable artifacts mechanically |
+| `status` | no | none | one read | fine as it is |
+
+### The serial half is the ceiling
+
+Planning and aggregation run one-at-a-time and do not shrink, so they set the
+Amdahl limit: `1 / (0.25 + 0.75/8) ≈ 2.9×` for eight workers. The ceiling is
+raised by making the serial phases cheaper, not by adding workers. Every
+improvement below that touches the parallel phase is worth less than it looks.
+
+**`plan` is the expensive one.** The Main agent hand-writes the whole plan
+JSON, and the tool then rejects it if the shape is wrong. A rejected plan can
+cost three full Main-agent turns before the attempt cap stops it, and each
+turn carries the whole host tool surface. The improvement is to let the tool
+derive the mechanical parts — contract ids, `graphBudget` defaults, the
+baseline check union, the dependency edges implied by the writes — and ask
+the Main agent only for what needs judgement: objectives, write scopes, and
+the checks that are not derivable. Less output from the agent, fewer schema
+drifts, and a rejected plan becomes a fix rather than a rewrite.
+
+**`aggregate` is the one that grows.** It reads every artifact into one
+context. If the artifacts are machine-readable, a mechanical aggregator is
+strictly better and the Main agent is only needed for prose. If the artifacts
+are prose, the growth is inherent — which is what the single-reader topology
+is for.
+
+### The parallel half, where the tokens are
+
+99.9% of a measured run's tokens were cache reads, not input. Two causes, and
+both multiply by the number of tool-call turns a worker takes:
+
+1. **The tool schema.** Every worker carries the host's whole tool surface.
+   This is the restriction already described above.
+2. **The number of turns.** Every read, edit and command is a turn, and each
+   turn re-reads the prefix. A leaner brief — exact file list, exact check
+   command, exact report format — buys turns directly.
+
+### The worktree tax, which nobody has costed
+
+Isolation currently costs three git subprocesses per contract: add, read back
+the diff, remove. For twelve contracts that is thirty-six git invocations,
+and `git worktree add` contends on the repository's index lock, so they
+serialise against each other.
+
+More importantly, each worktree is a **full checkout of the whole repository**.
+For a contract that owns one file, that is absurd. A scoped copy of the
+paths a contract owns would be far cheaper — and would not contend on any
+lock. The check is whether the scope check still works, which it does if the
+copy is the contract's own tree.
+
+### Checks are run more often than they need to be
+
+Every contract names a check, and two contracts naming the same command means
+that command runs twice. The gate matrix is a union computed at validation
+time, so identical commands are already known — they just are not deduped at
+run time. One full test suite run per distinct command, not per contract.
+
+### The honest summary of expected effect
+
+The tool restriction is the largest single lever and is unmeasured. The
+worktree scoping and the check dedupe are smaller but reliable. The plan and
+aggregate changes are the ones that move the ceiling rather than the
+constant, and they are the most invasive.
+
+None of this is worth measuring before the cheap wins land. Measure once,
+after.
+
 ## Known state
 
 - Plugin and MCP front-ends both dispatch, gate and report a verdict
