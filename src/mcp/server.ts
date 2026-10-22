@@ -1261,6 +1261,19 @@ export const PROMPTS = [
       "Blocks on errors and warnings only -- judgement calls are reported, never blocking.",
     arguments: [],
   },
+  {
+    name: "try",
+    description:
+      "Run the delivered thing and say whether it actually works. " +
+      "Uses the plan's own try block.",
+    arguments: [],
+  },
+  {
+    name: "status",
+    description:
+      "Report what the run in flight is doing, and wait for it if it is not done yet.",
+    arguments: [],
+  },
 ];
 
 export function promptFor(name: string, args: Record<string, string>) {
@@ -1604,6 +1617,56 @@ CI workflow. Concrete paths, disjoint scopes, and a check that can fail.
 variables the founder has to set. Assume they have never deployed this stack before.
 
 Do not deploy anything. Write the files and explain the steps.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "status") {
+    return {
+      description: "Report the state of the run in flight.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`${ENDING}Call the status tool with the run id, and wait for it.
+
+Give it a generous waitMs -- long enough that one call returns the verdict rather than a
+partial state. A run outlives the tool call that started it, so the founder may be back
+days later and the run may still be going. Polling in a loop spends the founder's steps
+instead of the run's.
+
+Report what the run did: how many associates finished, how many failed, and what each
+failure was. If it is still running, say so and say how long it has been going.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "try") {
+    return {
+      description: "Run the delivered thing and report whether it works.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`${ENDING}Run the try tool. It starts what the plan says to start and checks that it came up
+the way the plan said it would.
+
+The plan's try block is the founder's own statement of what working looks like -- the command,
+the ready line, and how long to wait for it. The tool runs that and reports the real result.
+
+If there is no try block, say so plainly. A library or a report has nothing to run, and that
+is a correct plan, not a failure. Do not invent something to start.
+
+If it fails, report the actual output rather than a summary of it. The founder is finding out
+whether this works, and "it did not start" is only useful with the reason attached.`,
           },
         },
       ],

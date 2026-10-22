@@ -59,6 +59,8 @@ Currently, we only support Opencode for now.
 | `/cubicore:undo` | Undo the last execution — discard its changes and return the tree to the baseline commit Cubicore recorded. Destroys work, so it says what it will destroy first. |
 | `/cubicore:cancel` | Cancel a run. The associates that have not finished are stopped and the rest are marked skipped. The work already on disk stays. |
 | `/cubicore:deploy` | Plan the deployment. Asks about the tier, offers stacks with a recommendation, writes the deploy files, and explains the manual steps. Deploys nothing. |
+| `/cubicore:try` | Run the delivered thing and say whether it actually works, using the plan's own `try` block. A contract can be correct and still not run. |
+| `/cubicore:status` | Report what the run in flight is doing, and wait for it if it is not finished. |
 
 ### The flow guides itself
 

@@ -1,0 +1,88 @@
+import { describe, expect, it } from "bun:test";
+
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { promptFor } from "../src/mcp/server";
+import { COMMAND, nextOptions } from "../src/mcp/next";
+
+/**
+ * A command the founder is told to type has to exist.
+ *
+ * The Main agent writes the guidance that follows every step, and it
+ * reaches for whatever the system has given it. When a plan carried a
+ * `try` block and the system had a `try` tool, it told the founder to
+ * run `/cubicore:try` — a command that did not exist, because `try` was
+ * a tool and not a prompt. The founder would have typed it and got
+ * nothing.
+ *
+ * Nothing in the test suite caught that, because the guidance is written
+ * by a model and the test suite only ever checked the parts we wrote
+ * ourselves. This test checks the seam: every command named in the
+ * system's own guidance has to be a command we register.
+ */
+
+const COMMANDS = [
+  "plan",
+  "execute",
+  "refine",
+  "fix",
+  "undo",
+  "estimate",
+  "cancel",
+  "deploy",
+  "test",
+  "try",
+  "status",
+] as const;
+
+describe("the command surface", () => {
+  it("registers every command the guidance can name", () => {
+    for (const name of COMMANDS) {
+      const prompt = promptFor(name, {});
+      expect(prompt).toBeDefined();
+      expect(prompt.messages.length).toBeGreaterThan(0);
+      expect(prompt.messages[0].content.text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives every command a description, so a client can list them", () => {
+    for (const name of COMMANDS) {
+      expect(promptFor(name, {}).description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the guidance names real commands", () => {
+  /**
+   * `nextOptions` renders the "what to type next" line. Every command in
+   * it must be one we register, because the founder copies it literally.
+   */
+  it("only ever suggests registered commands", () => {
+    const registered = new Set<string>(COMMANDS);
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-surface-"));
+
+    // An empty directory: nothing planned, nothing run.
+    const empty = nextOptions(dir);
+    expect(empty.length).toBeGreaterThan(0);
+
+    for (const option of empty) {
+      const name = option.step.replace(/^\/cubicore:/, "").trim();
+      expect(registered.has(name)).toBe(true);
+    }
+  });
+
+  it("keeps the next-step vocabulary inside the command surface", () => {
+    // `NextStep` is the internal vocabulary the guidance is written in. If
+    // it grows a value with no command behind it, the founder gets told to
+    // type something that does not exist.
+    const registered = new Set<string>(COMMANDS);
+    for (const step of Object.keys(COMMAND)) {
+      const command = COMMAND[step as keyof typeof COMMAND];
+      if (command === "") continue; // "done" is the end, not a command
+      const name = command.replace(/^\/cubicore:/, "").trim();
+      expect(registered.has(name)).toBe(true);
+    }
+  });
+});
