@@ -31,7 +31,11 @@ have a "## Sources" heading listing the source path in backticks, must say what
 the source claims, and must state what it does not claim. Do not change
 sources/.
 
-The check is: node check-sections.mjs .
+Each section is checked on its own with: node check-sections.mjs . --section <name>
+where <name> is the source's name without the .md, e.g. velocity.
+
+When every section is written, the whole set is checked with:
+node check-sections.mjs .
 ```
 
 **What it proves.** The contract layer gates work in a domain with no test
@@ -40,9 +44,15 @@ about the document: did it cite something that exists, did it drop a source,
 does it say what it does not know. The contract names a command; the command
 does not have to be a test runner.
 
+The per-section check is not a convenience. The whole-set check is
+all-or-nothing: a worker that finished its own section would fail the gate
+because its neighbours do not exist yet. Per-section is what makes three
+associates able to work in parallel against one global rule.
+
 **Watch for.** The plan splitting by source (3 contracts, disjoint
-`writes`), the check landing in the matrix, and the scope gate noticing if a
-worker touches `sources/`.
+`writes`), the per-section check landing in each contract's matrix, the
+whole-set check landing in the plan's `try` block, and the scope gate
+noticing if a worker touches `sources/`.
 
 ---
 
@@ -56,8 +66,8 @@ independent contracts.
 ```
 /cubicore:plan
 
-Write one section per document in sources/, into sections/. The check is:
-node check-sections.mjs .
+Write one section per document in sources/, into sections/. Each section is
+checked on its own with: node check-sections.mjs . --section <name>
 ```
 
 Run it. Then change *one* thing in the request and refine:

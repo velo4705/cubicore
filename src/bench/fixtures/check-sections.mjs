@@ -22,7 +22,11 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, basename, relative } from "node:path";
 
-const root = process.argv[2] ?? process.cwd();
+const args = process.argv.slice(2);
+const only = args.includes("--section")
+  ? args[args.indexOf("--section") + 1]
+  : undefined;
+const root = args.find((a) => !a.startsWith("--") && a !== only) ?? process.cwd();
 const sectionsDir = join(root, "sections");
 const sourcesDir = join(root, "sources");
 
@@ -33,8 +37,17 @@ if (!existsSync(sectionsDir)) {
   process.exit(1);
 }
 
-const sections = readdirSync(sectionsDir).filter((f) => f.endsWith(".md"));
-if (sections.length === 0) {
+// --section checks one section on its own, so a worker can gate on its own
+// output. Without it the check is all-or-nothing: a worker that finished its
+// section would fail because its neighbours have not been written yet.
+let sections = readdirSync(sectionsDir).filter((f) => f.endsWith(".md"));
+if (only) {
+  sections = sections.filter((f) => f.replace(/\.md$/, "") === only);
+  if (sections.length === 0) {
+    console.error(`no section for "${only}" in ${sectionsDir}`);
+    process.exit(1);
+  }
+} else if (sections.length === 0) {
   console.error("sections/ is empty — nothing was written");
   process.exit(1);
 }
@@ -84,9 +97,13 @@ for (const file of sections) {
   }
 }
 
-for (const source of sources) {
-  if (!cited.has(source)) {
-    problems.push(`sources/${source} is not cited by any section`);
+// Every source must be used — but only for the whole-set check. A single
+// section is not expected to cite every source.
+if (!only) {
+  for (const source of sources) {
+    if (!cited.has(source)) {
+      problems.push(`sources/${source} is not cited by any section`);
+    }
   }
 }
 
