@@ -70,3 +70,68 @@ It does **not** establish:
 Build the plugin entry point so the `orchestrated` arm can run. Until then the
 comparison is one-sided: we know what the thing we compete with costs, and
 nothing about what we cost.
+---
+
+# The three arms, 2026-10-21
+
+Twelve contracts over twelve generated modules (1716 lines). Model
+`opencode/minimax-m3.1-flash-free`. The naive arm was capped at three
+concurrent workers, and the orchestrated arm dispatched all twelve.
+
+| Arm | wall | input | output | cache read | total tokens |
+|---|---|---|---|---|---|
+| single — one agent, whole task | 597,194 ms | 37,914 | 10,184 | 8,835,468 | **8,883,566** |
+| naive x12 — twelve independent, uncoordinated | 1,564,233 ms | 583,836 | 120,376 | 96,053,753 | **96,757,965** |
+| orchestrated — Cubicore, twelve contracts, gated | 541,807 ms | 2,733,721 | 57,202 | 24,993,962 | **27,784,885** |
+
+Twelve of twelve contracts passed every gate: `schema:ok verify:ok scope:ok`.
+
+**Not a single controlled run.** The single and naive figures come from one
+benchmark run; the orchestrated figure from a separate arm run against the same
+fixture. The ratios are large enough to survive that, but the digits are not
+from one clock.
+
+## The ratios, and what they mean
+
+| Comparison | Wall | Tokens |
+|---|---|---|
+| orchestrated vs **naive fan-out** | **2.9× faster** | **3.5× cheaper** |
+| orchestrated vs **single agent** | 1.1× — parity | 3.1× **more expensive** |
+| naive fan-out vs single agent | 2.6× **slower** | 10.9× **more expensive** |
+
+Three things follow, and only the first is the one usually claimed.
+
+**Fan-out without coordination is not free parallelism.** It cost 10.9× the
+tokens of one agent and was *slower*. Every worker loaded the whole repository
+into its own context, and nothing stopped them from colliding.
+
+**Cubicore beats naive fan-out on both axes** — 2.9× faster and 3.5× cheaper.
+The mechanisms are separate: narrower write scopes mean each worker reads less,
+and the gates mean the pipeline knows when a worker is finished rather than
+guessing.
+
+**Cubicore does not beat one agent.** On twelve small files it was level on
+wall clock and cost 3.1× the tokens. The work was too small to need parallel
+workers, and the model, not the split, was the bottleneck.
+
+## So is "9 hours becomes 4" right?
+
+Directionally, and against the control that matters. But the mechanism is not
+"splitting of tasks" on its own — splitting without enforcement is what made
+naive fan-out *slower* than doing nothing in parallel.
+
+Two conditions have to hold, and neither is about Cubicore:
+
+1. **The work must be genuinely independent.** The 2.9× is against twelve
+   independent contracts. Coupled work — a shared type, a dispatcher, an
+   integration step — does not parallelise, and the plan's own topology check
+   is what catches that before anything is spent.
+2. **The serial fraction must be small enough.** Amdahl, and the ceiling is
+   below the 3.5× Amdahl figure because the gates and the plan cost something
+   too. A project with four hours of coupled core and five of independent work
+   does not become 9→4; it becomes something nearer 9→6.5, plus verification
+   the serial path never had.
+
+**And the claim needs a floor.** On small work Cubicore is overhead: 3.1× the
+tokens for parity in wall clock. Splitting a two-hour task into four agents
+saves nothing and costs a plan, four contexts and four gate chains.
