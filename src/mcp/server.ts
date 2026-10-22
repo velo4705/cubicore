@@ -740,119 +740,6 @@ export const TOOLS = [
       executeFile(args.directory ?? process.cwd(), args.parentSessionID),
   },
   {
-    name: "refine",
-    description:
-      "Improve the current plan before running it, or add features to a project that has " +
-      "already been built. Reads the existing plan, works out what should change, and " +
-      "rewrites the plan.",
-    arguments: [{ name: "change", description: "What to change or add", required: false }],
-  },
-  {
-    name: "fix",
-    description:
-      "Fixes what the test command found. Reads CUBICORE_DEBUG.md, plans the fixes, and " +
-      "dispatches them. Simpler than the full execute cycle because the work is already " +
-      "decided.",
-    arguments: [],
-  },
-  {
-    name: "undo",
-    description:
-      "Undoes the last execution, discarding its changes and returning the tree to the " +
-      "baseline commit. Destroys work, so it says what it would do first.",
-    arguments: [],
-  },
-  {
-    name: "estimate",
-    description:
-      "Estimates what the current plan will cost before anything is spent: how many " +
-      "associates, the token and wall ceilings, and the shape of the pipeline.",
-    arguments: [],
-  },
-  {
-    name: "pause",
-    description:
-      "Pauses a run between associates. Work already in flight finishes; nothing new starts.",
-    arguments: [],
-  },
-  {
-    name: "resume",
-    description: "Resumes a paused run, picking up where it stopped.",
-    arguments: [],
-  },
-  {
-    name: "pause",
-    description:
-      WHEN +
-      "Pauses a run between associates. Work already in flight finishes; nothing new " +
-      "starts. Pass a run id, or nothing to pause the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to pause; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "running") {
-        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
-      }
-      const paused = pauseRun(run.id, dir);
-      return text(
-        paused
-          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
-          : `Could not pause ${run.id}.`,
-      );
-    },
-  },
-  {
-    name: "resume",
-    description:
-      WHEN +
-      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
-      "to resume the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to resume; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "paused") {
-        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
-      }
-      const resumed = resumeRun(run.id, dir);
-      return text(
-        resumed
-          ? `Resumed ${run.id}. The remaining associates will dispatch.`
-          : `Could not resume ${run.id}.`,
-      );
-    },
-  },
-  {
-    name: "cancel",
-    description: "Cancels a run. Stops the associates that have not finished.",
-    arguments: [],
-  },
-  {
-    name: "deploy",
-    description:
-      "Plans how to deploy the project. Asks about the tier, offers deployment stacks with a " +
-      "recommendation, writes the deploy files, and explains the manual steps.",
-    arguments: [],
-  },
-  {
     name: "test",
     description:
       WHEN +
@@ -1036,11 +923,47 @@ export const TOOLS = [
     handler: async (args: { directory?: string; projectKind?: string }) => research(args.directory ?? process.cwd()),
   },
   {
+    name: "cancel",
+    description:
+      WHEN +
+      "Cancels a run. Associates that have not finished are stopped and the rest are " +
+      "marked skipped; the dispatch checks between stages so cancelling actually stops " +
+      "the spending. The plan files stay -- cancelling the work is not the same as " +
+      "discarding the plan. Pass a run id, or nothing for the most recent run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "Run to cancel; omit for the most recent." },
+        reason: { type: "string", description: "Why it is being cancelled." },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { runId?: string; reason?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const runs = loadRuns(dir);
+      if (runs.length === 0) return text("There are no runs in this directory to cancel.", true);
+      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
+      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
+      if (run.state === "done") {
+        return text(`Run ${run.id} already finished. Cancelling it would change nothing.`);
+      }
+      const cancelled = cancelRun(run.id, dir, args.reason ?? "cancelled by the founder");
+      if (!cancelled) return text(`Could not cancel ${run.id}.`, true);
+      return text(
+        [
+          `Cancelled ${run.id}: ${cancelled.cancelledBecause}.`,
+          `${cancelled.progress.filter((p) => p.state === "skipped").length} associate(s) skipped.`,
+          `The plan is still on disk. Use undo to discard it as well, or execute to run it again.`,
+        ].join("\n"),
+      );
+    },
+  },
+  {
     name: "pause",
     description:
       WHEN +
       "Pauses a run between associates. Work already in flight finishes; nothing new " +
-      "starts. Pass a run id, or nothing to pause the most recent run.",
+      "starts. Pass a run id, or nothing for the most recent run.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1070,7 +993,7 @@ export const TOOLS = [
     description:
       WHEN +
       "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
-      "to resume the most recent run.",
+      "for the most recent run.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1096,54 +1019,13 @@ export const TOOLS = [
     },
   },
   {
-    name: "cancel",
-    description:
-      WHEN +
-      "Cancels a run, a plan, or both. Stops the associates that have not finished, " +
-      "marks the rest skipped, and records why. The run stays on disk so it can be " +
-      "inspected. Pass a run id, or nothing to cancel the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to cancel; omit for the most recent." },
-        reason: { type: "string", description: "Why it is being cancelled." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; reason?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to cancel.", true);
-
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state === "done") {
-        return text(`Run ${run.id} already finished. Cancelling it would change nothing.`);
-      }
-
-      const cancelled = cancelRun(run.id, dir, args.reason ?? "cancelled by the founder");
-      if (!cancelled) return text(`Could not cancel ${run.id}.`, true);
-
-      // The plan on disk is a separate thing from the run: cancelling the work
-      // should not silently delete the plan, but it should stop the next
-      // dispatch from picking it up by accident.
-      return text(
-        [
-          `Cancelled ${run.id}: ${cancelled.cancelledBecause}.`,
-          `${cancelled.progress.filter((p) => p.state === "skipped").length} associate(s) skipped.`,
-          `The plan is still on disk. Use undo to discard it as well, or execute to run it again.`,
-        ].join("\n"),
-      );
-    },
-  },
-  {
     name: "estimate",
     description:
       WHEN +
       "Estimates what a plan will cost before anything is spent: how many associates, " +
-      "the token and wall ceilings, and the shape of the pipeline. This is the plan's own " +
-      "budget, not a prediction -- a free model's latency varies by more than the " +
-      "difference between the arms, so read the time as a floor.",
+      "the token and wall ceilings, and who owns what. This is the plan's own budget, " +
+      "not a prediction -- a free model's latency varies by more than the difference " +
+      "between the arms, so read the time as a floor.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1167,9 +1049,6 @@ export const TOOLS = [
       const plan = loaded.plan;
       const tokens = plan.contracts.reduce((sum, c) => sum + (c.budget?.tokens ?? 0), 0);
       const wall = plan.contracts.reduce((sum, c) => sum + (c.budget?.wallMs ?? 0), 0);
-      const perContract = plan.contracts.map(
-        (c) => `  - ${c.id}: ${c.writes.join(", ") || "(report)"} -- ${Math.round((c.budget?.wallMs ?? 0) / 1000)}s, ${(c.budget?.tokens ?? 0).toLocaleString()} tokens`,
-      );
 
       return text(
         [
@@ -1179,7 +1058,9 @@ export const TOOLS = [
           `  wall ceiling:  ${Math.round(wall / 1000)}s across the plan`,
           `  graph budget:  ${plan.graphBudget.nodes} nodes, ${plan.graphBudget.edges} edges`,
           ``,
-          ...perContract,
+          ...plan.contracts.map(
+            (c) => `  - ${c.id}: ${c.writes.join(", ") || "(report)"} -- ${Math.round((c.budget?.wallMs ?? 0) / 1000)}s, ${(c.budget?.tokens ?? 0).toLocaleString()} tokens`,
+          ),
           ``,
           `This is the plan's own budget, not a prediction. Treat the time as a floor: a free`,
           `model's latency has been observed to vary by more than half between identical runs.`,
@@ -1191,9 +1072,9 @@ export const TOOLS = [
     name: "undo",
     description:
       WHEN +
-      "Undoes the last execution, discarding the changes it made and returning the tree to " +
-      "the baseline commit Cubicore recorded. Also removes the plan files. This destroys " +
-      "work, so it asks for confirmation in the response rather than doing it silently.",
+      "Undoes the last execution: discards the changes it made and returns the tree to " +
+      "the baseline commit Cubicore recorded before any associate started. Also removes " +
+      "the plan files if asked. This destroys work.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1206,16 +1087,16 @@ export const TOOLS = [
       const dir = args.directory ?? process.cwd();
       const runs = loadRuns(dir);
       const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-
       if (!run) return text("There is nothing to undo in this directory.", true);
 
       const undone = await discardChanges(run, dir);
       if (args.discardPlan) {
         for (const file of [PLAN_JSON, PLAN_MD, DEBUG_MD]) {
-          try { await Bun.file(`${dir}/${file}`).unlink(); } catch {}
+          try {
+            await Bun.file(`${dir}/${file}`).unlink();
+          } catch {}
         }
       }
-
       return text(
         [
           undone.ok
@@ -1318,66 +1199,6 @@ export const PROMPTS = [
     name: "resume",
     description: "Resumes a paused run, picking up where it stopped.",
     arguments: [],
-  },
-  {
-    name: "pause",
-    description:
-      WHEN +
-      "Pauses a run between associates. Work already in flight finishes; nothing new " +
-      "starts. Pass a run id, or nothing to pause the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to pause; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "running") {
-        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
-      }
-      const paused = pauseRun(run.id, dir);
-      return text(
-        paused
-          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
-          : `Could not pause ${run.id}.`,
-      );
-    },
-  },
-  {
-    name: "resume",
-    description:
-      WHEN +
-      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
-      "to resume the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to resume; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "paused") {
-        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
-      }
-      const resumed = resumeRun(run.id, dir);
-      return text(
-        resumed
-          ? `Resumed ${run.id}. The remaining associates will dispatch.`
-          : `Could not resume ${run.id}.`,
-      );
-    },
   },
   {
     name: "cancel",
