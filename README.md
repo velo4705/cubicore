@@ -83,7 +83,7 @@ for the inline-subtask path; the session path works with the plugin alone.
 ### 1. Build the plugin
 
 ```bash
-git clone https://github.com/your-org/cubicore
+git clone https://github.com/velo4705/cubicore
 cd cubicore
 bun install
 bun run build          # produces dist/index.js
