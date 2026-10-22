@@ -75,6 +75,84 @@ blocking findings  /cubicore:fix       · refine · undo
 everything passes  /cubicore:deploy    · refine · undo
 ```
 
+## Installation
+
+Cubicore runs as an opencode plugin **and** an MCP server. Both are required
+for the inline-subtask path; the session path works with the plugin alone.
+
+### 1. Build the plugin
+
+```bash
+git clone https://github.com/your-org/cubicore
+cd cubicore
+bun install
+bun run build          # produces dist/index.js
+```
+
+### 2. Register the MCP server in opencode
+
+Add to your opencode config (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "mcp": {
+    "cubicore": {
+      "type": "local",
+      "command": ["bun", "run", "/absolute/path/to/cubicore/src/mcp/main.ts"],
+      "environment": { "PATH": "/home/you/.bun/bin:/usr/bin:/bin" }
+    }
+  }
+}
+```
+
+The command must point at `src/mcp/main.ts` (not a compiled output) so the
+server reloads on every code change. The `PATH` must include your bun binary
+and the system paths.
+
+### 3. Install the Cubicore agents into opencode
+
+```bash
+bun run src/mcp/install.ts
+```
+
+This writes `cubicore-associate` and `cubicore-research` into your opencode
+config and sets `build.maxSteps: 120`. If you ever rebuild the plugin, run
+this again so the agent definitions stay current.
+
+### 4. Restart opencode
+
+The plugin and MCP server are loaded at startup. After editing
+`opencode.json` and running the installer, restart opencode entirely.
+
+### 4. Verify
+
+Open opencode in a project and type:
+
+```
+/cubicore:plan
+```
+
+If the plan prompt appears, the plugin, MCP server, and agents are all
+wired. The server must run in the project you want to work on — its working
+directory becomes the project root for `prepare`, `execute`, and the check
+commands.
+
+### Troubleshooting
+
+- **MCP connection refused**: check the `command` path and that `bun` is on
+  the `PATH` inside opencode.
+- **Plan tool says "no contracts"**: the research tool found nothing to
+  split. Run the plan command from a directory that contains the work
+  (e.g. a `sources/` directory for the docs fixture).
+- **`/cubicore:execute` does nothing**: the MCP server's working directory
+  must be the project root. Start opencode *in* the project directory.
+
+### Uninstalling
+
+Remove the `cubicore` entry from `mcp` in `opencode.json`, remove the
+`cubicore-associate` and `cubicore-research` agents from the `agent`
+section, and remove the plugin from the `plugin` array. Restart opencode.
+
 ### How the associates are kept apart
 
 Three layers, and only the first was ever airtight.
