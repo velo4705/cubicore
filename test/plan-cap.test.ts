@@ -63,3 +63,86 @@ describe("plan specificity", () => {
     expect(asked).toContain("conventional layout");
   });
 });
+
+describe("checks are judged by whether they can fail, not by whether they are code", () => {
+  const c = (over: Record<string, unknown> = {}) => ({
+    id: "a",
+    objective: "Do the thing with enough specificity to be actionable",
+    reads: [],
+    writes: ["notes/section.md"],
+    forbidden: [],
+    deliverable: "report",
+    schema: { type: "object" },
+    doneWhen: "it is done",
+    checks: [
+      {
+        id: "k",
+        kind: "intent",
+        command: "grep -q '## References' notes/section.md",
+        expectation: "the section has references",
+        gating: "blocking",
+        convergent: true,
+      },
+    ],
+    budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+    ...over,
+  });
+
+  it("does not object to a grep in a non-code deliverable", () => {
+    // Grepping a document for a required section is a legitimate check.
+    const a = assessPlan(planOf([c()]));
+    expect(a.blockers.map((b) => b.code)).not.toContain("grep-only-check");
+  });
+
+  it("objects to a grep that is the only gate on a diff", () => {
+    const a = assessPlan(
+      planOf([
+        c({
+          deliverable: "diff",
+          writes: ["src/a.ts"],
+          checks: [
+            {
+              id: "k",
+              kind: "intent",
+              command: "grep -q valid src/a.ts",
+              expectation: "e",
+              gating: "blocking",
+              convergent: true,
+            },
+          ],
+        }),
+      ]),
+    );
+    expect(a.blockers.map((b) => b.code)).toContain("grep-only-check");
+  });
+
+  it("allows a grep alongside a check that can actually fail", () => {
+    const a = assessPlan(
+      planOf([
+        c({
+          deliverable: "diff",
+          writes: ["src/a.ts"],
+          checks: [
+            {
+              id: "g",
+              kind: "intent",
+              command: "grep -q valid src/a.ts",
+              expectation: "e",
+              gating: "blocking",
+              convergent: true,
+            },
+            {
+              id: "t",
+              kind: "intent",
+              command: "bun test src/a.test.ts",
+              expectation: "e",
+              gating: "blocking",
+              convergent: true,
+            },
+          ],
+        }),
+      ]),
+    );
+    expect(a.blockers.map((b) => b.code)).not.toContain("grep-only-check");
+  });
+});

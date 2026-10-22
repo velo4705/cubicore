@@ -83,8 +83,14 @@ export function assessPlan(plan: Plan): Planability {
 
     // A check that greps proves a name exists, not that the code works. Seen
     // twice in real runs: every defect passed a grep check.
-    const greps = contract.checks.filter((c) => /^\s*grep\b/.test(c.command.trim()));
-    if (greps.length > 0 && contract.deliverable === "diff") {
+    //
+    // Only when the greps are the whole gate, though. A contract with a real
+    // test and a grep alongside it is fine -- the grep is a cheap sanity
+    // check, not the verdict. And outside code, grepping a document for a
+    // required section is a perfectly good way to fail.
+    const blocking = contract.checks.filter((c) => c.gating === "blocking");
+    const greps = blocking.filter((c) => /^\s*grep\b/.test(c.command.trim()));
+    if (blocking.length > 0 && greps.length === blocking.length && contract.deliverable === "diff") {
       blockers.push({
         code: "grep-only-check",
         message:

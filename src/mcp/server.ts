@@ -1258,7 +1258,11 @@ absent -- that is correct, not a gap.
   rejected.
 - Split where the code actually separates, not where the word count does. Two
   contracts editing the same function are two contracts that collide.
-- Every diff contract needs a check that \`can fail\`.
+- Every contract needs a check that \`can fail\`. A check is any command that exits
+  non-zero when the work is wrong: a test, a typecheck, a validation query, a script that
+  verifies every citation resolves. It does not have to be code.
+- If a piece of work has no such check, it is not ready to be a contract. Say so rather
+  than inventing a check that always passes.
 - A blocking check must set \`convergent: true\`. Typecheck and tests converge.
   Coverage thresholds and complexity limits do not -- mark those \`advisory\`.
 - Never hand-compute a composed expected value. Derive it in the command, or
