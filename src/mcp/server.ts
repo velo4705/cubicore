@@ -9,7 +9,7 @@ import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import {
   cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
-  recordProgress, resumeRun, startRun,
+  recordProgress, startRun,
 } from "./runs";
 import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
@@ -175,7 +175,7 @@ async function resolveParent(parentSessionID?: string): Promise<string | undefin
   }
 }
 
-async function runToCompletion(raw: string, runId: string, parentSessionID?: string, dir = process.cwd()): Promise<string> {
+async function runToCompletion(raw: string, runId: string, parentSessionID?: string, dir = process.cwd()): Promise<{ summary: string; halted: "cancelled" | "paused" | null }> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
 
@@ -184,17 +184,17 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
     parsed = parsePlan(raw) as Plan;
   } catch (error) {
     const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
-    return `Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`;
+    return { summary: `Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`, halted: null };
   }
 
   if (parsed.topology === "refuse") {
-    return "This plan refuses to split. Nothing dispatched.";
+    return { summary: "This plan refuses to split. Nothing dispatched.", halted: null };
   }
 
   const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
   if (!validation.ok || topology.cycles.length > 0 || !topology.ok) {
-    return "Plan rejected before dispatch — nothing was spent. Run the plan tool to see why.";
+    return { summary: "Plan rejected before dispatch — nothing was spent. Run the plan tool to see why.", halted: null };
   }
 
   const progress = new ProgressSink(parsed.contracts);
@@ -260,7 +260,8 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
 
   controller.abort();
 
-  return [
+  return {
+    summary: [
       `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} flagged, ` +
         `${outcome.deferred.length} deferred`,
       `tokens: ${totalTokens} (in ${usage.input}, out ${usage.output}, cache ${usage.cacheRead})`,
@@ -268,7 +269,9 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
       ...aggregated.artifacts.map(
         (a) => `- ${a.contractId}: ${a.status}${a.unresolved.length ? ` — ${a.unresolved.join("; ")}` : ""}`,
       ),
-    ].join("\n");
+    ].join("\n"),
+    halted: outcome.halted,
+  };
 }
 
 /**
@@ -329,8 +332,17 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // Nest under the Main agent's session so each associate appears in the host's
   // sub-agent view. A caller may pass one explicitly; otherwise the newest
   // session in this directory is almost always the caller.
-  void resolveParent(parentSessionID).then((parent) => runToCompletion(raw, run.id, parent, dir))
-    .then((summary) => finishRun(run.id, dir, summary))
+  void resolveParent(parentSessionID)
+    .then((parent) => runToCompletion(raw, run.id, parent, dir))
+    .then(({ summary, halted }) => {
+      if (halted === "cancelled") {
+        cancelRun(run.id, dir, "cancelled by the founder");
+      } else if (halted === "paused") {
+        pauseRun(run.id, dir);
+      } else {
+        finishRun(run.id, dir, summary);
+      }
+    })
     .catch((error) => failRun(run.id, dir, error instanceof Error ? error.message : String(error)));
 
   return text(
@@ -504,7 +516,15 @@ async function executeFile(directory: string, parentSessionID?: string): Promise
 
   void resolveParent(parentSessionID)
     .then((parent) => runToCompletion(raw, run.id, parent, directory))
-    .then((summary) => finishRun(run.id, directory, summary))
+    .then(({ summary, halted }) => {
+      if (halted === "cancelled") {
+        cancelRun(run.id, directory, "cancelled by the founder");
+      } else if (halted === "paused") {
+        pauseRun(run.id, directory);
+      } else {
+        finishRun(run.id, directory, summary);
+      }
+    })
     .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
 
   return text(
@@ -959,66 +979,6 @@ export const TOOLS = [
     },
   },
   {
-    name: "pause",
-    description:
-      WHEN +
-      "Pauses a run between associates. Work already in flight finishes; nothing new " +
-      "starts. Pass a run id, or nothing for the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to pause; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to pause.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "running") {
-        return text(`Run ${run.id} is ${run.state}, not running, so there is nothing to pause.`);
-      }
-      const paused = pauseRun(run.id, dir);
-      return text(
-        paused
-          ? `Paused ${run.id}. Associates already running finish; nothing new starts. Resume it when ready.`
-          : `Could not pause ${run.id}.`,
-      );
-    },
-  },
-  {
-    name: "resume",
-    description:
-      WHEN +
-      "Resumes a paused run, picking up where it stopped. Pass a run id, or nothing " +
-      "for the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to resume; omit for the most recent." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to resume.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state !== "paused") {
-        return text(`Run ${run.id} is ${run.state}, not paused, so there is nothing to resume.`);
-      }
-      const resumed = resumeRun(run.id, dir);
-      return text(
-        resumed
-          ? `Resumed ${run.id}. The remaining associates will dispatch.`
-          : `Could not resume ${run.id}.`,
-      );
-    },
-  },
-  {
     name: "estimate",
     description:
       WHEN +
@@ -1187,17 +1147,6 @@ export const PROMPTS = [
     description:
       "Estimates what the current plan will cost before anything is spent: how many " +
       "associates, the token and wall ceilings, and the shape of the pipeline.",
-    arguments: [],
-  },
-  {
-    name: "pause",
-    description:
-      "Pauses a run between associates. Work already in flight finishes; nothing new starts.",
-    arguments: [],
-  },
-  {
-    name: "resume",
-    description: "Resumes a paused run, picking up where it stopped.",
     arguments: [],
   },
   {
@@ -1476,45 +1425,6 @@ wall ceilings, and which files each one owns.
 Then add one line of honest interpretation. The time figure is the plan's own budget,
 not a prediction -- a free model's latency has been observed to vary by more than half
 between identical runs, so it is a floor, not an estimate of what will happen.`,
-          },
-        },
-      ],
-    };
-  }
-
-  if (name === "pause") {
-    return {
-      description: "Pause a run between associates.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`Pause the current run.
-
-Call the cancel tool's sibling -- pause the run. Work already in flight finishes;
-nothing new starts. Tell the founder which associates have finished and which are
-still to come, and that a run can be resumed.`,
-          },
-        },
-      ],
-    };
-  }
-
-  if (name === "resume") {
-    return {
-      description: "Resume a paused run.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`Resume the paused run.
-
-Call the resume tool, then report the state. If the run had already finished, say so
-rather than restarting it.`,
           },
         },
       ],

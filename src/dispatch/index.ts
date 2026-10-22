@@ -30,6 +30,15 @@ export interface WorkerRunner {
 }
 
 export interface DispatchOutcome {
+  /**
+   * Why the dispatch stopped early, if it did.
+   *
+   * Without this a cancelled run looks exactly like a finished one: the
+   * dispatch breaks out of the stage loop and returns, and the caller records
+   * it as done. A cancel that reports success is the same class of lie as a
+   * gate that passes because it learned nothing.
+   */
+  halted: "cancelled" | "paused" | null;
   accepted: WorkerResult[];
   failed: { contractId: string; result: WorkerResult; gates: GateResult[] }[];
   unresolved: string[];
@@ -119,6 +128,7 @@ export async function dispatch(
   }
 
   const settled: Array<{ contract: Contract; result: WorkerResult; gates: GateResult[]; passed: boolean }> = [];
+  let halted: "cancelled" | "paused" | null = null;
 
   for (const stage of pipeline.stages) {
     const batch = admitted.filter((c) => stageOf.get(c.id) === stage.index);
@@ -132,12 +142,14 @@ export async function dispatch(
       for (const contract of batch) {
         unresolved.push(`${contract.id} — skipped: the run was cancelled`);
       }
+      halted = "cancelled";
       break;
     }
     if (halt === "paused") {
       for (const contract of batch) {
         unresolved.push(`${contract.id} — deferred: the run was paused`);
       }
+      halted = "paused";
       break;
     }
 
@@ -222,6 +234,7 @@ export async function dispatch(
   return {
     accepted,
     failed,
+    halted,
     unresolved,
     deferred: deferred.map((contract) => contract.id),
     budgetExhausted: ledger.exhausted,

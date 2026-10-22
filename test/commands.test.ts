@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { cancelRun, describe as describeRun, loadRuns, pauseRun, resumeRun, startRun } from "../src/mcp/runs";
+import { cancelRun, describe as describeRun, loadRuns, pauseRun, startRun } from "../src/mcp/runs";
 import { dispatch } from "../src/dispatch";
 import type { Contract, Plan } from "../src/contracts/types";
 
@@ -74,6 +74,34 @@ describe("cancel", () => {
     expect(cancelled.progress.every((p) => p.state === "skipped")).toBe(true);
   });
 
+  it("reports cancelled, not done", async () => {
+    // A cancelled dispatch breaks out of the stage loop and returns normally,
+    // so before the outcome carried the reason, the caller recorded it as a
+    // finished run. A cancel that reports success is the same class of lie
+    // as a gate that passes because it learned nothing.
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-runs-"));
+    const run = startRun(planOf([contract("a")]), dir);
+    cancelRun(run.id, dir, "stop");
+
+    const outcome = await dispatch(
+      planOf([contract("a")]),
+      {
+        async run(c: Contract) {
+          return {
+            contractId: c.id, status: "accepted" as const, changedFiles: c.writes,
+            artifact: { contractId: c.id, deliverable: "diff", raw: "x" },
+            usage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+            ms: 1, toolCalls: 0, cancelled: false,
+          };
+        },
+      },
+      { async run() { return { exitCode: 0, output: "" }; } },
+      { halt: () => "cancelled" },
+    );
+
+    expect(outcome.halted).toBe("cancelled");
+  });
+
   it("actually stops the dispatch", async () => {
     // A cancel that only records the request is the same class of lie as a gate
     // that passes because it learned nothing.
@@ -108,18 +136,12 @@ describe("cancel", () => {
   });
 });
 
-describe("pause and resume", () => {
-  it("pauses a running run and resumes it", () => {
-    const dir = mkdtempSync(join(tmpdir(), "cubicore-runs-"));
-    const run = startRun(planOf([contract("a")]), dir);
-    expect(pauseRun(run.id, dir)!.state).toBe("paused");
-    expect(resumeRun(run.id, dir)!.state).toBe("running");
-  });
-
-  it("says so in the status text", () => {
+describe("pause", () => {
+  it("holds a run without finishing it", () => {
     const dir = mkdtempSync(join(tmpdir(), "cubicore-runs-"));
     const run = startRun(planOf([contract("a")]), dir);
     const paused = pauseRun(run.id, dir)!;
+    expect(paused.state).toBe("paused");
     expect(describeRun(paused)).toContain("paused");
   });
 });

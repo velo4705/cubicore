@@ -137,12 +137,6 @@ export function pauseRun(id: string, directory: string): Run | undefined {
   return update(run, { state: "paused" });
 }
 
-export function resumeRun(id: string, directory: string): Run | undefined {
-  const run = loadRuns(directory).find((r) => r.id === id);
-  if (!run) return undefined;
-  return update(run, { state: "running" });
-}
-
 /** Is this run cancelled or paused? The dispatch checks it between stages. */
 export function haltState(id: string, directory: string): "cancelled" | "paused" | null {
   const run = loadRuns(directory).find((r) => r.id === id);
