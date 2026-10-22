@@ -123,6 +123,89 @@ Two defects were Cubicore's, not the associates': the brief could
 contradict itself about the files it owns, and the graph budget's edge
 ceiling was never checked against the number of edges the plan needed.
 
+## Deferred: making Cubicore faster and cheaper
+
+Recorded, not started. The founder's call was to note the plan and leave it
+alone for now.
+
+### What the measurements actually say
+
+The verdict from the last benchmark run is uncomfortable and worth writing
+down plainly:
+
+| vs | faster? | cheaper? |
+|---|---|---|
+| naive fan-out | yes, 2.9× (confounded) | yes, 3.5× (clean) |
+| a single agent | no — parity (1.1×) | no — 3.1× more expensive |
+
+Against naive fan-out, Cubicore is both. Against one agent, it is neither:
+level on wall clock and three times the cost. That is the honest position,
+and the Amdahl ceiling explains it. With planning at ~15% and aggregation at
+~10% of baseline, eight workers give `1 / (0.25 + 0.75/8) ≈ 2.9×` — the
+ceiling is about three, not eight, and it is raised by making the two serial
+phases cheaper, not by adding workers.
+
+The wall-clock half of the 2.9× is confounded and should not be quoted: the
+naive arm was capped at three concurrent workers while the orchestrated arm
+dispatched all twelve. The token half is clean, because both arms ran the
+same twelve workers.
+
+### Where the cost is
+
+A two-worker end-to-end run cost 2.2M tokens — about 1.1M per worker to
+write one markdown file. The split was 1,281 input against 2,199,671 cache
+read. The work is re-reading context, not producing tokens.
+
+`cubicore-associate` has no `tools` restriction, so every worker inherits the
+whole host tool surface: the built-ins, plus every MCP server's schemas —
+Cubicore's own sixteen, rea's ~80, github's thirty, playwright's
+twenty-five. opencode sends that schema in every request and re-reads it on
+every tool-call turn, so it multiplies by turns. This is the suspected
+primary cause and it has not yet been measured.
+
+### The plan, in order
+
+1. **Instrument the context.** Print the tool-schema block size for the
+   associate and for the Main agent. Cheap and decisive — it either confirms
+   the hypothesis or kills it before any optimisation happens.
+2. **Restrict the associate's tools.** Keep `read, write, edit, bash, grep,
+   glob, list, patch`; deny `webfetch, websearch, task` and wildcard-deny the
+   MCP servers. opencode 1.18.29 supports per-agent `tools` with server
+   wildcards, so `"rea*": false` is the shape. The associate needs no MCP
+   server, but the host hands it every one. *Verify the wildcard matches; a
+   miss is silent.*
+3. **Lean the brief.** Every read is a turn and every turn re-reads the
+   prefix. Give the worker its exact file list, its exact check command and
+   its exact report format, to do read → edit → verify → report in the fewest
+   turns possible.
+4. **Fix the lying trace and make cancel real.** `client.session.prompt` is
+   called without streaming, so it blocks for the whole turn — which is why
+   `worker.prompted` fires 76 seconds late. It is really "turn finished". The
+   event stream already knows when a worker goes idle, so the call is
+   redundant. Streaming gives honest progress and lets `cancel` interrupt a
+   turn instead of waiting out the wall budget.
+5. **Add the concurrency cap.** `dispatch` runs a whole topological stage
+   under `Promise.all` with no cap. That is the load-70 problem, and the
+   reason the fair comparison could not be run as written.
+6. **Then measure, once.** A/B the same task with and without the restricted
+   tools. Do not run the benchmark before the cheap wins — measuring now
+   means measuring the wrong thing twice.
+
+### Not planned, but the only real answer
+
+The single-reader topology (D7) is the one mechanism that reduces total
+tokens *below* a single agent: one worker reads the shared context and writes
+a findings file, the rest read that instead of the repository. It is a design
+change rather than a tweak, so it waits for 1–5 and their measurements.
+
+### One thing this exposes about the product
+
+Step 2 is a host-configuration change as much as a code change. Those MCP
+servers are in the host's config, and the Main agent pays for them too — part
+of Cubicore's cost is not Cubicore's, it is the tool surface the host hands
+to every agent. If the restriction works, the installer should recommend the
+same lean profile for the Main agent.
+
 ## Known state
 
 - Plugin and MCP front-ends both dispatch, gate and report a verdict
