@@ -54,6 +54,46 @@ Currently, we only support Opencode for now.
 | `/cubicore:execute` | Write one brief per associate, summon them in parallel, gate each result |
 | `/cubicore:test` | Run the mechanical matrix, write `CUBICORE_DEBUG.md` |
 
+## What Cubicore is for
+
+The honest claim, in three parts.
+
+**Splitting work without coordination is not free parallelism.** Measured
+against one agent doing the same job, twelve uncoordinated workers cost
+**10.9× the tokens and were 2.6× slower**. Every worker loaded the whole
+repository into its own context and nothing stopped them colliding.
+
+**Cubicore fixes that.** Against the same twelve-worker fan-out, Cubicore was
+**2.9× faster and 3.5× cheaper** — narrower write scopes so each worker reads
+less, and gates so the pipeline knows when a worker is finished rather than
+guessing.
+
+**But Cubicore does not beat one agent.** On twelve small files it was level
+on wall clock and cost 3.1× the tokens. The work was too small to need parallel
+workers, and the model was the bottleneck, not the split.
+
+So the value is conditional, and the condition is about the work rather than
+about Cubicore:
+
+| Situation | Cubicore is |
+|---|---|
+| Several hours of genuinely independent work | worth it — 2.9× faster than naive fan-out, 3.5× cheaper |
+| A couple of hours, or one sitting | overhead — 3.1× the tokens for parity |
+| Coupled work, a shared core, an integration step | refuses it — the topology check catches it before a token is spent |
+| One agent, done in one pass | overhead, and the plan says so |
+
+The "9 hours becomes 4" shape is real against the right control, but it is not
+"because of splitting". Splitting is what makes the naive version slow. Cubicore
+is what makes splitting pay. And the ceiling is below 9→4 for most projects,
+because Amdahl's serial fraction does not parallelise and the gates cost
+something too.
+
+**And the real value is not speed.** It is that four agents can work on the same
+repository without colliding, and that "done" means the checks passed rather
+than that a model said so. The speedup is a side effect.
+
+Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
+
 ## What exists
 
 - **Contracts, not prompts.** Disjoint write scopes, a check matrix computed at
