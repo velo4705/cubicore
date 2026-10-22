@@ -636,6 +636,23 @@ export const CORPUS: TaskSpec[] = [
     expectedWorkers: 12,
     plan: REAL_PROJECT_PLAN,
   },
+  {
+    id: "t4-research",
+    // Not code. No compiler, no unit tests, nothing to import. The checks
+    // are about the document -- did it cite something real, did it say what
+    // it did not find -- and the work splits cleanly by source.
+    //
+    // This is the task that answers the question Cubicore's own README
+    // dodges: can the contract layer gate work in a domain that has no test
+    // suite? The answer should be yes, because the contract names a command
+    // and the command does not have to be a test runner.
+    prompt:
+      "Read each document in sources/ and write one section per document, in sections/. " +
+      "Each section must have a '## Sources' heading listing the source path in " +
+      "backticks, must say what the source claims, and must state what it does not " +
+      "claim. Do not change sources/.",
+    expectedWorkers: 3,
+  },
 ];
 
 /** Expands `{N}` into a 1-based worker index. */
