@@ -95,7 +95,15 @@ from one clock.
 
 | Comparison | Wall | Tokens |
 |---|---|---|
-| orchestrated vs **naive fan-out** | **2.9× faster** | **3.5× cheaper** |
+| orchestrated vs **naive fan-out** | **2.9× faster** ⚠ | **3.5× cheaper** |
+
+⚠ **The wall-clock ratio is confounded and should not be quoted.** The naive
+arm was capped at **three** concurrent workers; the orchestrated arm dispatched
+all **twelve** at once. Twelve workers at three-wide is four waves, so most of
+the wall-clock gap is the concurrency cap, not the contract layer. A naive arm
+running twelve-wide would be far closer. The token ratio is *not* affected —
+both arms ran twelve workers — so **3.5× cheaper is the defensible number
+and 2.9× faster is not.**
 | orchestrated vs **single agent** | 1.1× — parity | 3.1× **more expensive** |
 | naive fan-out vs single agent | 2.6× **slower** | 10.9× **more expensive** |
 
@@ -105,10 +113,20 @@ Three things follow, and only the first is the one usually claimed.
 tokens of one agent and was *slower*. Every worker loaded the whole repository
 into its own context, and nothing stopped them from colliding.
 
-**Cubicore beats naive fan-out on both axes** — 2.9× faster and 3.5× cheaper.
-The mechanisms are separate: narrower write scopes mean each worker reads less,
-and the gates mean the pipeline knows when a worker is finished rather than
-guessing.
+**Cubicore beats naive fan-out on cost** — 3.5× cheaper, and that is the
+half of the claim that survives scrutiny. The mechanism is in the token split:
+the naive arm spent 96,053,753 tokens on cache reads against 583,836 fresh
+input, because each of the twelve workers re-read the same repository into its
+own context. The orchestrated arm spent 24,993,962 on cache reads against
+2,733,721 fresh — narrower briefs, so each worker read only what its contract
+needed. Same twelve workers, so the difference is the contract layer.
+
+On wall clock the honest statement is narrower: Cubicore is 1.1× a single
+agent, and the gap to naive is mostly a concurrency cap in the harness
+rather than a property of the product. Cubicore also has no concurrency cap
+of its own — `dispatch` runs a whole topological stage with `Promise.all` —
+which is a real gap, and the reason an apples-to-apples comparison could not
+be run as written.
 
 **Cubicore does not beat one agent.** On twelve small files it was level on
 wall clock and cost 3.1× the tokens. The work was too small to need parallel
