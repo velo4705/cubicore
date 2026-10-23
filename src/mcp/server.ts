@@ -641,11 +641,12 @@ async function testRun(args: { findings?: TestFinding[] }, directory: string): P
 
   const next = state.cycle + 1;
   const exhausted = next > state.maxCycles;
-  return text(
+  return reply(
     [`${blocking.length} blocking finding(s) written to ${DEBUG_MD}.`,
      exhausted
        ? `Cycle budget is exhausted (${state.cycle}/${state.maxCycles}). These are reported as unresolved for a human to triage; no further automatic runs.`
-       : `Run execute again to address them. That is cycle ${next} of ${state.maxCycles}.`].join("\n"),
+       : `Cycle ${next} of ${state.maxCycles}. Fix the findings, then execute again.`].join("\n"),
+    directory,
     true,
   );
 }
