@@ -4,7 +4,7 @@ What if you wished to make a "company" right at home, where you are the founder 
 
 Enter Cubicore, A Dynamic Multi-Agent Factory System that interacts with Sub-tasks and Sessions (if present). The system is designed as an MCP for enhanced portability across multiple AI agents - Opencode or Claude Code, to name a few.
 
-## What is the idea?
+## What's the idea?
 
 Suppose you imagine a magic "cube", as an example. Act that this cube is a "mini" company that is under your control. Then, you ask the "magic cube" about what you want. It can be anything - even a multimillion SaaS product would be fine. After you reply to the "magic cube", the cube plans and determines the size of your project, and size of your project matters for how many "employees" that will be hired for this job.
 
@@ -12,7 +12,7 @@ Once its all set, the cube resizes and fills it with new "employees" to work on 
 
 The project is done when all sub-tasks are done, but hey, you can even call the testers to test the product you made, just to make sure no bugs, broken interactions, fixable warnings are left behind. You can add any feature you wanted by asking the "magic cube" again, and it will do it for you. It doesn't matter how many decorations you add onto the "magic cube", it will always be better with its "add-ons".
 
-## How it Works?
+## How it actually works?
 
 Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are called "Cubicores". These "cubicores" represents Inline Sub-tasks or Sessions run by the agent at the same time (it is never one-by-one). 
 
@@ -20,36 +20,6 @@ A Brief idea of this project works like so:
 
 ```
 [User gives Prompt] --> [Agent Plans about the Prompt and generates file] --> [Summon Sub-agents to read generated file] --> [Submits Result]
-```
-
-And the Actual process is shown here as a diagram:
-
-```mermaid
-flowchart TD
-    A["Founder request"] --> B["/cubicore:plan"]
-    B --> C{"Plan valid?"}
-    C -->|No| B
-    C -->|Yes| D["/cubicore:execute"]
-    D --> E["Worktree isolation per associate"]
-    E --> F["Schema gate"]
-    F --> G["Verify gate"]
-    G --> H["Scope gate"]
-    H --> I{"All gates pass?"}
-    I -->|No| J["/cubicore:refine"]
-    J --> D
-    I -->|Yes| K["/cubicore:test"]
-    K --> L{"Blocking findings?"}
-    L -->|Yes| M["/cubicore:fix"]
-    M --> D
-    L -->|No| N["/cubicore:try"]
-    N --> O{"Works?"}
-    O -->|No| D
-    O -->|Yes| P["/cubicore:deploy"]
-    
-    Q["/cubicore:status"] --> D
-    R["/cubicore:estimate"] --> D
-    S["/cubicore:undo"] --> D
-    T["/cubicore:cancel"] --> D
 ```
 
 When a user gives a prompt, assume it to be a simple, lazy prompt "Make me some huge megaproject that can make me rich. make no mistakes, i believe in you.".
@@ -68,13 +38,15 @@ About the "decorations", Cubicore is meant to have excellent support for plugins
 
 Currently, we only support Opencode for now.
 
-| AI Agent | Status | Progress |
-|---|---|---|
-| Opencode | ✅ | Works end to end — MCP plan/execute/test, inline sub-tasks, sessions |
-| Claude Code | 🔶 | MCP is portable; the host-dispatch path is written but unverified |
-| Codex | 🔶 | Same MCP surface, unverified |
-| Cursor | ❌ | No inline sub-tasks; would use the session path |
-| Windsurf | 🔶 | Inline sub-tasks available, unverified |
+| AI Agent        | Status | Progress                                                               |
+|-----------------|--------|------------------------------------------------------------------------|
+| Opencode        | ✅     | Done Further token reduction and Optimize productivity of sub-tasks.   |
+| Claude Code     | ⏰     | Will be implementing Inline Sub-tasks. Not Started.                    |
+| Codex           | ⏰     | Has Inline-Sub tasks; Needs Further token reduction. Not Started.      |
+| Cursor          | ⏰     | Uses Sessions; Tedious to implement as first Session-only integration. |
+| Windsurf        | ⏰     | May use Inline Sub-tasks or Sessions. Not Started.                     |
+
+More agents are coming soon!
 
 ## Commands
 
