@@ -16,7 +16,13 @@ The project is done when all sub-tasks are done, but hey, you can even call the 
 
 Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are called "Cubicores". These "cubicores" represents Inline Sub-tasks or Sessions run by the agent at the same time (it is never one-by-one). 
 
-The Simple Architecture of this idea works like below:
+A Brief idea of this project works like so:
+
+```
+[User gives Prompt] --> [Agent Plans about the Prompt and generates file] --> [Summon Sub-agents to read generated file] --> [Submits Result]
+```
+
+And the Actual process is shown here as a diagram:
 
 ```mermaid
 flowchart TD
