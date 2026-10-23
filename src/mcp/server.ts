@@ -926,6 +926,7 @@ export const TOOLS = [
       if (outcome.status !== undefined) lines.push(`status: ${outcome.status}`);
       if (outcome.body) lines.push(`body: ${outcome.body.slice(0, 300)}`);
       if (outcome.output) lines.push("", "--- output ---", outcome.output.slice(-800));
+      lines.push("", "To keep it running manually:", `  cd ${dir}`, `  ${spec.command}`);
 
       return text(lines.join("\n"), !outcome.ok);
     },
