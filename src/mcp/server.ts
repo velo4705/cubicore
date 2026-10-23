@@ -1603,26 +1603,31 @@ Say what was cancelled and how much of the work had already landed.`,
 
 
 ${ENDING}
-Work in this order.
+Work in this order, and answer each numbered question before moving on.
 
-**1. Ask about the tier.** Free or paid, and what it has to include. A free tier
-usually means a static host, a managed free database and a free CI tier; a paid one
-buys a server, a managed database and a preview environment. This changes every later
-answer, so ask before offering anything.
+**1. What tier?** Pick one, or say otherwise:
 
-**2. Offer the stacks.** Three or four real options, each with what it costs, what it
-gives up, and what it is annoying about. Name one as the recommendation and say why --
-the founder can pick differently. Some things worth knowing: a container platform is
-the most portable and the most fiddly; a serverless platform is the cheapest and the
-least flexible; a static host is free and will not run a server; a VPS is boring,
-predictable and yours to maintain.
+  1) Free tier — no monthly cost, but expect spin-down, limited build minutes,
+     shared resources, and no custom domain. Good for demos and side projects.
+  2) Paid tier — always-on, managed database option, custom domain, no spin-down.
+     Costs monthly. Good for production.
+  3) Other — specify your own tier or constraint (e.g. "must stay under $5/mo",
+     "must be HIPAA-compliant", "must run on-prem").
 
-**3. Write the deploy files.** A plan of contracts, one per file: the container
-definition, the platform configuration, the environment example, the health check, the
-CI workflow. Concrete paths, disjoint scopes, and a check that can fail.
+Reply with the number (or write your own for option 3). I will not offer stacks
+until you answer this.
 
-**4. Explain it.** The manual steps to deploy by hand, in order, with the environment
-variables the founder has to set. Assume they have never deployed this stack before.
+**2. Once you pick a tier, I will offer three or four real deployment stacks** —
+each with what it costs, what it gives up, and what is annoying about it. One
+will be marked as my recommendation, but you can pick differently.
+
+**3. Then I write the deploy files** — container definition, platform
+configuration, environment example, health check, CI workflow. Concrete paths,
+disjoint scopes, and a check that can fail.
+
+**4. Then I explain the manual steps** to deploy by hand, in order, with the
+environment variables you have to set. Assume you have never deployed this stack
+before.
 
 Do not deploy anything. Write the files and explain the steps.`,
           },
