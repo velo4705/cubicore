@@ -33,7 +33,8 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import type { Contract, Plan } from "../contracts/types";
 
@@ -624,12 +625,17 @@ async function testRun(args: { findings?: TestFinding[] }, directory: string): P
   writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(findings, state.cycle, state.maxCycles));
 
   if (blocking.length === 0) {
-    return reply(
+    const hasDebug = existsSync(join(directory, DEBUG_MD));
+    const nextHint = hasDebug
+      ? "\n\n---\nNext: /cubicore:deploy  (everything passes; the project is ready to put somewhere)\nOr: /cubicore:refine (add another feature to what was built) \u00b7 /cubicore:undo (discard the run and start over)"
+      : "";
+    return text(
       [`No blocking findings. Wrote ${DEBUG_MD} listing ${advisory.length} advisory item(s).`,
        advisory.length === 0
          ? "Nothing mechanical and nothing judgement-worthy was found."
-         : "Advisory items are for a human to judge -- Test does not block on them."].join("\n"),
-      directory,
+         : "Advisory items are for a human to judge -- Test does not block on them.",
+       nextHint].join("\n"),
+      false,
     );
   }
 

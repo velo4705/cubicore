@@ -65,7 +65,7 @@ export async function tryIt(spec: TrySpec, cwd: string): Promise<TryOutcome> {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, PORT: process.env.PORT ?? "3000" },
+      env: process.env,
     });
 
     // Drain both streams so the child never blocks on a full pipe.
@@ -175,12 +175,14 @@ async function waitForReady(
   const deadline = Date.now() + timeout;
 
   while (Date.now() < deadline) {
-    if (spec.readyLine && readOutput().includes(spec.readyLine)) {
-      return { ok: true };
-    }
+    // URL check is authoritative: a server answering HTTP is up regardless
+    // of what its stdout says.
     if (spec.url) {
       const alive = await fetch(spec.url, { signal: AbortSignal.timeout(2_000) }).catch(() => undefined);
       if (alive) return { ok: true };
+    }
+    if (spec.readyLine && readOutput().includes(spec.readyLine)) {
+      return { ok: true };
     }
     if (!spec.readyLine && !spec.url) {
       // Nothing to wait for: a command that starts and stays up is ready.
