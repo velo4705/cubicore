@@ -18,8 +18,32 @@ Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are cal
 
 The Simple Architecture of this idea works like below:
 
-```
-[User gives Prompt] --> [Agent Plans about the Prompt and generates file] --> [Summon Sub-agents to read generated file] --> [Submits Result]
+```mermaid
+flowchart TD
+    A[Founder request] --> B[/cubicore:plan]
+    B --> C{Plan valid?}
+    C -->|No| B
+    C -->|Yes| D[/cubicore:execute]
+    D --> E[Worktree isolation per associate]
+    E --> F[Schema gate]
+    F --> G[Verify gate]
+    G --> H[Scope gate]
+    H --> I{All gates pass?}
+    I -->|No| J[/cubicore:refine]
+    J --> D
+    I -->|Yes| K[/cubicore:test]
+    K --> L{Blocking findings?}
+    L -->|Yes| M[/cubicore:fix]
+    M --> D
+    L -->|No| N[/cubicore:try]
+    N --> O{Works?}
+    O -->|No| D
+    O -->|Yes| P[/cubicore:deploy]
+    
+    Q[/cubicore:status] --> D
+    R[/cubicore:estimate] --> D
+    S[/cubicore:undo] --> D
+    T[/cubicore:cancel] --> D
 ```
 
 When a user gives a prompt, assume it to be a simple, lazy prompt "Make me some huge megaproject that can make me rich. make no mistakes, i believe in you.".
