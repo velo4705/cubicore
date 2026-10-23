@@ -44,14 +44,26 @@ export interface Run {
 
 const STATE_DIR = ".cubicore";
 
-function statePath(directory: string): string {
-  return join(directory, STATE_DIR, "runs.json");
+function findStatePath(startDir: string): string | null {
+  let current = startDir;
+  for (let i = 0; i < 5; i++) {
+    const candidate = join(current, STATE_DIR, "runs.json");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+function statePath(directory: string): string | null {
+  return findStatePath(directory);
 }
 
 /** All runs for a directory, newest first. */
 export function loadRuns(directory: string): Run[] {
   const path = statePath(directory);
-  if (!existsSync(path)) return [];
+  if (!path) return [];
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as Run[];
     return Array.isArray(parsed) ? parsed : [];
@@ -61,7 +73,7 @@ export function loadRuns(directory: string): Run[] {
 }
 
 function saveRuns(directory: string, runs: Run[]): void {
-  const path = statePath(directory);
+  const path = join(directory, STATE_DIR, "runs.json");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(runs, null, 2)}\n`);
 }
