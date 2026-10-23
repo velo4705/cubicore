@@ -1,11 +1,12 @@
 import { describe, expect, it } from "bun:test";
 
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { promptFor } from "../src/mcp/server";
 import { COMMAND, nextOptions } from "../src/mcp/next";
+import { DEBUG_MD } from "../src/mcp/protocol";
 
 /**
  * A command the founder is told to type has to exist.
@@ -84,5 +85,19 @@ describe("the guidance names real commands", () => {
       const name = command.replace(/^\/cubicore:/, "").trim();
       expect(registered.has(name)).toBe(true);
     }
+  });
+
+  it("test with no blocking findings suggests deploy, not execute", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-surface-"));
+    writeFileSync(join(dir, "CUBICORE_PLAN.json"), JSON.stringify({ topology: "fan-out", contracts: [] }));
+    writeFileSync(join(dir, DEBUG_MD), "Cycle 0 of 3. 0 blocking, 2 advisory.");
+    mkdirSync(join(dir, ".cubicore"), { recursive: true });
+    writeFileSync(
+      join(dir, ".cubicore", "runs.json"),
+      JSON.stringify([{ id: "run-1", startedAt: 1, finishedAt: 2, plan: {}, state: "done", progress: [], directory: dir }])
+    );
+    const options = nextOptions(dir);
+    const recommended = options.find((o) => o.recommended);
+    expect(recommended?.step).toBe("deploy");
   });
 });
