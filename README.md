@@ -26,30 +26,30 @@ And the Actual process is shown here as a diagram:
 
 ```mermaid
 flowchart TD
-    A[Founder request] --> B[/cubicore:plan]
-    B --> C{Plan valid?}
+    A["Founder request"] --> B["/cubicore:plan"]
+    B --> C{"Plan valid?"}
     C -->|No| B
-    C -->|Yes| D[/cubicore:execute]
-    D --> E[Worktree isolation per associate]
-    E --> F[Schema gate]
-    F --> G[Verify gate]
-    G --> H[Scope gate]
-    H --> I{All gates pass?}
-    I -->|No| J[/cubicore:refine]
+    C -->|Yes| D["/cubicore:execute"]
+    D --> E["Worktree isolation per associate"]
+    E --> F["Schema gate"]
+    F --> G["Verify gate"]
+    G --> H["Scope gate"]
+    H --> I{"All gates pass?"}
+    I -->|No| J["/cubicore:refine"]
     J --> D
-    I -->|Yes| K[/cubicore:test]
-    K --> L{Blocking findings?}
-    L -->|Yes| M[/cubicore:fix]
+    I -->|Yes| K["/cubicore:test"]
+    K --> L{"Blocking findings?"}
+    L -->|Yes| M["/cubicore:fix"]
     M --> D
-    L -->|No| N[/cubicore:try]
-    N --> O{Works?}
+    L -->|No| N["/cubicore:try"]
+    N --> O{"Works?"}
     O -->|No| D
-    O -->|Yes| P[/cubicore:deploy]
+    O -->|Yes| P["/cubicore:deploy"]
     
-    Q[/cubicore:status] --> D
-    R[/cubicore:estimate] --> D
-    S[/cubicore:undo] --> D
-    T[/cubicore:cancel] --> D
+    Q["/cubicore:status"] --> D
+    R["/cubicore:estimate"] --> D
+    S["/cubicore:undo"] --> D
+    T["/cubicore:cancel"] --> D
 ```
 
 When a user gives a prompt, assume it to be a simple, lazy prompt "Make me some huge megaproject that can make me rich. make no mistakes, i believe in you.".
