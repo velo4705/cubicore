@@ -35,6 +35,8 @@ export interface Worktree {
   contractId: string;
   /** The directory the worker should run in. */
   path: string;
+  /** Git branch created for this worktree (empty when degraded). */
+  branch: string;
   /** True when the worktree could not be created and the worker must run in the main tree. */
   degraded: boolean;
   reason?: string;
@@ -75,6 +77,19 @@ export function createWorktree(root: string, contract: Contract, workRoot?: stri
       branch: "",
       degraded: true,
       reason: "not a git repository, so the associate cannot be isolated",
+    };
+  }
+
+  // A contract that only reads and writes nothing needs no isolation:
+  // it cannot collide with another worker's writes, and running in the
+  // main tree avoids the copy + git init overhead entirely.
+  if (contract.deliverable === "report" && contract.writes.length === 0) {
+    return {
+      contractId: contract.id,
+      path: root,
+      branch: "",
+      degraded: true,
+      reason: "read-only contract writes nothing, so no worktree isolation needed",
     };
   }
 

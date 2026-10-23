@@ -147,6 +147,7 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
   const allowed = [
     "id", "objective", "reads", "writes", "forbidden",
     "deliverable", "schema", "doneWhen", "checks", "budget",
+    "tools",
   ];
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
@@ -208,6 +209,7 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
     doneWhen: value.doneWhen as string,
     checks,
     budget,
+    tools: Array.isArray(value.tools) ? value.tools as string[] : [],
   };
 }
 

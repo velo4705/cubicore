@@ -25,6 +25,7 @@ const VALID = {
         },
       ],
       budget: { tokens: 20000, toolCalls: 40, wallMs: 300000 },
+      tools: [],
     },
   ],
   graphBudget: { nodes: 8, edges: 16, tokens: 500000, wallMs: 1200000 },

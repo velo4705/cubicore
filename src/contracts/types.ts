@@ -76,6 +76,13 @@ export interface Contract {
   /** Cases this contract adds on top of the project baseline. */
   checks: Check[];
   budget: Budget;
+  /** MCP servers or tools this contract is authorised to use.
+   *
+   * The "workshop" model: every MCP the host has registered is available to
+   * any associate, but the plan declares which ones this contract will use.
+   * Empty array or absent means no MCP/tools needed beyond the base tool set.
+   */
+  tools?: string[];
 }
 
 import type { TrySpec } from "../plan/try";

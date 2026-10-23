@@ -29,6 +29,20 @@ export function renderPrompt(contract: Contract, options: PromptOptions = {}): s
 
   sections.push(`# Objective\n\n${contract.objective}`);
 
+  if (contract.tools && contract.tools.length > 0) {
+    const tools = contract.tools;
+    sections.push(
+      [
+        "# MCP servers and tools you may use",
+        "",
+        "The host has these MCP servers registered. You may use any of them:",
+        "",
+        ...tools.map((tool) => `- \`${tool}\``),
+        "",
+      ].join("\n"),
+    );
+  }
+
   sections.push(
     [
       "# You may write to these paths, and no others",

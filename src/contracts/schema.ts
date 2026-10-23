@@ -68,6 +68,7 @@ const contract = {
     doneWhen: { type: "string", minLength: 1 },
     checks: { type: "array", items: check },
     budget,
+    tools: { type: "array", items: { type: "string", minLength: 1 } },
   },
 } as const;
 
@@ -143,6 +144,9 @@ Rules:
   Coverage thresholds and complexity limits do not — mark those "advisory".
 - Prefer "intent" checks derived from what the user actually asked for. You
   have not read the code, so do not guess at this file's edge cases.
+- "tools" lists the MCP servers or plugins this contract will use. The host
+  may have many registered; declare only the ones this contract needs.
+  Empty array means none — the worker runs with the base tool set only.
 
 Refusing is a valid answer. Use topology "refuse" with an empty contracts
 array when the request:
