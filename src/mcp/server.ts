@@ -1603,9 +1603,11 @@ Say what was cancelled and how much of the work had already landed.`,
 
 
 ${ENDING}
-Work in this order, and answer each numbered question before moving on.
+Work in this order, and do not skip a step. You ask; the founder answers. Do not
+answer your own questions — stop after asking and wait for the reply.
 
-**1. What tier?** Pick one, or say otherwise:
+**1. What tier?** Ask the founder which tier they want. Present these three
+options and do not pick one yourself:
 
   1) Free tier — no monthly cost, but expect spin-down, limited build minutes,
      shared resources, and no custom domain. Good for demos and side projects.
@@ -1614,12 +1616,13 @@ Work in this order, and answer each numbered question before moving on.
   3) Other — specify your own tier or constraint (e.g. "must stay under $5/mo",
      "must be HIPAA-compliant", "must run on-prem").
 
-Reply with the number (or write your own for option 3). I will not offer stacks
-until you answer this.
+Stop here. Wait for the founder to reply with a number (or their own tier for
+option 3). I will not offer stacks until they answer.
 
-**2. Once you pick a tier, I will offer three or four real deployment stacks** —
-each with what it costs, what it gives up, and what is annoying about it. One
-will be marked as my recommendation, but you can pick differently.
+**2. Once the founder picks a tier, I will offer three or four real deployment
+stacks** — each with what it costs, what it gives up, and what is annoying about
+it. One will be marked as my recommendation, but the founder can pick
+differently.
 
 **3. Then I write the deploy files** — container definition, platform
 configuration, environment example, health check, CI workflow. Concrete paths,
