@@ -138,6 +138,9 @@ Rules:
   contract's "writes" globs. Two workers writing the same file is the one
   failure this system exists to prevent.
 - "reads" MAY overlap. Sharing read scope is fine and often desirable.
+- Every contract MUST have a "schema" field — an object describing the
+  output it produces. A contract without a schema is invalid and will be
+  rejected before anything is spent.
 - A contract producing a "diff" needs at least one check with
   "gating": "blocking".
 - A blocking check must have "convergent": true. Typecheck and tests converge.
@@ -147,6 +150,10 @@ Rules:
 - "tools" lists the MCP servers or plugins this contract will use. The host
   may have many registered; declare only the ones this contract needs.
   Empty array means none — the worker runs with the base tool set only.
+- "graphBudget.edges" must be at least the number of read/write dependencies
+  between contracts — count every case where one contract "reads" a path that
+  another contract "writes". Under-funding the edges rejects the plan.
+- "graphBudget.nodes" must be at least the number of contracts.
 
 Refusing is a valid answer. Use topology "refuse" with an empty contracts
 array when the request:

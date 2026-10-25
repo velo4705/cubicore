@@ -22,7 +22,8 @@ import { loadRuns } from "./runs";
  */
 
 export type NextStep =
-  | "plan"
+  | "plan-demo"
+  | "plan-full"
   | "execute"
   | "status"
   | "test"
@@ -34,7 +35,8 @@ export type NextStep =
   | "done";
 
 export const COMMAND: Record<NextStep, string> = {
-  plan: "/cubicore:plan",
+  "plan-demo": "/cubicore:plan-demo",
+  "plan-full": "/cubicore:plan-full",
   execute: "/cubicore:execute",
   status: "/cubicore:status",
   test: "/cubicore:test",
@@ -80,7 +82,7 @@ export function nextOptions(directory: string): Option[] {
   const latest = runs[0];
 
   if (!planned) {
-    return [{ step: "plan", note: "there is no plan yet", recommended: true }];
+    return [{ step: "plan-demo", note: "there is no plan yet", recommended: true }];
   }
 
   if (!latest) {
@@ -105,7 +107,7 @@ export function nextOptions(directory: string): Option[] {
   if (latest.state === "cancelled") {
     return [
       { step: "undo", note: "discard what the cancelled run changed", recommended: true },
-      { step: "plan", note: "start over" },
+      { step: "plan-demo", note: "start over" },
     ];
   }
 

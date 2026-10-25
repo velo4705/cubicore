@@ -49,6 +49,7 @@ interface ClientLike {
         agent?: string;
         model?: { providerID: string; modelID: string };
         parts: Array<{ type: "text"; text: string }>;
+        tools?: Record<string, boolean>;
       };
       path: { id: string };
       query?: { directory?: string };
@@ -98,6 +99,7 @@ export function clientSpawner(
           agent: input.agent,
           model: input.model ? splitModel(input.model) : undefined,
           parts: [{ type: "text", text: input.text }],
+          ...(input.tools ? { tools: input.tools } : {}),
         },
       });
     },

@@ -25,7 +25,8 @@ import { DEBUG_MD } from "../src/mcp/protocol";
  */
 
 const COMMANDS = [
-  "plan",
+  "plan-demo",
+  "plan-full",
   "execute",
   "refine",
   "fix",

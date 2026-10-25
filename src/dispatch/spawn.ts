@@ -10,6 +10,38 @@ import type { WorkerRunner } from "./index";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../telemetry/types";
 
 /**
+ * Build the per-worker tool restriction.
+ *
+ * opencode sends the host's whole tool schema to every agent on every turn,
+ * and each turn re-reads the prefix. For a 128K-context model that fills the
+ * window fast and triggers session compaction loops. So each worker gets only
+ * the base tools plus the MCP servers its contract declares — every MCP server
+ * the host has but this contract doesn't need is denied with a wildcard.
+ *
+ * opencode 1.18.29 supports per-agent `tools` with server wildcards, so
+ * `"*"` denies everything not explicitly allowed.
+ */
+function toolsForContract(contract: Contract): Record<string, boolean> {
+  const tools: Record<string, boolean> = {
+    read: true,
+    write: true,
+    edit: true,
+    bash: true,
+    grep: true,
+    glob: true,
+    list: true,
+    patch: true,
+    // Deny everything else by default — catches MCP servers, webfetch,
+    // websearch, task, and anything else the contract did not declare.
+    "*": false,
+  };
+  for (const tool of contract.tools ?? []) {
+    tools[tool] = true;
+  }
+  return tools;
+}
+
+/**
  * Spawning one worker.
  *
  * This is the only place in `src/` allowed to be an unverified SDK wrapper, and
@@ -35,7 +67,7 @@ export interface SessionSpawner {
    * Passing an invented name therefore costs a dispatch and buys nothing, so
    * this interface does not require one.
    */
-  prompt(sessionId: string, input: { agent?: string; text: string; model?: string }): Promise<void>;
+  prompt(sessionId: string, input: { agent?: string; text: string; model?: string; tools?: Record<string, boolean> }): Promise<void>;
   changedFiles(sessionId: string): Promise<string[]>;
   /**
    * UNVERIFIED. No cancel method appears in the docs, so this is optional and
@@ -121,6 +153,7 @@ export class WorkerSessions {
       await this.spawner.prompt(sessionId, {
         text: renderPrompt(contract),
         model: routing?.model,
+        tools: toolsForContract(contract),
       });
 
       this.trace?.("worker.prompted", { contractId: contract.id, sessionId });

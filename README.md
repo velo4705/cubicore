@@ -52,7 +52,8 @@ More agents are coming soon!
 
 | Command | What it does |
 |---|---|
-| `/cubicore:plan` | Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
+| `/cubicore:plan-demo` | Demo mode. Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
+| `/cubicore:plan-full` | Full product mode of the command above. |
 | `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Prefers the host's own inline sub-agents so every associate renders as a visible step; falls back to Cubicore's own sessions when the host has none. |
 | `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
 | `/cubicore:refine` | Change the current plan before running it, or add a feature to a project that has already been built. Contracts that already passed and were left alone are not re-run, so the second cycle costs the change and not the project. |

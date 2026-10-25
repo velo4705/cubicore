@@ -61,6 +61,67 @@ export interface ToolResult {
 
 const PLAN_SCHEMA = PLAN_SCHEMA_JSON;
 
+/**
+ * Creates the deployment tier question as an opencode form (native MCQ dialog).
+ *
+ * Uses opencode's built-in form mechanism so the founder gets a real question
+ * UI instead of the model generating its own text MCQ. Best effort: if the
+ * form can't be created (no session, no credentials, network error), the text
+ * prompt still works as a fallback.
+ */
+async function createDeployTierForm(runtime: Runtime, sessionID: string): Promise<void> {
+  const formId = `deploy-tier-${Date.now()}`;
+  const body = {
+    id: formId,
+    title: "Choose your deployment tier",
+    metadata: {},
+    fields: [
+      {
+        key: "tier",
+        title: "Deployment tier",
+        description: "Which tier do you want to deploy to?",
+        required: true,
+        type: "string",
+        options: [
+          {
+            value: "free",
+            label: "Free tier",
+            description: "No monthly cost, spin-down OK, shared resources, no custom domain",
+          },
+          {
+            value: "paid",
+            label: "Paid tier",
+            description: "Always-on, managed database option, custom domain, no spin-down. Costs monthly.",
+          },
+          {
+            value: "other",
+            label: "Other",
+            description: "Specify your own tier or constraint",
+          },
+        ],
+      },
+    ],
+  };
+
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
+  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+  try {
+    await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        "x-opencode-directory": encodeURIComponent(runtime.directory),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    process.stderr.write(
+      `[cubicore deploy] failed to create tier form: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
 async function pumpEvents(
   runtime: Runtime,
   workers: { onEvent(event: unknown): void },
@@ -213,7 +274,7 @@ async function plan(raw: string, dir: string): Promise<ToolResult> {
     );
   }
 
-  return text([...summary, "", "Call execute with this plan to dispatch it."].join("\n"));
+  return reply([...summary, "", "Call execute with this plan to dispatch it."].join("\n"), dir);
 }
 
 /** Best-effort caller session; undefined simply means the associates are not nested. */
@@ -401,12 +462,13 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
     })
     .catch((error) => failRun(run.id, dir, error instanceof Error ? error.message : String(error)));
 
-  return text(
+  return reply(
     [
       `Started ${run.id} — ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
       `Progress streams to the server log; the verdict does not arrive here.`,
       `Poll with the status tool using run id ${run.id}.`,
     ].join("\n"),
+    dir,
   );
 }
 
@@ -767,10 +829,10 @@ async function research(directory: string): Promise<ToolResult> {
  * command has to be stated in the reply. The tools also carry it -- derived
  * from the state on disk -- and the agent is told to repeat what they say.
  */
-const ENDING = "End your reply by offering the next steps, exactly as the tool reported " +
-  "them -- the recommended one first, then the alternatives. Do not invent them: the tool " +
-  "knows what is true, because it reads the state on disk. If it reported none, say the " +
-  "work is done. Let the founder choose; do not run the next step for them. ";
+const ENDING = "End your reply by explicitly offering the next steps as /cubicore: commands -- " +
+  "the recommended one first, then the alternatives. Say the command name and what it does. " +
+  "Do not invent steps: the tool reads state on disk and knows what is true. " +
+  "If the tool reported none, say the work is done. Let the founder choose; do not run the next step for them. ";
 
 const WHEN = "Call this when the founder asks to use Cubicore, " +
   "or to plan, dispatch, test or check work that should be split across " +
@@ -1207,10 +1269,18 @@ export const TOOLS = [
  */
 export const PROMPTS = [
   {
-    name: "plan",
+    name: "plan-demo",
     description:
-      "Research the repository, ask the founder what the repo cannot answer, then write " +
-      "CUBICORE_PLAN.md and CUBICORE_PLAN.json. Dispatches nothing.",
+      "Plan a demo or MVP. Same shape as plan, but optimised for shipping fast: simpler stack, " +
+      "fewer checks, cut corners where safe, and a single deployable artifact.",
+    arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
+  },
+  {
+    name: "plan-full",
+    description:
+      "Plan a full enterprise product from scratch. Same shape as plan, but optimised for " +
+      "production: thorough contracts, health endpoints, config, observability, CI/CD, and " +
+      "checks that can fail on real systems.",
     arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
   },
   {
@@ -1284,111 +1354,88 @@ export const PROMPTS = [
   },
 ];
 
+/**
+ * Renders the shared plan-writing prompt structure used by plan-demo and
+ * plan-full. Only the title and the "decide scope" section differ; steps 0,
+ * 1, 3, the contract rules, and the schema are identical.
+ */
+function renderPlanPrompt(title: string, decideScope: string): string {
+  return `
+${title}
+
+
+${ENDING}
+Work in this order, and do not skip a step.
+
+**0. Prepare.** Call the prepare tool. If the project is not a git repository it
+initialises one and records a baseline. If it already is one, the tool leaves it alone.
+
+**1. Research once.** Call the research tool. It reports the tree, the modules and
+their exports. Do not go exploring with the shell afterwards.
+
+**2. Decide scope.** ${decideScope}
+
+**3. Write the plan.** Produce the plan JSON and pass it to the plan tool, which
+writes CUBICORE_PLAN.md for the founder and CUBICORE_PLAN.json for the
+dispatcher.
+
+Every contract needs:
+- A \`schema\` field describing its output
+- At least one check that \`can fail\`
+- Disjoint \`writes\` from every other contract
+- \`graphBudget.nodes\` at least the number of contracts
+- \`graphBudget.edges\` at least the read/write dependencies between contracts
+
+Plan JSON must match:
+
+${PLAN_SCHEMA_JSON}`;
+}
+
+/** Builds the demo/MVP decide-scope section. */
+function planDemoScope(): string {
+  return `
+This is a demo or MVP. Choose a conventional, boring stack that ships fast.
+Skip observability, health endpoints, CI/CD, and multi-stage config unless the
+founder explicitly asks. One contract per file or feature; prefer fewer, larger
+contracts over many small ones. The goal is a single deployable artifact, not a
+production system.`;
+}
+
+/** Builds the enterprise decide-scope section. */
+function planFullScope(): string {
+  return `
+This is an enterprise product, built from scratch. Choose a production-grade
+stack with health endpoints, config, observability, CI/CD, and proper error
+handling. Split into one contract per bounded context or service; prefer more,
+smaller contracts with clear boundaries. Every contract needs a check that can
+fail against a real system.`;
+}
+
 export function promptFor(name: string, args: Record<string, string>) {
-  if (name === "plan") {
+  if (name === "plan-demo") {
     return {
-      description: "Research, question, and plan in one pass.",
+      description: "Plan a demo or MVP — ship fast, cut safe corners.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
-            text:
-`Plan this request:
+            text: renderPlanPrompt("Plan a demo or MVP of this project.", planDemoScope()),
+          },
+        },
+      ],
+    };
+  }
 
-${ENDING}
-
-${args.request ?? "(the current request in this conversation)"}
-
-Work in this order, and do not skip a step.
-
-**0. Prepare.** Call the prepare tool. If the project is not a git repository it
-initialises one and records a baseline, so that "before" is a thing later changes
-can be measured against. If it already is one, the tool leaves it alone.
-
-**1. Research once.** Call the research tool. It reports the tree, the modules and
-their exports, and the garage: the MCP servers connected to this workspace. Their
-tools are already in your tool list, and they are optional -- the ordinary path
-needs none of them. Use one only when you hit an obstacle you cannot get past
-yourself. Do not go exploring with the shell afterwards: the research output
-already contains what you need, and a shell search for something that is not
-there does not end.
-
-Fan out to \`cubicore-research\` sub-agents only when the survey is genuinely too big
-for one pass -- a dozen-plus modules, or several independent questions about the
-design. Each one is a separate session and pays its own bootstrap, so fanning
-out to read three files costs more than reading them yourself. When in doubt,
-one call to the research tool.
-
-Give each sub-agent a slice and a question. Ask for what changes a plan: the
-exported surface, the dependencies between modules, and what looks unfinished
-or likely to collide with another slice.
-
-**2. Decide what kind of request this is, and how much the founder wants to be
-involved.**
-
-*Is it a task or a goal?* "Build me a SaaS" is a goal. "Add a rate limiter to the
-existing HTTP layer" is a task. A goal has to be narrowed before it can be
-planned.
-
-*Does the founder want to be consulted?* Read their tone, not just their words.
-A founder who says "make no mistakes" or "just make it work" is delegating --
-they do not know what they want and do not want to decide. A founder who is
-exploring, who asks what you would suggest, or who has opinions about the shape
-of the thing wants a conversation. Ask the second kind of founder. Do not ask the
-first.
-
-Both deserve a plan. The difference is whether the questions are worth their time.
-
-**3. If they are delegating, decide everything and build.** Do not ask them
-anything. Choose a conventional feature set, the conventional layout, the
-conventional stack, and checks that can fail. Then make it work and prove it
-runs. The deliverable is a working project, not a spec they did not write.
-
-When you decide, choose what a common developer would choose. Boring,
-well-documented and mainstream beats novel. Record what you decided in the plan
-so the founder can override it.
-
-**If they want a conversation, ask sparingly.** At most three questions, and only
-ones where being wrong would cost a re-run. Everything else, decide and say what
-you decided.
-
-**4. Write the plan.** Produce the plan JSON and pass it to the plan tool, which
-writes ${PLAN_MD} for the founder and ${PLAN_JSON} for the dispatcher.
-
-If the result is something the founder is meant to start -- a server, a CLI, an
-app -- the plan needs a \`try\` block saying how to run it and what working
-looks like:
-
-    "try": { "command": "npm start", "url": "http://127.0.0.1:3000/health",
-             "expect": { "status": 200, "bodyContains": "\"status\":\"ok\"" } }
-
-That block is what the try tool executes, and it is how the founder finds out it
-works. A library or a report has nothing to run, and then the block is simply
-absent -- that is correct, not a gap.
-
-**Rules for the plan itself:**
-
-- Every \`writes\` set must be disjoint from every other, and must name
-  concrete files. A scope of \`src/**\` cannot be split safely and will be
-  rejected.
-- Split where the code actually separates, not where the word count does. Two
-  contracts editing the same function are two contracts that collide.
-- Every contract needs a check that \`can fail\`. A check is any command that exits
-  non-zero when the work is wrong: a test, a typecheck, a validation query, a script that
-  verifies every citation resolves. It does not have to be code.
-- If a piece of work has no such check, it is not ready to be a contract. Say so rather
-  than inventing a check that always passes.
-- A blocking check must set \`convergent: true\`. Typecheck and tests converge.
-  Coverage thresholds and complexity limits do not -- mark those \`advisory\`.
-- Never hand-compute a composed expected value. Derive it in the command, or
-  assert a property that holds for every input.
-- \`topology: "refuse"\` is a correct answer. Renames, interface changes and
-  dependent chains are not divide-and-conquer tasks.
-
-Plan JSON must match:
-
-${PLAN_SCHEMA_JSON}`,
+  if (name === "plan-full") {
+    return {
+      description: "Plan a full enterprise product from scratch — production-ready, observable, CI/CD.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: renderPlanPrompt("Plan a full enterprise product from scratch.", planFullScope()),
           },
         },
       ],
@@ -1606,18 +1653,9 @@ ${ENDING}
 Work in this order, and do not skip a step. You ask; the founder answers. Do not
 answer your own questions — stop after asking and wait for the reply.
 
-**1. What tier?** Ask the founder which tier they want. Present these three
-options and do not pick one yourself:
-
-  1) Free tier — no monthly cost, but expect spin-down, limited build minutes,
-     shared resources, and no custom domain. Good for demos and side projects.
-  2) Paid tier — always-on, managed database option, custom domain, no spin-down.
-     Costs monthly. Good for production.
-  3) Other — specify your own tier or constraint (e.g. "must stay under $5/mo",
-     "must be HIPAA-compliant", "must run on-prem").
-
-Stop here. Wait for the founder to reply with a number (or their own tier for
-option 3). I will not offer stacks until they answer.
+**1. What tier?** A deployment tier question has been sent to the founder as a
+form. Wait for them to answer it. Do not pick a tier yourself, and do not offer
+stacks until the founder has answered.
 
 **2. Once the founder picks a tier, I will offer three or four real deployment
 stacks** — each with what it costs, what it gives up, and what is annoying about
@@ -1785,7 +1823,29 @@ export async function serve(): Promise<void> {
       } else if (request.method === "prompts/list") {
         respond({ prompts: PROMPTS });
       } else if (request.method === "prompts/get") {
-        respond(promptFor(String(request.params?.name ?? ""), (request.params?.arguments ?? {}) as Record<string, string>));
+        const name = String(request.params?.name ?? "");
+        const args = (request.params?.arguments ?? {}) as Record<string, string>;
+        // For deploy, create the tier question as an opencode form (native MCQ)
+        // before handing the prompt to the model. The model must not answer its
+        // own question; it asks and waits for the founder's reply.
+        if (name === "deploy") {
+          try {
+            const runtime = runtimeFromEnv();
+            const sessionID = await findCallerSession(runtime);
+            if (sessionID) {
+              await createDeployTierForm(runtime, sessionID);
+            } else {
+              process.stderr.write(
+                "[cubicore deploy] no caller session found; tier form not created\n",
+              );
+            }
+          } catch (error) {
+            process.stderr.write(
+              `[cubicore deploy] failed to create tier form: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
+          }
+        }
+        respond(promptFor(name, args));
       } else if (request.method === "ping") {
         respond({});
       }

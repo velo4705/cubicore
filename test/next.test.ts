@@ -38,7 +38,7 @@ const plan = (): Plan =>
 
 describe("the next step", () => {
   it("asks for a plan when there is none", () => {
-    expect(nextStep(dir())).toBe("plan");
+    expect(nextStep(dir())).toBe("plan-demo");
   });
 
   it("asks to execute once the plan is written", () => {
@@ -108,13 +108,13 @@ describe("the next step", () => {
   it("offers only the one thing worth doing when there is nothing to choose", () => {
     // No plan: there is no meaningful alternative, so a list of nine would
     // be noise.
-    expect(nextOptions(dir()).map((o) => o.step)).toEqual(["plan"]);
+    expect(nextOptions(dir()).map((o) => o.step)).toEqual(["plan-demo"]);
   });
 
   it("names the command, not just the step", () => {
     const d = dir();
-    expect(nextCommand(d)).toBe("/cubicore:plan");
-    expect(nextLine(d)).toContain("/cubicore:plan");
+    expect(nextCommand(d)).toBe("/cubicore:plan-demo");
+    expect(nextLine(d)).toContain("/cubicore:plan-demo");
     expect(nextLine(d)).toContain("there is no plan yet");
   });
 });
