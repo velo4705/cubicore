@@ -83,6 +83,18 @@ export function renderPlanMd(plan: Plan, validation: { ok: boolean; findings: { 
   const md = [
     `# Cubicore plan`,
     ``,
+  ];
+
+  if (plan.summary) {
+    md.push(
+      `## What this is`,
+      ``,
+      plan.summary,
+      ``,
+    );
+  }
+
+  md.push(
     `- **Topology:** ${plan.topology}`,
     `- **Project size:** ${size} (${workers} associate${workers === 1 ? "" : "s"})`,
     `- **Token ceiling:** ${plan.graphBudget.tokens.toLocaleString()}`,
@@ -113,7 +125,7 @@ export function renderPlanMd(plan: Plan, validation: { ok: boolean; findings: { 
     ``,
     `The dispatchable plan is \`${PLAN_JSON}\`. Execute reads that file, never this one.`,
     ``,
-  ];
+  );
 
   return md.join("\n");
 }

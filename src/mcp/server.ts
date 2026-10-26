@@ -18,7 +18,7 @@ import { tryIt } from "../plan/try";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
-import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefs } from "./inline";
+import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
@@ -755,23 +755,28 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
     writeFileSync(`${directory}/${file.path}`, file.content);
   }
 
-  const first = written.find((f) => f.path.endsWith(`01-${loaded.plan.contracts[0].id}.md`));
+  const contractList = loaded.plan.contracts.map(
+    (c, i) =>
+      `${i + 1}. \`${c.id}\` — writes: ${c.writes.join(", ") || "(none)"} — brief: \`${briefPath(i, c.id)}\``,
+  ).join("\n");
 
   return text(
     [
       `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
       "",
       inlineReady
-        ? `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving it its brief's path.`
+        ? `Dispatch ALL ${loaded.plan.contracts.length} associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, at the same time. Give each its own brief's path. Do not dispatch them one at a time.`
         : `NOTE: the host has no \`${ASSOCIATE_AGENT_ID}\` agent. Dispatch to whichever sub-agent it does have ` +
           `(\`general\` works), keeping one brief each -- or call execute_file so Cubicore dispatches sessions itself.`,
+      "",
+      "Associates to dispatch:",
+      "",
+      contractList,
+      "",
       `An associate reads exactly one file and starts building.`,
       "",
       `When they return, run each contract's blocking checks and record the results with the test tool.`,
       "",
-      "--- first brief, for shape ---",
-      "",
-      (first?.content ?? "").split("\n").slice(0, 22).join("\n"),
     ].join("\n"),
   );
 }
@@ -1379,12 +1384,17 @@ their exports. Do not go exploring with the shell afterwards.
 writes CUBICORE_PLAN.md for the founder and CUBICORE_PLAN.json for the
 dispatcher.
 
+The plan needs:
+- A \`summary\` field — one or two sentences describing what this project is,
+  shown at the top of CUBICORE_PLAN.md so the founder understands the product
+  at a glance.
+- \`graphBudget.nodes\` at least the number of contracts.
+- \`graphBudget.edges\` at least the read/write dependencies between contracts.
+
 Every contract needs:
 - A \`schema\` field describing its output
 - At least one check that \`can fail\`
 - Disjoint \`writes\` from every other contract
-- \`graphBudget.nodes\` at least the number of contracts
-- \`graphBudget.edges\` at least the read/write dependencies between contracts
 
 Plan JSON must match:
 
@@ -1476,8 +1486,10 @@ same time and must not read each other's scopes.
 1. Call \`dispatch_blueprint\` with the project kind. It reads CUBICORE_PLAN.json and writes
    one brief per associate plus an index.
 2. Read the index to see who exists and what each owns.
-3. Dispatch each associate to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, giving
-   it its own brief's path. Each reads one file and starts building.
+3. Dispatch ALL associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, at the same time.
+   Give each its own brief's path. Do not dispatch them one at a time -- launch every
+   associate simultaneously so they work concurrently. Each reads one file and starts
+   building.
 4. Collect every report separately. Never merge them — each contract is judged on its own
    checks alone, and a merged report hides which one failed.
 

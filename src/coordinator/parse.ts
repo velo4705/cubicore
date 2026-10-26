@@ -239,7 +239,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "contracts", "graphBudget", "try"].includes(key)) {
+    if (!["topology", "summary", "contracts", "graphBudget", "try"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -281,8 +281,19 @@ export function parsePlan(raw: string): Plan {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
   }
 
+  const summaryRaw = json.summary;
+  let summary: string | undefined;
+  if (summaryRaw !== undefined && summaryRaw !== null) {
+    if (typeof summaryRaw !== "string" || summaryRaw.trim().length === 0) {
+      problems.push("summary must be a non-empty string");
+    } else {
+      summary = summaryRaw.trim();
+    }
+  }
+
   return {
     topology: topologyRaw as Topology,
+    summary,
     contracts,
     graphBudget,
     try: parseTry(json.try, problems),

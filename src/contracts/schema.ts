@@ -82,6 +82,13 @@ export const planSchema = {
       type: "string",
       enum: ["fan-out", "pipeline", "shared-context", "refuse"],
     },
+    summary: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Human-readable description of what this project is, for the founder. " +
+        "Rendered at the top of CUBICORE_PLAN.md.",
+    },
     contracts: { type: "array", items: contract },
     try: {
       type: "object",
@@ -138,6 +145,9 @@ Rules:
   contract's "writes" globs. Two workers writing the same file is the one
   failure this system exists to prevent.
 - "reads" MAY overlap. Sharing read scope is fine and often desirable.
+- "summary" is a human-readable description of what this project is. Write one
+  or two sentences so the founder can understand the product at a glance,
+  without reading every contract. It goes at the top of CUBICORE_PLAN.md.
 - Every contract MUST have a "schema" field — an object describing the
   output it produces. A contract without a schema is invalid and will be
   rejected before anything is spent.

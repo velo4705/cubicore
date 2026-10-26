@@ -92,6 +92,12 @@ export interface Plan {
   contracts: Contract[];
   graphBudget: GraphBudget;
   /**
+   * Human-readable description of what this project is, for the founder.
+   * Rendered at the top of CUBICORE_PLAN.md so anyone can understand
+   * what is being built without reading every contract.
+   */
+  summary?: string;
+  /**
    * How to run the result, when the result is something that runs.
    *
    * Absent for a library or a report, present for anything the founder is

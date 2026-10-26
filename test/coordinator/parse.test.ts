@@ -136,7 +136,7 @@ describe("the emitted schema matches the parser", () => {
     // either. Every plan carrying a try block was rejected as "plan has
     // unknown field try", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "graphBudget", "topology", "try"].sort();
+    const parserKeys = ["contracts", "graphBudget", "summary", "topology", "try"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.

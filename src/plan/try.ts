@@ -52,6 +52,64 @@ const DEFAULT_READY_TIMEOUT = 20_000;
  * checks the response, and stops it. It does not judge whether the output is
  * good — that is what the DEBUG file is for.
  */
+/**
+ * Resolve a PATH that can actually run node-based commands.
+ *
+ * The MCP server inherits the host's environment, which on Nix (and many
+ * other setups) has node on PATH but not npm, or neither. Rather than make
+ * the founder hand-edit PATH, detect where node lives and prepend its
+ * directory so npm -- which ships alongside node -- can be found.
+ */
+function nodePathEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value;
+  }
+  const existingPath = env.PATH || "";
+
+  // Wherever node is, npm sits right next to it. Try the nix store path
+  // first (common on NixOS and Nix-installed systems), then fall back to
+  // asking the shell.
+  const nodeDirs: string[] = [];
+
+  // Heuristic: the nix store path for nodejs-slim-*/bin contains both
+  // node and npm. Scan for it without guessing the exact hash.
+  try {
+    const { stdout } = Bun.spawnSync(["sh", "-c", "ls -d /nix/store/*/nodejs-*/bin 2>/dev/null | head -1"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const found = stdout.toString().trim().split("\n").filter(Boolean);
+    nodeDirs.push(...found);
+  } catch {
+    // Ignore; we'll try `which` below.
+  }
+
+  // Ask the shell where node is, as a fallback.
+  try {
+    const { stdout } = Bun.spawnSync(["sh", "-c", "command -v node || command -v nodejs || true"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const nodeBin = stdout.toString().trim();
+    if (nodeBin) {
+      // directory of the node binary, which also holds npm
+      nodeDirs.push(nodeBin.slice(0, nodeBin.lastIndexOf("/")));
+    }
+  } catch {
+    // Ignore.
+  }
+
+  for (const dir of nodeDirs) {
+    if (dir && !existingPath.split(":").includes(dir)) {
+      env.PATH = `${dir}:${existingPath}`;
+      break;
+    }
+  }
+
+  return env;
+}
+
 export async function tryIt(spec: TrySpec, cwd: string): Promise<TryOutcome> {
   const started = Date.now();
   const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
@@ -65,7 +123,7 @@ export async function tryIt(spec: TrySpec, cwd: string): Promise<TryOutcome> {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env,
+      env: nodePathEnv(),
     });
 
     // Drain both streams so the child never blocks on a full pipe.
