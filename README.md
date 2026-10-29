@@ -54,7 +54,8 @@ More agents are coming soon!
 |---|---|
 | `/cubicore:plan-demo` | Demo mode. Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
 | `/cubicore:plan-full` | Full product mode of the command above. |
-| `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Prefers the host's own inline sub-agents so every associate renders as a visible step; falls back to Cubicore's own sessions when the host has none. |
+| `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Prefers the host's own inline sub-agents so every associate renders as a visible step; falls back to Cubicore's own sessions when the host has none. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
+| `/cubicore:continue` | Resume the last run from where it stopped — skips contracts already done, dispatches only what remains. Exempt from the cycle budget. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
 | `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
 | `/cubicore:refine` | Change the current plan before running it, or add a feature to a project that has already been built. Contracts that already passed and were left alone are not re-run, so the second cycle costs the change and not the project. |
 | `/cubicore:fix` | Fix what the test command found. Reads `CUBICORE_DEBUG.md`, plans the fixes and dispatches them — the work is already decided, so it skips the re-planning and the checks that are already green. |
@@ -73,8 +74,8 @@ After every step the agent ends its reply with what to type next, and the altern
 no plan            /cubicore:plan
 after plan         /cubicore:execute   · estimate · refine
 run in flight      /cubicore:status
-after the run      /cubicore:test      · refine · undo
-blocking findings  /cubicore:fix       · refine · undo
+after the run      /cubicore:test      · refine · undo · continue
+blocking findings  /cubicore:fix       · refine · undo · continue
 everything passes  /cubicore:deploy    · refine · undo
 ```
 
@@ -220,13 +221,18 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
 - **Contracts, not prompts.** Disjoint write scopes, a check matrix computed at
   validation time, budget caps, and a topology check that refuses work which is
   not divide-and-conquer.
+- **Narrative context.** `CUBICORE_CONTEXT.md` — problem, users, use cases,
+  benefits, demo flow, future work, market opportunity, business model,
+  competitive advantage, go-to-market, risks, current status, and the ask.
+  Written for humans who present the project in person; never parsed by
+  Execute or dispatch.
 - **Two dispatch paths.** Inline sub-tasks where the host supports them, sessions
   where it does not. Both gate the same way.
 - **One worktree per associate.** opencode 1.18.x cannot restrict an agent to
   a path, so the filesystem is the boundary: two workers cannot be in one file
   at the same moment. A worker's files are copied back only after its checks
   pass, so an unapproved change never reaches the shared tree.
-- **Nine commands, and the flow guides itself.** Every reply ends with the
+- **Thirteen commands, and the flow guides itself.** Every reply ends with the
   next step and the alternatives, derived from the state on disk rather than
   remembered.
 - **A bounded loop.** `plan → execute → test → execute`, capped at three
