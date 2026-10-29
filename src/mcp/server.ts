@@ -7,6 +7,7 @@ import { RunRecorder } from "../telemetry/report";
 import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
+import type { ContractState } from "./runs";
 import {
   cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
   recordProgress, startRun,
@@ -189,7 +190,20 @@ export function satisfiedContracts(directory: string, plan: Plan): string[] {
   const last = runs.find((r) => r.state === "done");
   if (!last) return [];
 
-  const done = new Set(last.progress.filter((p) => p.state === "done").map((p) => p.contractId));
+  // A contract is satisfied when its state is "done", or when it declares
+  // steps and every step is done (even if the contract wrapper hasn't been
+  // marked done yet — an interrupted run may have finished all steps but not
+  // updated the contract state).
+  const done = new Set<string>();
+  for (const p of last.progress) {
+    if (p.state === "done") {
+      done.add(p.contractId);
+      continue;
+    }
+    if (p.steps && Object.values(p.steps).length > 0 && Object.values(p.steps).every((s) => s === "done")) {
+      done.add(p.contractId);
+    }
+  }
   if (done.size === 0) return [];
 
   const same = (a: Contract, b: Contract): boolean =>
@@ -287,7 +301,13 @@ async function resolveParent(parentSessionID?: string): Promise<string | undefin
   }
 }
 
-async function runToCompletion(raw: string, runId: string, parentSessionID?: string, dir = process.cwd()): Promise<{ summary: string; halted: "cancelled" | "paused" | null }> {
+async function runToCompletion(
+  raw: string,
+  runId: string,
+  parentSessionID?: string,
+  dir = process.cwd(),
+  satisfiedOverride?: string[],
+): Promise<{ summary: string; halted: "cancelled" | "paused" | null }> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
 
@@ -349,7 +369,7 @@ async function runToCompletion(raw: string, runId: string, parentSessionID?: str
       collect: (contractId) => workers.collect(contractId),
       discard: (contractId) => workers.discard(contractId),
       // Contracts an earlier run already satisfied, unchanged, are not re-run.
-      satisfiedContracts: satisfiedContracts(dir, parsed),
+      satisfiedContracts: satisfiedOverride ?? satisfiedContracts(dir, parsed),
     },
   );
 
@@ -568,7 +588,28 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
   }
 
   writeFileSync(`${directory}/${PLAN_JSON}`, raw);
-  writeFileSync(`${directory}/${PLAN_MD}`, renderPlanMd(parsed, validation));
+
+  // Progress markers so the founder can see at a glance what is done,
+  // what failed, and what still needs work -- and so continue knows where
+  // to pick up.
+  const contractProgress = new Map<string, ContractState>();
+  const stepProgress = new Map<string, Map<string, ContractState>>();
+  for (const run of loadRuns(directory)) {
+    if (run.state !== "done" && run.state !== "failed" && run.state !== "cancelled") continue;
+    for (const p of run.progress) {
+      contractProgress.set(p.contractId, p.state);
+      if (p.steps) {
+        const stepMap = new Map<string, ContractState>();
+        for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+        stepProgress.set(p.contractId, stepMap);
+      }
+    }
+    break; // newest completed run wins
+  }
+  writeFileSync(
+    `${directory}/${PLAN_MD}`,
+    renderPlanMd(parsed, validation, { contracts: contractProgress, steps: stepProgress }),
+  );
 
   if (problems.length === 0) {
     // A good plan clears the budget. Without this a refine would start at
@@ -663,6 +704,87 @@ async function executeFile(directory: string, parentSessionID?: string): Promise
   return reply(
     [`${gate.reason}`, `Started ${run.id} -- ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
      `Poll with status using ${run.id}.`].join("\n"),
+    directory,
+  );
+}
+
+/**
+ * Continue: resume the last run from where it stopped.
+ *
+ * Reads CUBICORE_PLAN.json, skips contracts already done in the most recent
+ * completed run, and dispatches only what remains. This is the daily-driver
+ * command: run it, it picks up where the last run left off.
+ */
+async function continueRun(directory: string, parentSessionID?: string): Promise<ToolResult> {
+  let raw: string;
+  try {
+    raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
+  } catch {
+    return text(`No ${PLAN_JSON} in this directory. Run the plan command first.`, true);
+  }
+
+  const loaded = loadPlan(raw);
+  if (!loaded.ok) return text(`Refusing to continue: ${loaded.reason}`, true);
+
+  const parsed = loaded.plan;
+  const runs = loadRuns(directory);
+  const last = runs[0]; // newest first
+
+  // Build contract-level and step-level progress from the most recent run.
+  const contractProgress = new Map<string, ContractState>();
+  const stepProgress = new Map<string, Map<string, ContractState>>();
+  const satisfied: string[] = [];
+
+  if (last) {
+    for (const p of last.progress) {
+      contractProgress.set(p.contractId, p.state);
+      if (p.steps) {
+        const stepMap = new Map<string, ContractState>();
+        for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+        stepProgress.set(p.contractId, stepMap);
+      }
+
+      // A contract is satisfied (skipped) when all its steps are done, or
+      // when it has no steps and its state is "done".
+      const allStepsDone = p.steps && Object.values(p.steps).every((s) => s === "done");
+      if ((!p.steps && p.state === "done") || allStepsDone) {
+        satisfied.push(p.contractId);
+      }
+    }
+  }
+
+  const doneCount = satisfied.length;
+  const failedCount = last?.progress.filter((p) => p.state === "failed").length ?? 0;
+  const remaining = parsed.contracts.length - doneCount;
+
+  if (remaining === 0) {
+    return text(`All ${parsed.contracts.length} contract(s) already done. Nothing to continue.`);
+  }
+
+  const statePath = `${directory}/.cubicore-cycle.json`;
+  const state = readCycleState(statePath);
+  const gate = canExecute(state);
+  if (!gate.allowed) return text(gate.reason, true);
+
+  const run = startRun(parsed, directory);
+  writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+
+  void resolveParent(parentSessionID)
+    .then((parent) => runToCompletion(raw, run.id, parent, directory, satisfied))
+    .then(({ summary, halted }) => {
+      if (halted === "cancelled") {
+        cancelRun(run.id, directory, "cancelled by the founder");
+      } else if (halted === "paused") {
+        pauseRun(run.id, directory);
+      } else {
+        finishRun(run.id, directory, summary);
+      }
+    })
+    .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
+
+  return reply(
+    [`${doneCount} done, ${failedCount} failed, ${remaining} to run.`,
+     `Started ${run.id}. Poll with status using ${run.id}.`].join("\n"),
     directory,
   );
 }
@@ -916,6 +1038,24 @@ export const TOOLS = [
     },
     handler: async (args: { directory?: string; parentSessionID?: string }) =>
       executeFile(args.directory ?? process.cwd(), args.parentSessionID),
+  },
+  {
+    name: "continue",
+    description:
+      WHEN +
+      "Resumes the last run from where it stopped. Reads CUBICORE_PLAN.json, " +
+      "skips contracts already done in the most recent completed run, and " +
+      "dispatches only what remains. Use this as the daily-driver command: " +
+      "run it, and it picks up where the last run left off.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+        parentSessionID: { type: "string", description: "Session to parent the associates to." },
+      },
+    },
+    handler: async (args: { directory?: string; parentSessionID?: string }) =>
+      continueRun(args.directory ?? process.cwd(), args.parentSessionID),
   },
   {
     name: "test",
@@ -1331,6 +1471,11 @@ export const PROMPTS = [
     arguments: [],
   },
   {
+    name: "continue",
+    description: "Resume the last run from where it stopped, skipping contracts already done.",
+    arguments: [],
+  },
+  {
     name: "deploy",
     description:
       "Plans how to deploy the project. Asks about the tier, offers deployment stacks with a " +
@@ -1643,6 +1788,30 @@ marked skipped. The run stays on disk so it can be inspected, and the plan files
 too -- cancelling the work is not the same as discarding the plan.
 
 Say what was cancelled and how much of the work had already landed.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "continue") {
+    return {
+      description: "Resume the last run from where it stopped.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Resume the last run from where it stopped.
+
+
+${ENDING}
+Read CUBICORE_PLAN.md to see the progress markers: ✅ done, ❌ failed, 🔄 running,
+⏳ not started. Then call the continue tool -- it reads CUBICORE_PLAN.json, skips
+contracts already done, and dispatches only what remains.
+
+Report how many contracts are done, how many failed, and how many remain.`,
           },
         },
       ],

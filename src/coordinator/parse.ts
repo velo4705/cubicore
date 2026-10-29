@@ -1,4 +1,4 @@
-import type { Check, Contract, Finding, Plan, Topology } from "../contracts/types";
+import type { Check, Contract, Finding, Plan, Step, Topology } from "../contracts/types";
 import type { TrySpec } from "../plan/try";
 
 /**
@@ -146,7 +146,7 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
 
   const allowed = [
     "id", "objective", "reads", "writes", "forbidden",
-    "deliverable", "schema", "doneWhen", "checks", "budget",
+    "deliverable", "schema", "doneWhen", "checks", "steps", "budget",
     "tools",
   ];
   for (const key of Object.keys(value)) {
@@ -179,6 +179,18 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
         .filter((entry): entry is Check => entry !== null)
     : [];
 
+  const stepsRaw = value.steps;
+  let steps: Step[] | undefined;
+  if (stepsRaw !== undefined && stepsRaw !== null) {
+    if (!Array.isArray(stepsRaw)) {
+      problems.push(`${label}.steps must be an array`);
+    } else {
+      steps = stepsRaw
+        .map((entry, index) => parseStep(entry, `${label}.steps[${index}]`, problems))
+        .filter((entry): entry is Step => entry !== null);
+    }
+  }
+
   const budgetRaw = value.budget;
   let budget = { tokens: 0, toolCalls: 0, wallMs: 0 };
   if (!isRecord(budgetRaw)) {
@@ -208,9 +220,66 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
     schema: value.schema as Record<string, unknown>,
     doneWhen: value.doneWhen as string,
     checks,
+    ...(steps ? { steps } : {}),
     budget,
     tools: Array.isArray(value.tools) ? value.tools as string[] : [],
   };
+}
+
+/**
+ * Parse a single step within a contract.
+ */
+function parseStep(value: unknown, label: string, problems: string[]): Step | null {
+  if (!isRecord(value)) {
+    problems.push(`${label} must be an object`);
+    return null;
+  }
+
+  const allowed = ["id", "description", "writes", "check"];
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
+  }
+
+  const id = textField(value.id, `${label}.id`, problems);
+  const description = textField(value.description, `${label}.description`, problems);
+
+  const writesRaw = value.writes;
+  let writes: string[] = [];
+  if (!Array.isArray(writesRaw)) {
+    problems.push(`${label}.writes must be an array`);
+  } else {
+    writes = writesRaw
+      .map((w, i) => {
+        if (typeof w !== "string" || w.trim().length === 0) {
+          problems.push(`${label}.writes[${i}] must be a non-empty string`);
+          return null;
+        }
+        return w.trim();
+      })
+      .filter((w): w is string => w !== null);
+  }
+
+  const checkRaw = value.check;
+  let check: string | undefined;
+  if (checkRaw !== undefined && checkRaw !== null) {
+    if (typeof checkRaw !== "string" || checkRaw.trim().length === 0) {
+      problems.push(`${label}.check must be a non-empty string`);
+    } else {
+      check = checkRaw.trim();
+    }
+  }
+
+  if (problems.length > 0) return null;
+
+  return { id, description, writes, ...(check ? { check } : {}) };
+}
+
+function textField(value: unknown, label: string, problems: string[]): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    problems.push(`${label} must be a non-empty string`);
+    return "";
+  }
+  return value.trim();
 }
 
 /**

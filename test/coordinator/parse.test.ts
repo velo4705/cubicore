@@ -26,6 +26,19 @@ const VALID = {
       ],
       budget: { tokens: 20000, toolCalls: 40, wallMs: 300000 },
       tools: [],
+      steps: [
+        {
+          id: "step-1",
+          description: "Write the parser module",
+          writes: ["src/parser.ts"],
+        },
+        {
+          id: "step-2",
+          description: "Write parser tests",
+          writes: ["src/parser.test.ts"],
+          check: "npm test -- parser",
+        },
+      ],
     },
   ],
   graphBudget: { nodes: 8, edges: 16, tokens: 500000, wallMs: 1200000 },

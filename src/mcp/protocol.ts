@@ -4,7 +4,8 @@ import { parsePlan } from "../coordinator/parse";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import type { Plan } from "../contracts/types";
+import type { Contract, Plan } from "../contracts/types";
+import type { ContractState } from "./runs";
 
 /**
  * The Plan → Execute → Test protocol.
@@ -75,10 +76,23 @@ export function canExecute(state: CycleState): { allowed: boolean; reason: strin
   return { allowed: true, reason: `Cycle ${state.cycle + 1} of ${state.maxCycles}.` };
 }
 
-export function renderPlanMd(plan: Plan, validation: { ok: boolean; findings: { code: string; message: string }[] }): string {
+export function renderPlanMd(
+  plan: Plan,
+  validation: { ok: boolean; findings: { code: string; message: string }[] },
+  progress?: { contracts?: Map<string, ContractState>; steps?: Map<string, Map<string, ContractState>> },
+): string {
   const workers = plan.contracts.length;
   const size =
     workers === 0 ? "empty" : workers <= 2 ? "small" : workers <= 6 ? "normal" : "large";
+
+  const contractState = (c: Contract): ContractState | undefined =>
+    progress?.contracts?.get(c.id);
+
+  const stepState = (c: Contract, stepId: string): ContractState | undefined =>
+    progress?.steps?.get(c.id)?.get(stepId);
+
+  const iconFor = (state: ContractState | undefined): string =>
+    state === "done" ? "✅" : state === "failed" ? "❌" : state === "running" ? "🔄" : "⏳";
 
   const md = [
     `# Cubicore plan`,
@@ -104,12 +118,24 @@ export function renderPlanMd(plan: Plan, validation: { ok: boolean; findings: { 
     `## Associates`,
     ``,
     ...plan.contracts.map((c) => {
+      const state = contractState(c);
       const checkLines = c.checks.length
         ? [`- **Checks:**`, ...c.checks.map((k) => `  - \`${k.command}\` (${k.gating}, ${k.convergent ? "convergent" : "non-convergent"})`)]
         : [`- **Checks:** none`];
 
+      const stepLines = c.steps?.length
+        ? [
+            `- **Steps:**`,
+            ...c.steps.map((s) => {
+              const sState = stepState(c, s.id);
+              const done = sState === "done";
+              return `    ${done ? "- [x]" : "- [ ]"} \`${s.id}\` — ${s.description} ${iconFor(sState)}`;
+            }),
+          ]
+        : [];
+
       return [
-        `### ${c.id}`,
+        `### ${iconFor(state)} ${c.id}`,
         ``,
         c.objective,
         ``,
@@ -117,6 +143,7 @@ export function renderPlanMd(plan: Plan, validation: { ok: boolean; findings: { 
         `- **Reads:** ${c.reads.join(", ") || "(none)"}`,
         `- **Deliverable:** ${c.deliverable}`,
         `- **Done when:** ${c.doneWhen}`,
+        ...stepLines,
         ...checkLines,
         ``,
       ].join("\n");

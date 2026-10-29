@@ -17,6 +17,18 @@ const globArray = {
   items: { type: "string", minLength: 1 },
 } as const;
 
+const step = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "description", "writes"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    description: { type: "string", minLength: 1 },
+    writes: globArray,
+    check: { type: "string", minLength: 1 },
+  },
+} as const;
+
 const check = {
   type: "object",
   additionalProperties: false,
@@ -67,6 +79,7 @@ const contract = {
     schema: { type: "object" },
     doneWhen: { type: "string", minLength: 1 },
     checks: { type: "array", items: check },
+    steps: { type: "array", items: step },
     budget,
     tools: { type: "array", items: { type: "string", minLength: 1 } },
   },
@@ -164,6 +177,9 @@ Rules:
   between contracts — count every case where one contract "reads" a path that
   another contract "writes". Under-funding the edges rejects the plan.
 - "graphBudget.nodes" must be at least the number of contracts.
+- "steps" within a contract are ordered sub-tasks. Each step writes its own
+  files and can be tracked independently so an interrupted run can resume
+  from completed steps rather than restarting the whole contract.
 
 Refusing is a valid answer. Use topology "refuse" with an empty contracts
 array when the request:

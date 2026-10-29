@@ -20,6 +20,8 @@ export interface RunProgress {
   contractId: string;
   state: ContractState;
   detail?: string;
+  /** Step-level progress: stepId -> state. Present when the contract declares steps. */
+  steps?: Record<string, ContractState>;
 }
 
 export type RunState = "running" | "paused" | "done" | "failed" | "cancelled";
@@ -86,7 +88,11 @@ export function startRun(plan: Plan, directory: string, baseline?: string): Run 
     state: "running",
     directory,
     baseline,
-    progress: plan.contracts.map((c) => ({ contractId: c.id, state: "pending" as ContractState })),
+    progress: plan.contracts.map((c) => ({
+      contractId: c.id,
+      state: "pending" as ContractState,
+      ...(c.steps ? { steps: Object.fromEntries(c.steps.map((s) => [s.id, "pending" as ContractState])) } : {}),
+    })),
   };
   const runs = loadRuns(directory).filter((r) => r.id !== run.id);
   runs.unshift(run);
@@ -158,12 +164,24 @@ export function haltState(id: string, directory: string): "cancelled" | "paused"
   return null;
 }
 
-export function recordProgress(id: string, directory: string, contractId: string, state: ContractState, detail?: string): void {
+export function recordProgress(
+  id: string,
+  directory: string,
+  contractId: string,
+  state: ContractState,
+  detail?: string,
+  stepId?: string,
+): void {
   const run = loadRuns(directory).find((r) => r.id === id);
   if (!run) return;
-  const progress = run.progress.map((p) =>
-    p.contractId === contractId ? { ...p, state, detail: detail ?? p.detail } : p,
-  );
+  const progress = run.progress.map((p) => {
+    if (p.contractId !== contractId) return p;
+    const next = { ...p, state, detail: detail ?? p.detail };
+    if (stepId && p.steps) {
+      next.steps = { ...p.steps, [stepId]: state };
+    }
+    return next;
+  });
   update(run, { progress });
 }
 

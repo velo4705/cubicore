@@ -61,6 +61,16 @@ export interface GraphBudget {
   wallMs: number;
 }
 
+export interface Step {
+  id: string;
+  /** Human-readable description of this step. */
+  description: string;
+  /** Files this step writes. Must be disjoint from other steps' writes within this contract. */
+  writes: string[];
+  /** Optional command to verify this step is complete. If absent, the associate self-reports. */
+  check?: string;
+}
+
 export interface Contract {
   id: string;
   objective: string;
@@ -75,6 +85,10 @@ export interface Contract {
   doneWhen: string;
   /** Cases this contract adds on top of the project baseline. */
   checks: Check[];
+  /** Ordered sub-steps within this contract. Each step can be tracked independently
+   *  so an interrupted run can resume from completed steps rather than restarting
+   *  the whole contract. */
+  steps?: Step[];
   budget: Budget;
   /** MCP servers or tools this contract is authorised to use.
    *
