@@ -66,7 +66,7 @@ export function isRepository(root: string): boolean {
  * repository is not usable, and says so -- because a silent fallback to a
  * shared directory is the collision the worktree exists to prevent.
  */
-export function createWorktree(root: string, contract: Contract, workRoot?: string): Worktree {
+export function createWorktree(root: string, contract: Contract, workRoot?: string, preserveContractIds?: Set<string>): Worktree {
   const base = workRoot ?? join(root, ".cubicore", "worktrees");
   const path = join(base, contract.id);
 
@@ -94,7 +94,14 @@ export function createWorktree(root: string, contract: Contract, workRoot?: stri
   }
 
   mkdirSync(base, { recursive: true });
-  rmSync(path, { recursive: true, force: true });
+
+  // When resuming an interrupted run, preserve the worktree for contracts
+  // that were in-flight ("running") so the associate can continue from
+  // where it left off instead of starting from scratch.
+  const shouldPreserve = preserveContractIds?.has(contract.id) && existsSync(path);
+  if (!shouldPreserve) {
+    rmSync(path, { recursive: true, force: true });
+  }
 
   // Collect every file the worker needs to read or may write.
   const files = new Set([...contract.reads, ...contract.writes]);
@@ -194,4 +201,35 @@ function relativeWrites(worktree: Worktree): string[] {
 export function removeWorktree(worktree: Worktree, root: string): void {
   if (worktree.degraded) return;
   rmSync(worktree.path, { recursive: true, force: true });
+}
+
+/**
+ * Remove worktree directories for contracts that are no longer in the plan.
+ *
+ * When a run is interrupted or a refine removes a contract, its worktree
+ * directory can be left behind. On the next run, those orphaned directories
+ * are cleaned up so they don't accumulate or confuse a later `createWorktree`
+ * call.
+ */
+export function cleanOrphanedWorktrees(root: string, contractIds: readonly string[]): void {
+  const base = join(root, ".cubicore", "worktrees");
+  if (!existsSync(base)) return;
+
+  const wanted = new Set(contractIds);
+  let entries: string[];
+  try {
+    entries = readdirSync(base);
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (wanted.has(entry)) continue;
+    const target = join(base, entry);
+    try {
+      rmSync(target, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup; a locked file on Windows won't stop the run.
+    }
+  }
 }

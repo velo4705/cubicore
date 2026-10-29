@@ -101,6 +101,35 @@ export interface Contract {
 
 import type { TrySpec } from "../plan/try";
 
+export interface PlanContext {
+  /** What problem does this solve? One or two sentences. */
+  problem: string;
+  /** Who is this for? Target users or audience. */
+  users: string;
+  /** What can someone do with this? Concrete scenarios. */
+  useCases: string[];
+  /** Why this over alternatives? What makes it worth building? */
+  benefits: string[];
+  /** What to show live in a demo? Step-by-step flow. */
+  demoFlow: string[];
+  /** Where could this go next? Future directions. */
+  futureWork: string[];
+  /** Market opportunity — TAM, who pays, how big is the market. */
+  marketOpportunity: string;
+  /** Business model — how does this make money or sustain itself? */
+  businessModel: string;
+  /** Competitive advantage — what's hard to copy, what's the moat. */
+  competitiveAdvantage: string;
+  /** Go-to-market — how do you get the first 100 users? */
+  goToMarket: string;
+  /** Risks — what could go wrong, what are the unknowns. */
+  risks: string[];
+  /** Current status — idea, prototype, MVP, live, etc. */
+  currentStatus: string;
+  /** The ask — what do you need: team members, funding, partnerships, feedback. */
+  ask: string[];
+}
+
 export interface Plan {
   topology: Topology;
   contracts: Contract[];
@@ -111,6 +140,13 @@ export interface Plan {
    * what is being built without reading every contract.
    */
   summary?: string;
+  /**
+   * Narrative context for human readers — problem, users, use cases,
+   * benefits, demo flow, future work. Rendered at the top of
+   * CUBICORE_CONTEXT.md so team members can present the project in person.
+   * Not parsed by Execute; never affects what gets built.
+   */
+  context?: PlanContext;
   /**
    * How to run the result, when the result is something that runs.
    *

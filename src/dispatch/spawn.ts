@@ -1,4 +1,5 @@
 import type { Artifact, Contract, WorkerResult } from "../contracts/types";
+import type { ContractState } from "../mcp/runs";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
 import { changedFilesSince } from "./changes";
@@ -126,7 +127,7 @@ export class WorkerSessions {
     return this.observers.size;
   }
 
-  async run(contract: Contract, attempt = 0): Promise<WorkerResult> {
+  async run(contract: Contract, attempt = 0, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult> {
     const startedAt = Date.now();
     const observer = new RunObserver();
     const routing = this.models
@@ -137,7 +138,7 @@ export class WorkerSessions {
     // repository, so two workers cannot be in the same file at the same
     // moment. opencode 1.18.x cannot restrict an agent to a path, so the
     // boundary has to be the filesystem.
-    const worktree = this.isolate ? createWorktree(this.root, contract) : undefined;
+    const worktree = this.isolate ? createWorktree(this.root, contract, undefined, preserveContractIds) : undefined;
 
     const { sessionId } = await this.spawner.create({
       title: `${contract.id} (associate)`,
@@ -151,7 +152,7 @@ export class WorkerSessions {
 
     try {
       await this.spawner.prompt(sessionId, {
-        text: renderPrompt(contract),
+        text: renderPrompt(contract, { stepsProgress }),
         model: routing?.model,
         tools: toolsForContract(contract),
       });
@@ -265,7 +266,7 @@ export class WorkerSessions {
   }
 
   asRunner(): WorkerRunner {
-    return { run: (contract, attempt) => this.run(contract, attempt) };
+    return { run: (contract, attempt, preserveContractIds, stepsProgress) => this.run(contract, attempt, preserveContractIds, stepsProgress) };
   }
 }
 

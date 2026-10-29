@@ -1,4 +1,4 @@
-import type { Check, Contract, Finding, Plan, Step, Topology } from "../contracts/types";
+import type { Check, Contract, Finding, Plan, PlanContext, Step, Topology } from "../contracts/types";
 import type { TrySpec } from "../plan/try";
 
 /**
@@ -308,7 +308,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "contracts", "graphBudget", "try"].includes(key)) {
+    if (!["topology", "summary", "context", "contracts", "graphBudget", "try"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -360,9 +360,36 @@ export function parsePlan(raw: string): Plan {
     }
   }
 
+  const contextRaw = json.context;
+  let context: PlanContext | undefined;
+  if (contextRaw !== undefined && contextRaw !== null) {
+    if (!isRecord(contextRaw)) {
+      problems.push("context must be an object");
+    } else {
+      const ctx = contextRaw as Record<string, unknown>;
+      const contextProblems: string[] = [];
+      const requiredFields = [
+        "problem", "users", "useCases", "benefits", "demoFlow", "futureWork",
+        "marketOpportunity", "businessModel", "competitiveAdvantage", "goToMarket",
+        "risks", "currentStatus", "ask",
+      ];
+      for (const field of requiredFields) {
+        if (!(field in ctx)) {
+          contextProblems.push(`context.${field} is required`);
+        }
+      }
+      if (contextProblems.length === 0) {
+        context = ctx as unknown as PlanContext;
+      } else {
+        for (const p of contextProblems) problems.push(`context: ${p}`);
+      }
+    }
+  }
+
   return {
     topology: topologyRaw as Topology,
     summary,
+    context,
     contracts,
     graphBudget,
     try: parseTry(json.try, problems),

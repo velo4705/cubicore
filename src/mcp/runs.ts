@@ -46,6 +46,9 @@ export interface Run {
 
 const STATE_DIR = ".cubicore";
 
+/** Maximum number of run records to keep per directory. */
+const MAX_RUNS = 50;
+
 function findStatePath(startDir: string): string | null {
   let current = startDir;
   for (let i = 0; i < 5; i++) {
@@ -77,7 +80,10 @@ export function loadRuns(directory: string): Run[] {
 function saveRuns(directory: string, runs: Run[]): void {
   const path = join(directory, STATE_DIR, "runs.json");
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(runs, null, 2)}\n`);
+
+  // Prune old runs so the file doesn't grow without bound. Newest first.
+  const kept = runs.slice(0, MAX_RUNS);
+  writeFileSync(path, `${JSON.stringify(kept, null, 2)}\n`);
 }
 
 export function startRun(plan: Plan, directory: string, baseline?: string): Run {

@@ -1,4 +1,5 @@
 import type { Check, Contract } from "../contracts/types";
+import type { ContractState } from "../mcp/runs";
 import { effectiveMatrix } from "../validate/matrix";
 
 /**
@@ -17,6 +18,8 @@ export interface PromptOptions {
   baseline?: readonly Check[];
   /** Ceiling the worker is told about, in tokens. */
   tokenBudget?: number;
+  /** Step completion states, keyed by step id. Only for contracts that declare steps. */
+  stepsProgress?: Record<string, ContractState>;
 }
 
 export function renderPrompt(contract: Contract, options: PromptOptions = {}): string {
@@ -57,6 +60,7 @@ export function renderPrompt(contract: Contract, options: PromptOptions = {}): s
         "# Never touch these paths",
         "",
         ...contract.forbidden.map((path) => `- ${path}`),
+        "",
       ].join("\n"),
     );
   }
@@ -64,6 +68,26 @@ export function renderPrompt(contract: Contract, options: PromptOptions = {}): s
   if (contract.reads.length > 0) {
     sections.push(
       ["# Read these for context", "", ...contract.reads.map((path) => `- ${path}`)].join("\n"),
+    );
+  }
+
+  if (contract.steps && contract.steps.length > 0) {
+    const stepsProgress = options.stepsProgress ?? {};
+    const stepLines = contract.steps.map((s) => {
+      const state = stepsProgress[s.id];
+      const marker =
+        state === "done" ? "✅" : state === "failed" ? "❌" : state === "running" ? "🔄" : "⏳";
+      return `  ${marker} \`${s.id}\` — ${s.description}`;
+    });
+    sections.push(
+      [
+        "# Steps (in order)",
+        "",
+        "Work through these steps in order. Skip steps marked ✅ — they are already complete.",
+        "",
+        ...stepLines,
+        "",
+      ].join("\n"),
     );
   }
 

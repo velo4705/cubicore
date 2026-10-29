@@ -102,6 +102,82 @@ export const planSchema = {
         "Human-readable description of what this project is, for the founder. " +
         "Rendered at the top of CUBICORE_PLAN.md.",
     },
+    context: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        problem: {
+          type: "string",
+          minLength: 1,
+          description: "What problem does this solve? One or two sentences.",
+        },
+        users: {
+          type: "string",
+          minLength: 1,
+          description: "Who is this for? Target users or audience.",
+        },
+        useCases: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "What can someone do with this? Concrete scenarios.",
+        },
+        benefits: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "Why this over alternatives? What makes it worth building?",
+        },
+        demoFlow: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "What to show live in a demo? Step-by-step flow.",
+        },
+        futureWork: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "Where could this go next? Future directions.",
+        },
+        marketOpportunity: {
+          type: "string",
+          minLength: 1,
+          description: "Market opportunity — TAM, who pays, how big is the market.",
+        },
+        businessModel: {
+          type: "string",
+          minLength: 1,
+          description: "Business model — how does this make money or sustain itself?",
+        },
+        competitiveAdvantage: {
+          type: "string",
+          minLength: 1,
+          description: "Competitive advantage — what's hard to copy, what's the moat.",
+        },
+        goToMarket: {
+          type: "string",
+          minLength: 1,
+          description: "Go-to-market — how do you get the first 100 users?",
+        },
+        risks: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "Risks — what could go wrong, what are the unknowns.",
+        },
+        currentStatus: {
+          type: "string",
+          minLength: 1,
+          description: "Current status — idea, prototype, MVP, live, etc.",
+        },
+        ask: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          description: "The ask — what do you need: team members, funding, partnerships, feedback.",
+        },
+      },
+      required: [
+        "problem", "users", "useCases", "benefits", "demoFlow", "futureWork",
+        "marketOpportunity", "businessModel", "competitiveAdvantage", "goToMarket",
+        "risks", "currentStatus", "ask",
+      ],
+    },
     contracts: { type: "array", items: contract },
     try: {
       type: "object",
@@ -180,6 +256,16 @@ Rules:
 - "steps" within a contract are ordered sub-tasks. Each step writes its own
   files and can be tracked independently so an interrupted run can resume
   from completed steps rather than restarting the whole contract.
+- The founder may describe the split in any terms — team members, phases,
+  milestones, parts, pieces, however they like. The number matters, not the
+  words. Translate whatever they say into contracts with disjoint write
+  scopes and a graph budget that funds them.
+- "context" is narrative information for human readers, not for dispatch.
+  It describes the problem, users, use cases, benefits, demo flow, future
+  work, market opportunity, business model, competitive advantage, go-to-market,
+  risks, current status, and the ask — everything a recruiter or stakeholder
+  needs to evaluate the idea. It is rendered at the top of CUBICORE_CONTEXT.md
+  and never affects what gets built.
 
 Refusing is a valid answer. Use topology "refuse" with an empty contracts
 array when the request:

@@ -1,4 +1,5 @@
 import type { Check, Contract, Plan, WorkerResult } from "../contracts/types";
+import type { ContractState } from "../mcp/runs";
 import { workerPermissions } from "../adapters/opencode/permissions";
 import { runGates, type CommandRunner, type GateResult } from "../gate";
 import { effectiveMatrix } from "../validate/matrix";
@@ -26,7 +27,7 @@ export interface RepoSnapshotSource {
 
 export interface WorkerRunner {
   /** `attempt` is 0 on the first run and 1 on the revise round. */
-  run(contract: Contract, attempt?: number): Promise<WorkerResult>;
+  run(contract: Contract, attempt?: number, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult>;
 }
 
 export interface DispatchOutcome {
@@ -89,6 +90,10 @@ export interface DispatchOptions {
   /** Enables bar-integrity review on the revise round. */
   repo?: RepoSnapshotSource;
   trace?: (event: string, detail?: Record<string, unknown>) => void;
+  /** Contract IDs whose worktrees should be preserved (not wiped) on resume. */
+  preserveContractIds?: Set<string>;
+  /** Step completion states per contract, for telling associates what's done. */
+  stepsProgress?: Map<string, Record<string, ContractState>>;
 }
 
 /**
@@ -197,7 +202,8 @@ export async function dispatch(
 
     const results = await Promise.all(
       batch.map(async (contract) => {
-      let result = await runner.run(contract);
+      const contractSteps = options.stepsProgress?.get(contract.id);
+      let result = await runner.run(contract, undefined, options.preserveContractIds, contractSteps);
       let gates: GateResult[] = [];
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -245,7 +251,7 @@ export async function dispatch(
         // forward: the retry starts from the baseline, so a change that broke
         // a check cannot be inherited by the attempt that fixes it.
         options.discard?.(contract.id);
-        result = await runner.run(contract, attempt + 1);
+        result = await runner.run(contract, attempt + 1, options.preserveContractIds, contractSteps);
 
         if (before && options.repo) {
           const findings = noveltyGate(

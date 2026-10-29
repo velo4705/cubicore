@@ -2,9 +2,10 @@ import { checkTopology } from "../coordinator/topology";
 import { validatePlan } from "../validate/plan";
 import { parsePlan } from "../coordinator/parse";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
-import type { Contract, Plan } from "../contracts/types";
+import type { Contract, Plan, PlanContext } from "../contracts/types";
 import type { ContractState } from "./runs";
 
 /**
@@ -29,6 +30,7 @@ export const DEFAULT_MAX_CYCLES = 3;
 export const PLAN_MD = "CUBICORE_PLAN.md";
 export const PLAN_JSON = "CUBICORE_PLAN.json";
 export const DEBUG_MD = "CUBICORE_DEBUG.md";
+export const CONTEXT_MD = "CUBICORE_CONTEXT.md";
 
 export interface CycleState {
   cycle: number;
@@ -239,6 +241,136 @@ export function loadPlan(raw: string): { ok: true; plan: Plan } | { ok: false; r
     return { ok: false, reason: `declared ${topology.declared} but the plan implies ${topology.implied}` };
   }
   return { ok: true, plan: parsed };
+}
+
+/**
+ * Validate that all plan files in a directory have mutually disjoint write scopes.
+ *
+ * Used in the multi-member hackathon flow where each member gets their own
+ * CUBICORE_PLAN_N.json. If two plans claim the same file, dispatching both
+ * would cause a collision. This check runs before any associate starts.
+ *
+ * Returns an array of problem strings, or an empty array when all plans are
+ * mutually disjoint.
+ */
+export function validateCrossPlanCollisions(directory: string): string[] {
+  const problems: string[] = [];
+  const planFiles: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return problems;
+  }
+
+  for (const entry of entries) {
+    if (!entry.startsWith("CUBICORE_PLAN_") || !entry.endsWith(".json")) continue;
+    planFiles.push(join(directory, entry));
+  }
+
+  if (planFiles.length < 2) return problems;
+
+  // Collect all write scopes across all plans.
+  const writesByFile = new Map<string, string[]>(); // file -> [planFile, contractId]
+  for (const planPath of planFiles) {
+    let raw: string;
+    try {
+      raw = readFileSync(planPath, "utf8");
+    } catch {
+      continue;
+    }
+
+    const loaded = loadPlan(raw);
+    if (!loaded.ok) continue;
+
+    for (const contract of loaded.plan.contracts) {
+      for (const write of contract.writes) {
+        if (!writesByFile.has(write)) writesByFile.set(write, []);
+        writesByFile.get(write)!.push(`${planPath.split("/").pop()}:${contract.id}`);
+      }
+    }
+  }
+
+  for (const [file, sources] of writesByFile) {
+    if (sources.length > 1) {
+      problems.push(
+        `write collision on "${file}": claimed by ${sources.join(", ")}`,
+      );
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * Render CUBICORE_CONTEXT.md — narrative context for human readers.
+ *
+ * Not parsed by Execute or dispatch; purely for team members who need to
+ * present the project in person (e.g., hackathon demos, stakeholder
+ * reviews, recruiter conversations). Contains problem, users, use cases,
+ * benefits, demo flow, future work, market opportunity, business model,
+ * competitive advantage, go-to-market, risks, current status, and the ask.
+ */
+export function renderContextMd(context: PlanContext): string {
+  const md = [
+    `# Context — Cubicore project`,
+    ``,
+    `## Problem Statement`,
+    ``,
+    context.problem,
+    ``,
+    `## Target Users`,
+    ``,
+    context.users,
+    ``,
+    `## Use Cases`,
+    ``,
+    ...context.useCases.map((u) => `- ${u}`),
+    ``,
+    `## Benefits`,
+    ``,
+    ...context.benefits.map((b) => `- ${b}`),
+    ``,
+    `## Demo Flow`,
+    ``,
+    ...context.demoFlow.map((d, i) => `${i + 1}. ${d}`),
+    ``,
+    `## Application Perspectives`,
+    ``,
+    ...context.futureWork.map((f) => `- ${f}`),
+    ``,
+    `## Market Opportunity`,
+    ``,
+    context.marketOpportunity,
+    ``,
+    `## Business Model`,
+    ``,
+    context.businessModel,
+    ``,
+    `## Competitive Advantage`,
+    ``,
+    context.competitiveAdvantage,
+    ``,
+    `## Go-to-Market`,
+    ``,
+    context.goToMarket,
+    ``,
+    `## Risks`,
+    ``,
+    ...context.risks.map((r) => `- ${r}`),
+    ``,
+    `## Current Status`,
+    ``,
+    context.currentStatus,
+    ``,
+    `## The Ask`,
+    ``,
+    ...context.ask.map((a) => `- ${a}`),
+    ``,
+  ];
+
+  return md.join("\n");
 }
 
 export { PLAN_SCHEMA_JSON };

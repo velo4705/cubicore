@@ -149,7 +149,7 @@ describe("the emitted schema matches the parser", () => {
     // either. Every plan carrying a try block was rejected as "plan has
     // unknown field try", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "graphBudget", "summary", "topology", "try"].sort();
+    const parserKeys = ["contracts", "context", "graphBudget", "summary", "topology", "try"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.
@@ -160,6 +160,42 @@ describe("the emitted schema matches the parser", () => {
       }),
     );
     expect(withTry.try?.command).toBe("npm start");
+  });
+
+  test("the parser accepts a plan with context", () => {
+    const withContext = parsePlan(
+      JSON.stringify({
+        ...VALID,
+        context: {
+          problem: "Teams waste time coordinating task status",
+          users: "Hackathon teams",
+          useCases: ["Create a board, add tasks"],
+          benefits: ["Zero setup, real-time sync"],
+          demoFlow: ["1. Open URL, 2. Create board"],
+          futureWork: ["User accounts, mobile app"],
+          marketOpportunity: "Task management tools market is $5B and growing",
+          businessModel: "Freemium with paid team features",
+          competitiveAdvantage: "Single-file deployment, no setup",
+          goToMarket: "Post on Product Hunt and hackathon discords",
+          risks: ["Scope creep, limited team availability"],
+          currentStatus: "Prototype",
+          ask: ["Feedback, beta testers"],
+        },
+      }),
+    );
+    expect(withContext.context?.problem).toBe("Teams waste time coordinating task status");
+    expect(withContext.context?.users).toBe("Hackathon teams");
+    expect(withContext.context?.useCases).toEqual(["Create a board, add tasks"]);
+    expect(withContext.context?.benefits).toEqual(["Zero setup, real-time sync"]);
+    expect(withContext.context?.demoFlow).toEqual(["1. Open URL, 2. Create board"]);
+    expect(withContext.context?.futureWork).toEqual(["User accounts, mobile app"]);
+    expect(withContext.context?.marketOpportunity).toBe("Task management tools market is $5B and growing");
+    expect(withContext.context?.businessModel).toBe("Freemium with paid team features");
+    expect(withContext.context?.competitiveAdvantage).toBe("Single-file deployment, no setup");
+    expect(withContext.context?.goToMarket).toBe("Post on Product Hunt and hackathon discords");
+    expect(withContext.context?.risks).toEqual(["Scope creep, limited team availability"]);
+    expect(withContext.context?.currentStatus).toBe("Prototype");
+    expect(withContext.context?.ask).toEqual(["Feedback, beta testers"]);
   });
 
   test("a graph with no dependencies may declare zero edges", () => {

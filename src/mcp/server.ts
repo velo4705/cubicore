@@ -23,12 +23,14 @@ import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
+  CONTEXT_MD,
   DEBUG_MD,
   PLAN_JSON,
   PLAN_MD,
   canExecute,
   loadPlan,
   readCycleState,
+  renderContextMd,
   renderDebugMd,
   renderPlanMd,
   writeCycleState,
@@ -37,6 +39,8 @@ import {
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
+import { cleanOrphanedWorktrees } from "../dispatch/worktree";
+import { validateCrossPlanCollisions } from "./protocol";
 import type { Contract, Plan } from "../contracts/types";
 
 /**
@@ -176,6 +180,39 @@ function text(body: string, isError = false): ToolResult {
   return { content: [{ type: "text", text: body }], isError };
 }
 
+/**
+ * Resolve which plan file to use for execute/continue.
+ *
+ * With no plan number: tries CUBICORE_PLAN.json, then falls back to
+ * CUBICORE_PLAN_1.json (for the multi-member hackathon flow where a plan
+ * was generated as _1 without a base file).
+ *
+ * With a plan number: reads CUBICORE_PLAN_N.json directly.
+ */
+function resolvePlanFile(directory: string, planNumber?: number): { planPath: string; mdPath: string; resolved: number | null } {
+  if (planNumber !== undefined && planNumber !== null) {
+    return {
+      planPath: `${directory}/${PLAN_JSON.replace(".json", `_${planNumber}.json`)}`,
+      mdPath: `${directory}/${PLAN_MD.replace(".md", `_${planNumber}.md`)}`,
+      resolved: planNumber,
+    };
+  }
+
+  // No number: try base file first, then _1 fallback.
+  const basePlan = `${directory}/${PLAN_JSON}`;
+  const baseMd = `${directory}/${PLAN_MD}`;
+  const numberedPlan = `${directory}/${PLAN_JSON.replace(".json", "_1.json")}`;
+  const numberedMd = `${directory}/${PLAN_MD.replace(".md", "_1.md")}`;
+
+  if (existsSync(basePlan)) {
+    return { planPath: basePlan, mdPath: baseMd, resolved: null };
+  }
+  if (existsSync(numberedPlan)) {
+    return { planPath: numberedPlan, mdPath: numberedMd, resolved: 1 };
+  }
+  return { planPath: basePlan, mdPath: baseMd, resolved: null };
+}
+
 
 /**
  * Contracts an earlier run already satisfied, and which are unchanged.
@@ -307,6 +344,8 @@ async function runToCompletion(
   parentSessionID?: string,
   dir = process.cwd(),
   satisfiedOverride?: string[],
+  preserveContractIds?: Set<string>,
+  stepsProgress?: Map<string, Record<string, ContractState>>,
 ): Promise<{ summary: string; halted: "cancelled" | "paused" | null }> {
   const runtime = runtimeFromEnv();
   runtime.sessionID = parentSessionID;
@@ -345,6 +384,10 @@ async function runToCompletion(
   const timer = new PhaseTimer();
   const recorder = new RunRecorder(parsed.topology, timer);
 
+  // Clean up orphaned worktrees from interrupted or refined runs so that
+  // stale directories for removed contracts don't linger or collide.
+  cleanOrphanedWorktrees(dir, parsed.contracts.map((c) => c.id));
+
   const outcome = await dispatch(
     parsed,
     workers.asRunner(),
@@ -370,6 +413,10 @@ async function runToCompletion(
       discard: (contractId) => workers.discard(contractId),
       // Contracts an earlier run already satisfied, unchanged, are not re-run.
       satisfiedContracts: satisfiedOverride ?? satisfiedContracts(dir, parsed),
+      // Contracts whose worktrees should be preserved (not wiped) on resume.
+      preserveContractIds,
+      // Step completion states per contract, so associates skip completed steps.
+      stepsProgress,
     },
   );
 
@@ -552,8 +599,9 @@ function attemptCount(directory: string): number {
   return planAttempts.get(directory) ?? 0;
 }
 
-async function planWrite(raw: string, directory: string): Promise<ToolResult> {
+async function planWrite(raw: string, directory: string, planNumber?: number): Promise<ToolResult> {
   const dir = directory;
+  const resolved = resolvePlanFile(dir, planNumber);
   let parsed: Plan;
   try {
     parsed = parsePlan(raw) as Plan;
@@ -587,7 +635,7 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
     problems.push(`- [mis-declared-topology] declared \`${topology.declared}\`, implies \`${topology.implied}\``);
   }
 
-  writeFileSync(`${directory}/${PLAN_JSON}`, raw);
+  writeFileSync(resolved.planPath, raw);
 
   // Progress markers so the founder can see at a glance what is done,
   // what failed, and what still needs work -- and so continue knows where
@@ -607,9 +655,17 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
     break; // newest completed run wins
   }
   writeFileSync(
-    `${directory}/${PLAN_MD}`,
+    resolved.mdPath,
     renderPlanMd(parsed, validation, { contracts: contractProgress, steps: stepProgress }),
   );
+
+  // CUBICORE_CONTEXT.md is for humans who need to present the project in
+  // person — hackathon demos, stakeholder reviews, onboarding. It is never
+  // parsed by Execute or dispatch.
+  if (parsed.context) {
+    const contextMdPath = resolved.mdPath.replace("PLAN.md", "CONTEXT.md").replace("PLAN_", "CONTEXT_");
+    writeFileSync(contextMdPath, renderContextMd(parsed.context));
+  }
 
   if (problems.length === 0) {
     // A good plan clears the budget. Without this a refine would start at
@@ -668,23 +724,42 @@ async function planWrite(raw: string, directory: string): Promise<ToolResult> {
 }
 
 /** Execute: dispatch ${PLAN_JSON}, honouring the cycle bound. */
-async function executeFile(directory: string, parentSessionID?: string): Promise<ToolResult> {
+async function executeFile(directory: string, parentSessionID?: string, planNumber?: number): Promise<ToolResult> {
   const statePath = `${directory}/.cubicore-cycle.json`;
   const state = readCycleState(statePath);
   const gate = canExecute(state);
   if (!gate.allowed) return text(gate.reason, true);
 
+  const resolved = resolvePlanFile(directory, planNumber);
   let raw: string;
   try {
-    raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
+    raw = await Bun.file(resolved.planPath).text();
   } catch {
-    return text(`No ${PLAN_JSON} in this directory. Run the plan command first.`, true);
+    return text(`No plan file found at ${resolved.planPath}. Run the plan command first.`, true);
   }
 
   const loaded = loadPlan(raw);
   if (!loaded.ok) return text(`Refusing to dispatch: ${loaded.reason}`, true);
 
   const parsed = loaded.plan;
+
+  // When multiple plan files exist in this directory, verify their write
+  // scopes are mutually disjoint so two members don't accidentally overwrite
+  // each other's files.
+  const collisions = validateCrossPlanCollisions(directory);
+  if (collisions.length > 0) {
+    return text(
+      [
+        `Refusing to dispatch: write collisions detected across plan files.`,
+        "",
+        ...collisions.map((c) => `- ${c}`),
+        "",
+        "Fix the overlapping write scopes before dispatching.",
+      ].join("\n"),
+      true,
+    );
+  }
+
   const run = startRun(parsed, directory);
   writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
 
@@ -711,22 +786,45 @@ async function executeFile(directory: string, parentSessionID?: string): Promise
 /**
  * Continue: resume the last run from where it stopped.
  *
- * Reads CUBICORE_PLAN.json, skips contracts already done in the most recent
- * completed run, and dispatches only what remains. This is the daily-driver
- * command: run it, it picks up where the last run left off.
+ * Reads CUBICORE_PLAN.json (or CUBICORE_PLAN_N.json with a plan number),
+ * skips contracts already done in the most recent completed run, and
+ * dispatches only what remains. This is the daily-driver command: run it,
+ * it picks up where the last run left off.
+ *
+ * Unlike execute_file, continue is exempt from the cycle budget -- it is
+ * resuming interrupted work, not starting a new fix cycle.
  */
-async function continueRun(directory: string, parentSessionID?: string): Promise<ToolResult> {
+async function continueRun(directory: string, parentSessionID?: string, planNumber?: number): Promise<ToolResult> {
+  const resolved = resolvePlanFile(directory, planNumber);
   let raw: string;
   try {
-    raw = await Bun.file(`${directory}/${PLAN_JSON}`).text();
+    raw = await Bun.file(resolved.planPath).text();
   } catch {
-    return text(`No ${PLAN_JSON} in this directory. Run the plan command first.`, true);
+    return text(`No plan file found at ${resolved.planPath}. Run the plan command first.`, true);
   }
 
   const loaded = loadPlan(raw);
   if (!loaded.ok) return text(`Refusing to continue: ${loaded.reason}`, true);
 
   const parsed = loaded.plan;
+
+  // When multiple plan files exist in this directory, verify their write
+  // scopes are mutually disjoint so two members don't accidentally overwrite
+  // each other's files.
+  const collisions = validateCrossPlanCollisions(directory);
+  if (collisions.length > 0) {
+    return text(
+      [
+        `Refusing to continue: write collisions detected across plan files.`,
+        "",
+        ...collisions.map((c) => `- ${c}`),
+        "",
+        "Fix the overlapping write scopes before continuing.",
+      ].join("\n"),
+      true,
+    );
+  }
+
   const runs = loadRuns(directory);
   const last = runs[0]; // newest first
 
@@ -746,11 +844,24 @@ async function continueRun(directory: string, parentSessionID?: string): Promise
 
       // A contract is satisfied (skipped) when all its steps are done, or
       // when it has no steps and its state is "done".
-      const allStepsDone = p.steps && Object.values(p.steps).every((s) => s === "done");
+      const allStepsDone = p.steps && Object.values(p.steps).length > 0 && Object.values(p.steps).every((s) => s === "done");
       if ((!p.steps && p.state === "done") || allStepsDone) {
         satisfied.push(p.contractId);
       }
     }
+  }
+
+  // Contracts that were in-flight ("running") when the run was interrupted
+  // should have their worktrees preserved so they resume from where they
+  // stopped instead of starting over.
+  const runningContractIds = last
+    ? new Set(last.progress.filter((p) => p.state === "running").map((p) => p.contractId))
+    : new Set<string>();
+
+  // Convert step progress from Map to Record for dispatch options.
+  const stepsProgressRecord = new Map<string, Record<string, ContractState>>();
+  for (const [cid, smap] of stepProgress) {
+    stepsProgressRecord.set(cid, Object.fromEntries(smap));
   }
 
   const doneCount = satisfied.length;
@@ -761,16 +872,17 @@ async function continueRun(directory: string, parentSessionID?: string): Promise
     return text(`All ${parsed.contracts.length} contract(s) already done. Nothing to continue.`);
   }
 
+  // Continue is exempt from the cycle budget: it resumes interrupted work
+  // rather than starting a new fix cycle. We still record the run for
+  // history, but do not increment the cycle counter.
   const statePath = `${directory}/.cubicore-cycle.json`;
   const state = readCycleState(statePath);
-  const gate = canExecute(state);
-  if (!gate.allowed) return text(gate.reason, true);
 
   const run = startRun(parsed, directory);
-  writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+  writeCycleState(statePath, state);
 
   void resolveParent(parentSessionID)
-    .then((parent) => runToCompletion(raw, run.id, parent, directory, satisfied))
+    .then((parent) => runToCompletion(raw, run.id, parent, directory, satisfied, runningContractIds, stepsProgressRecord))
     .then(({ summary, halted }) => {
       if (halted === "cancelled") {
         cancelRun(run.id, directory, "cancelled by the founder");
@@ -778,6 +890,31 @@ async function continueRun(directory: string, parentSessionID?: string): Promise
         pauseRun(run.id, directory);
       } else {
         finishRun(run.id, directory, summary);
+      }
+
+      // Re-render CUBICORE_PLAN.md with fresh progress from the latest run
+      // so the founder sees up-to-date step markers after continue completes.
+      try {
+        const updatedRuns = loadRuns(directory);
+        const latest = updatedRuns[0];
+        const finalContractProgress = new Map<string, ContractState>();
+        const finalStepProgress = new Map<string, Map<string, ContractState>>();
+        if (latest) {
+          for (const p of latest.progress) {
+            finalContractProgress.set(p.contractId, p.state);
+            if (p.steps) {
+              const stepMap = new Map<string, ContractState>();
+              for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+              finalStepProgress.set(p.contractId, stepMap);
+            }
+          }
+        }
+        writeFileSync(
+          resolved.mdPath,
+          renderPlanMd(parsed, { ok: true, findings: [] }, { contracts: finalContractProgress, steps: finalStepProgress }),
+        );
+      } catch {
+        // Best-effort refresh; the run result is still valid even if MD refresh fails.
       }
     })
     .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
@@ -1009,17 +1146,20 @@ export const TOOLS = [
     description:
       WHEN +
       "Validates a plan and writes CUBICORE_PLAN.md (for the founder) and " +
-      "CUBICORE_PLAN.json (dispatchable). Costs nothing and dispatches nothing.",
+      "CUBICORE_PLAN.json (dispatchable). Costs nothing and dispatches nothing. " +
+      "Pass planNumber to write CUBICORE_PLAN_N.md / CUBICORE_PLAN_N.json " +
+      "(for multi-member flows where each member gets their own plan file).",
     inputSchema: {
       type: "object",
       properties: {
         plan: { type: "string", description: "Plan JSON matching the Cubicore plan schema." },
         directory: { type: "string", description: "Working directory; defaults to the server's." },
+        planNumber: { type: "integer", description: "Optional plan number; writes CUBICORE_PLAN_N files instead of the base files." },
       },
       required: ["plan"],
     },
-    handler: async (args: { plan: string; directory?: string }) =>
-      planWrite(args.plan, args.directory ?? process.cwd()),
+    handler: async (args: { plan: string; directory?: string; planNumber?: number }) =>
+      planWrite(args.plan, args.directory ?? process.cwd(), args.planNumber),
   },
   {
     name: "execute_file",
@@ -1028,16 +1168,17 @@ export const TOOLS = [
       "Dispatches CUBICORE_PLAN.json across parallel associates. Returns a run id " +
       "immediately; call status with that id and a generous waitMs to get the verdict in " +
       "one call. Bounded by a cycle budget so fixes cannot " +
-      "loop without end.",
+      "loop without end. Pass planNumber to dispatch CUBICORE_PLAN_N.json instead.",
     inputSchema: {
       type: "object",
       properties: {
         directory: { type: "string", description: "Working directory; defaults to the server's." },
         parentSessionID: { type: "string", description: "Session to parent the associates to." },
+        planNumber: { type: "integer", description: "Optional plan number; dispatches CUBICORE_PLAN_N.json instead of the base file." },
       },
     },
-    handler: async (args: { directory?: string; parentSessionID?: string }) =>
-      executeFile(args.directory ?? process.cwd(), args.parentSessionID),
+    handler: async (args: { directory?: string; parentSessionID?: string; planNumber?: number }) =>
+      executeFile(args.directory ?? process.cwd(), args.parentSessionID, args.planNumber),
   },
   {
     name: "continue",
@@ -1046,16 +1187,18 @@ export const TOOLS = [
       "Resumes the last run from where it stopped. Reads CUBICORE_PLAN.json, " +
       "skips contracts already done in the most recent completed run, and " +
       "dispatches only what remains. Use this as the daily-driver command: " +
-      "run it, and it picks up where the last run left off.",
+      "run it, and it picks up where the last run left off. " +
+      "Exempt from the cycle budget. Pass planNumber to resume CUBICORE_PLAN_N.json.",
     inputSchema: {
       type: "object",
       properties: {
         directory: { type: "string", description: "Working directory; defaults to the server's." },
         parentSessionID: { type: "string", description: "Session to parent the associates to." },
+        planNumber: { type: "integer", description: "Optional plan number; resumes CUBICORE_PLAN_N.json instead of the base file." },
       },
     },
-    handler: async (args: { directory?: string; parentSessionID?: string }) =>
-      continueRun(args.directory ?? process.cwd(), args.parentSessionID),
+    handler: async (args: { directory?: string; parentSessionID?: string; planNumber?: number }) =>
+      continueRun(args.directory ?? process.cwd(), args.parentSessionID, args.planNumber),
   },
   {
     name: "test",
@@ -1432,8 +1575,13 @@ export const PROMPTS = [
     name: "execute",
     description:
       "Dispatch a plan. Prefers the host's inline sub-agents so each associate renders as a " +
-      "visible step; falls back to Cubicore's own sessions when the host has none.",
-    arguments: [{ name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" }],
+      "visible step; falls back to Cubicore's own sessions when the host has none. " +
+      "Reads CUBICORE_PLAN.json by default, falls back to CUBICORE_PLAN_1.json, " +
+      "or CUBICORE_PLAN_N.json when planNumber is given.",
+    arguments: [
+      { name: "plan", description: "Plan JSON; omit to use CUBICORE_PLAN.json" },
+      { name: "planNumber", description: "Optional plan number; dispatches CUBICORE_PLAN_N.json." },
+    ],
   },
   {
     name: "refine",
@@ -1472,8 +1620,12 @@ export const PROMPTS = [
   },
   {
     name: "continue",
-    description: "Resume the last run from where it stopped, skipping contracts already done.",
-    arguments: [],
+    description: "Resume the last run from where it stopped, skipping contracts already done. " +
+      "Exempt from the cycle budget. Reads CUBICORE_PLAN.json by default, " +
+      "falls back to CUBICORE_PLAN_1.json, or CUBICORE_PLAN_N.json when planNumber is given.",
+    arguments: [
+      { name: "planNumber", description: "Optional plan number; resumes CUBICORE_PLAN_N.json." },
+    ],
   },
   {
     name: "deploy",
@@ -1526,13 +1678,17 @@ their exports. Do not go exploring with the shell afterwards.
 **2. Decide scope.** ${decideScope}
 
 **3. Write the plan.** Produce the plan JSON and pass it to the plan tool, which
-writes CUBICORE_PLAN.md for the founder and CUBICORE_PLAN.json for the
-dispatcher.
+writes CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher,
+and CUBICORE_CONTEXT.md for team members who need to present the project in person.
 
 The plan needs:
 - A \`summary\` field — one or two sentences describing what this project is,
   shown at the top of CUBICORE_PLAN.md so the founder understands the product
   at a glance.
+- A \`context\` field — narrative context for human readers: problem, users,
+  use cases, benefits, demo flow, and future work. Rendered at the top of
+  CUBICORE_CONTEXT.md so team members can present the project in person.
+  Never affects what gets built.
 - \`graphBudget.nodes\` at least the number of contracts.
 - \`graphBudget.edges\` at least the read/write dependencies between contracts.
 
@@ -1625,6 +1781,10 @@ standalone document per associate into \`CUBICORE_ASSOCIATES/\`, each carrying o
 associate's write scope, what is off-limits, and its checks. Do not merge them into a
 single brief and do not hand an associate another associate's brief. They are working at the
 same time and must not read each other's scopes.
+
+**Plan files.** Cubicore reads CUBICORE_PLAN.json by default. If that file is not present,
+it falls back to CUBICORE_PLAN_1.json. Pass planNumber to dispatch CUBICORE_PLAN_N.json
+instead (for multi-member flows where each member has their own plan file).
 
 **Dispatch:**
 
