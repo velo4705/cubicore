@@ -4,6 +4,20 @@ What if you wished to make a "company" right at home, where you are the founder 
 
 Enter Cubicore, A Dynamic Multi-Agent Factory System that interacts with Sub-tasks and Sessions (if present). The system is designed as an MCP for enhanced portability across multiple AI agents - Opencode or Claude Code, to name a few.
 
+---
+
+<div align="center">
+
+### 🌍 Languages
+
+English · 中文 (coming soon) · Español (coming soon) · Français (coming soon) · Deutsch (coming soon) · 日本語 (coming soon)
+
+Contributions welcome — open a PR to add your language.
+
+</div>
+
+---
+
 ## What's the idea?
 
 Suppose you imagine a magic "cube", as an example. Act that this cube is a "mini" company that is under your control. Then, you ask the "magic cube" about what you want. It can be anything - even a multimillion SaaS product would be fine. After you reply to the "magic cube", the cube plans and determines the size of your project, and size of your project matters for how many "employees" that will be hired for this job.
@@ -12,11 +26,11 @@ Once its all set, the cube resizes and fills it with new "employees" to work on 
 
 The project is done when all sub-tasks are done, but hey, you can even call the testers to test the product you made, just to make sure no bugs, broken interactions, fixable warnings are left behind. You can add any feature you wanted by asking the "magic cube" again, and it will do it for you. It doesn't matter how many decorations you add onto the "magic cube", it will always be better with its "add-ons".
 
+---
+
 ## How it actually works?
 
-Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are called "Cubicores". These "cubicores" represents Inline Sub-tasks or Sessions run by the agent at the same time (it is never one-by-one). 
-
-A Brief idea of this project works like so:
+Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are called "Cubicores". These "cubicores" represents Inline Sub-tasks or Sessions run by the agent at the same time (it is never one-by-one).
 
 ```
 [User gives Prompt] --> [Agent Plans about the Prompt and generates file] --> [Summon Sub-agents to read generated file] --> [Submits Result]
@@ -24,7 +38,7 @@ A Brief idea of this project works like so:
 
 When a user gives a prompt, assume it to be a simple, lazy prompt "Make me some huge megaproject that can make me rich. make no mistakes, i believe in you.".
 Using the prompt provided by the User, and Main agent will Plan and research about the project on what you are meaning to build... and will ask further questions about the type of product, the style, the layout, the tech stacks, anything... even the questions would be marked "Recommended" to be selected very easily.
-After when its done, it finally determines the Project Size, displays the tasks, where each task (they are no small tasks) is assigned to a particular "cubicore". It also gives out the N number of cubicores required to build your project from scratch. This is all mentioned in the PLAN.md file for every "cubicore", even the "founder" (The user) to see. 
+After when its done, it finally determines the Project Size, displays the tasks, where each task (they are no small tasks) is assigned to a particular "cubicore". It also gives out the N number of cubicores required to build your project from scratch. This is all mentioned in the PLAN.md file for every "cubicore", even the "founder" (The user) to see.
 
 Once done, Hit the "execute" command - The Main agents summon the N "cubicores" as if its constructing an urgent megaproject. These sub-tasks fill in the gaps by finishing its tasks, and avoid conflicts with other workers in the process.
 
@@ -33,6 +47,8 @@ In the end, It finally gives the result you (the founder) wanted. You can try th
 After this, Run the "fix" command, and it starts fixing the issues by reading the DEBUG file. These two commands: "test" and "fix" are basically "rinse-and-repeat" - which means once errors are fixed, the next time when the user retests the project and its codebase, it shouldnt have a DEBUG file present.
 
 About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
+
+---
 
 ## Supported AI Agents
 
@@ -48,13 +64,16 @@ Currently, we only support Opencode for now.
 
 More agents are coming soon!
 
+---
+
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `/cubicore:install` | Install Cubicore MCP server and agents into OpenCode. One-time setup: writes the MCP server entry to opencode.json, installs associate agents, and bounds the primary agent to 120 steps. For LLM agents helping a founder who cannot install manually. |
 | `/cubicore:plan-demo` | Demo mode. Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
 | `/cubicore:plan-full` | Full product mode of the command above. |
-| `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Prefers the host's own inline sub-agents so every associate renders as a visible step; falls back to Cubicore's own sessions when the host has none. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
+| `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Pass `plan` (inline JSON) or `planNumber` (reads `CUBICORE_PLAN_N.json` from disk). `planNumber` is optional: omit it to run the inline plan, or pass a number to dispatch a member plan file. Enforces the cycle budget and cross-plan validation when reading from disk. |
 | `/cubicore:continue` | Resume the last run from where it stopped — skips contracts already done, dispatches only what remains. Exempt from the cycle budget. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
 | `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
 | `/cubicore:refine` | Change the current plan before running it, or add a feature to a project that has already been built. Contracts that already passed and were left alone are not re-run, so the second cycle costs the change and not the project. |
@@ -79,83 +98,12 @@ blocking findings  /cubicore:fix       · refine · undo · continue
 everything passes  /cubicore:deploy    · refine · undo
 ```
 
+---
+
 ## Installation
 
-Cubicore runs as an opencode plugin **and** an MCP server. Both are required
-for the inline-subtask path; the session path works with the plugin alone.
-
-### 1. Build the plugin
-
-```bash
-git clone https://github.com/velo4705/cubicore
-cd cubicore
-bun install
-bun run build          # produces dist/index.js
-```
-
-### 2. Register the MCP server in opencode
-
-Add to your opencode config (`~/.config/opencode/opencode.json`):
-
-```json
-{
-  "mcp": {
-    "cubicore": {
-      "type": "local",
-      "command": ["bun", "run", "/absolute/path/to/cubicore/src/mcp/main.ts"],
-      "environment": { "PATH": "/home/you/.bun/bin:/usr/bin:/bin" }
-    }
-  }
-}
-```
-
-The command must point at `src/mcp/main.ts` (not a compiled output) so the
-server reloads on every code change. The `PATH` must include your bun binary
-and the system paths.
-
-### 3. Install the Cubicore agents into opencode
-
-```bash
-bun run src/mcp/install.ts
-```
-
-This writes `cubicore-associate` and `cubicore-research` into your opencode
-config and sets `build.maxSteps: 120`. If you ever rebuild the plugin, run
-this again so the agent definitions stay current.
-
-### 4. Restart opencode
-
-The plugin and MCP server are loaded at startup. After editing
-`opencode.json` and running the installer, restart opencode entirely.
-
-### 4. Verify
-
-Open opencode in a project and type:
-
-```
-/cubicore:plan
-```
-
-If the plan prompt appears, the plugin, MCP server, and agents are all
-wired. The server must run in the project you want to work on — its working
-directory becomes the project root for `prepare`, `execute`, and the check
-commands.
-
-### Troubleshooting
-
-- **MCP connection refused**: check the `command` path and that `bun` is on
-  the `PATH` inside opencode.
-- **Plan tool says "no contracts"**: the research tool found nothing to
-  split. Run the plan command from a directory that contains the work
-  (e.g. a `sources/` directory for the docs fixture).
-- **`/cubicore:execute` does nothing**: the MCP server's working directory
-  must be the project root. Start opencode *in* the project directory.
-
-### Uninstalling
-
-Remove the `cubicore` entry from `mcp` in `opencode.json`, remove the
-`cubicore-associate` and `cubicore-research` agents from the `agent`
-section, and remove the plugin from the `plugin` array. Restart opencode.
+See [OpenCode Installation](opencode/opencode.md) for full installation instructions,
+troubleshooting, FAQs, and AI agent installation.
 
 ### How the associates are kept apart
 
@@ -168,6 +116,8 @@ Three layers, and only the first was ever airtight.
 **After the work**, the scope gate checks what actually changed against what was declared. A worker that strayed is caught, and a check that could not run at all is reported as unverified rather than as a failure — no evidence either way, and not retryable, because a revision cannot install a missing dependency.
 
 opencode 1.18.x cannot restrict an agent to a path — its permissions are per-action, not per-resource — so the filesystem is the only boundary available.
+
+---
 
 ## What Cubicore is for
 
@@ -216,6 +166,8 @@ than that a model said so. The speedup is a side effect.
 
 Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
 
+---
+
 ## What exists
 
 - **Contracts, not prompts.** Disjoint write scopes, a check matrix computed at
@@ -232,7 +184,7 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
   a path, so the filesystem is the boundary: two workers cannot be in one file
   at the same moment. A worker's files are copied back only after its checks
   pass, so an unapproved change never reaches the shared tree.
-- **Thirteen commands, and the flow guides itself.** Every reply ends with the
+- **Fourteen commands, and the flow guides itself.** Every reply ends with the
   next step and the alternatives, derived from the state on disk rather than
   remembered.
 - **A bounded loop.** `plan → execute → test → execute`, capped at three
@@ -240,6 +192,8 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
   terminal case is an agent that never stops finding things to fix.
 - **Judgement never blocks.** Errors and warnings block. "Is this useful" and
   "is this production ready" are recorded as advisory and left to the founder.
+
+---
 
 ## Known limits
 
@@ -258,4 +212,3 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
   restrict an agent to a path, so a worker with a shell can run anything. The
   worktree contains the damage — a stray file stays in the worker's own
   checkout and is not copied back — but the command still ran.
-

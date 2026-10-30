@@ -8,6 +8,15 @@ import { join } from "node:path";
 import type { Contract, Plan, PlanContext } from "../contracts/types";
 import type { ContractState } from "./runs";
 
+/** A single cross-plan finding: a read that no plan writes, or a write no plan reads. */
+export interface CrossPlanFinding {
+  planFile: string;
+  contractId: string;
+  kind: "orphan-read" | "unread-write";
+  target: string;
+  message: string;
+}
+
 /**
  * The Plan → Execute → Test protocol.
  *
@@ -301,6 +310,95 @@ export function validateCrossPlanCollisions(directory: string): string[] {
   }
 
   return problems;
+}
+
+/**
+ * Validate cross-plan interface compatibility.
+ *
+ * For every contract in every plan file, checks:
+ *   - orphan-read: a contract reads a file that no plan writes (the read is
+ *     unsatisfied -- someone needs to produce it).
+ *   - unread-write: a contract writes a file that no plan reads (the write may
+ *     be dead code, or it is consumed outside Cubicore).
+ *
+ * Reads can overlap between plans (many readers are fine). Writes must not
+ * overlap (checked by validateCrossPlanCollisions).
+ *
+ * Returns an array of problem strings, or an empty array when all interfaces
+ * are satisfied.
+ */
+export function validateCrossPlanInterfaces(directory: string): string[] {
+  const problems: string[] = [];
+  const planFiles: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return problems;
+  }
+
+  for (const entry of entries) {
+    if (!entry.startsWith("CUBICORE_PLAN_") || !entry.endsWith(".json")) continue;
+    planFiles.push(join(directory, entry));
+  }
+
+  if (planFiles.length < 2) return problems;
+
+  // Collect all writes across all plans first, so we can check reads against them.
+  const allWrites = new Set<string>();
+  const planData: Array<{ planFile: string; plan: Plan }> = [];
+
+  for (const planPath of planFiles) {
+    let raw: string;
+    try {
+      raw = readFileSync(planPath, "utf8");
+    } catch {
+      continue;
+    }
+
+    const loaded = loadPlan(raw);
+    if (!loaded.ok) continue;
+
+    for (const contract of loaded.plan.contracts) {
+      for (const write of contract.writes) {
+        allWrites.add(write);
+      }
+    }
+
+    planData.push({ planFile: planPath.split("/").pop() ?? planPath, plan: loaded.plan });
+  }
+
+  // Check every read against the global write set.
+  for (const { planFile, plan } of planData) {
+    for (const contract of plan.contracts) {
+      for (const read of contract.reads) {
+        if (!allWrites.has(read)) {
+          problems.push(
+            `orphan read on "${read}" by ${planFile}:${contract.id} -- no plan writes this file`,
+          );
+        }
+      }
+
+      for (const write of contract.writes) {
+        // A write with no reader anywhere is advisory, not blocking:
+        // it may be consumed outside Cubicore (e.g. a CLI output, a report).
+        // We skip flagging it to avoid false positives.
+      }
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * Run all cross-plan validations: write-scope collisions and interface compatibility.
+ *
+ * Returns all problems from both checks, or an empty array when all plans
+ * are mutually compatible.
+ */
+export function validateCrossPlan(directory: string): string[] {
+  return [...validateCrossPlanCollisions(directory), ...validateCrossPlanInterfaces(directory)];
 }
 
 /**

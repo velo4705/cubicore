@@ -40,7 +40,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import { cleanOrphanedWorktrees } from "../dispatch/worktree";
-import { validateCrossPlanCollisions } from "./protocol";
+import {
+  CrossPlanFinding,
+  validateCrossPlan,
+  validateCrossPlanCollisions,
+  validateCrossPlanInterfaces,
+} from "./protocol";
 import type { Contract, Plan } from "../contracts/types";
 
 /**
@@ -723,66 +728,6 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   );
 }
 
-/** Execute: dispatch ${PLAN_JSON}, honouring the cycle bound. */
-async function executeFile(directory: string, parentSessionID?: string, planNumber?: number): Promise<ToolResult> {
-  const statePath = `${directory}/.cubicore-cycle.json`;
-  const state = readCycleState(statePath);
-  const gate = canExecute(state);
-  if (!gate.allowed) return text(gate.reason, true);
-
-  const resolved = resolvePlanFile(directory, planNumber);
-  let raw: string;
-  try {
-    raw = await Bun.file(resolved.planPath).text();
-  } catch {
-    return text(`No plan file found at ${resolved.planPath}. Run the plan command first.`, true);
-  }
-
-  const loaded = loadPlan(raw);
-  if (!loaded.ok) return text(`Refusing to dispatch: ${loaded.reason}`, true);
-
-  const parsed = loaded.plan;
-
-  // When multiple plan files exist in this directory, verify their write
-  // scopes are mutually disjoint so two members don't accidentally overwrite
-  // each other's files.
-  const collisions = validateCrossPlanCollisions(directory);
-  if (collisions.length > 0) {
-    return text(
-      [
-        `Refusing to dispatch: write collisions detected across plan files.`,
-        "",
-        ...collisions.map((c) => `- ${c}`),
-        "",
-        "Fix the overlapping write scopes before dispatching.",
-      ].join("\n"),
-      true,
-    );
-  }
-
-  const run = startRun(parsed, directory);
-  writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
-
-  void resolveParent(parentSessionID)
-    .then((parent) => runToCompletion(raw, run.id, parent, directory))
-    .then(({ summary, halted }) => {
-      if (halted === "cancelled") {
-        cancelRun(run.id, directory, "cancelled by the founder");
-      } else if (halted === "paused") {
-        pauseRun(run.id, directory);
-      } else {
-        finishRun(run.id, directory, summary);
-      }
-    })
-    .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
-
-  return reply(
-    [`${gate.reason}`, `Started ${run.id} -- ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
-     `Poll with status using ${run.id}.`].join("\n"),
-    directory,
-  );
-}
-
 /**
  * Continue: resume the last run from where it stopped.
  *
@@ -791,7 +736,7 @@ async function executeFile(directory: string, parentSessionID?: string, planNumb
  * dispatches only what remains. This is the daily-driver command: run it,
  * it picks up where the last run left off.
  *
- * Unlike execute_file, continue is exempt from the cycle budget -- it is
+ * Unlike execute, continue is exempt from the cycle budget -- it is
  * resuming interrupted work, not starting a new fix cycle.
  */
 async function continueRun(directory: string, parentSessionID?: string, planNumber?: number): Promise<ToolResult> {
@@ -809,17 +754,18 @@ async function continueRun(directory: string, parentSessionID?: string, planNumb
   const parsed = loaded.plan;
 
   // When multiple plan files exist in this directory, verify their write
-  // scopes are mutually disjoint so two members don't accidentally overwrite
-  // each other's files.
-  const collisions = validateCrossPlanCollisions(directory);
+  // scopes are mutually disjoint and their interfaces are compatible so two
+  // members don't accidentally overwrite each other's files or leave reads
+  // unsatisfied.
+  const collisions = validateCrossPlan(directory);
   if (collisions.length > 0) {
     return text(
       [
-        `Refusing to continue: write collisions detected across plan files.`,
+        `Refusing to continue: cross-plan problems detected.`,
         "",
         ...collisions.map((c) => `- ${c}`),
         "",
-        "Fix the overlapping write scopes before continuing.",
+        "Fix the overlapping write scopes or unsatisfied reads before continuing.",
       ].join("\n"),
       true,
     );
@@ -1026,7 +972,7 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
       inlineReady
         ? `Dispatch ALL ${loaded.plan.contracts.length} associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, at the same time. Give each its own brief's path. Do not dispatch them one at a time.`
         : `NOTE: the host has no \`${ASSOCIATE_AGENT_ID}\` agent. Dispatch to whichever sub-agent it does have ` +
-          `(\`general\` works), keeping one brief each -- or call execute_file so Cubicore dispatches sessions itself.`,
+          `(\`general\` works), keeping one brief each -- or call execute so Cubicore dispatches sessions itself.`,
       "",
       "Associates to dispatch:",
       "",
@@ -1098,6 +1044,7 @@ const ENDING = "End your reply by explicitly offering the next steps as /cubicor
   "Do not invent steps: the tool reads state on disk and knows what is true. " +
   "If the tool reported none, say the work is done. Let the founder choose; do not run the next step for them. ";
 
+
 const WHEN = "Call this when the founder asks to use Cubicore, " +
   "or to plan, dispatch, test or check work that should be split across " +
   "parallel agents. ";
@@ -1126,20 +1073,63 @@ export const TOOLS = [
     description:
       WHEN +
       "Dispatches a validated plan across parallel associates, gates each result, " +
-      "and aggregates the artifacts. Progress streams to stderr while it runs. " +
+      "and aggregates the artifacts. Pass `plan` (inline JSON) or `planNumber` " +
+      "(reads CUBICORE_PLAN_N.json from disk). `planNumber` is optional: omit it " +
+      "to run the inline plan, or pass a number to dispatch a member plan file. " +
       "Returns a run id immediately. Then call status with that id and a generous " +
       "waitMs so one call returns the verdict -- polling in a loop spends the agent's " +
       "step budget, and a run can outlive it.",
     inputSchema: {
       type: "object",
       properties: {
-        plan: { type: "string", description: "Plan JSON previously accepted by plan." },
+        plan: { type: "string", description: "Plan JSON previously accepted by plan. Optional if planNumber is given." },
         parentSessionID: { type: "string", description: "Session to parent the associates to." },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+        planNumber: { type: "integer", description: "Optional plan number; dispatches CUBICORE_PLAN_N.json from disk instead of the inline plan." },
       },
-      required: ["plan"],
     },
-    handler: async (args: { plan: string; parentSessionID?: string; directory?: string }) =>
-      execute(args.plan, args.parentSessionID, args.directory ?? process.cwd()),
+    handler: async (args: { plan?: string; parentSessionID?: string; directory?: string; planNumber?: number }) => {
+      const dir = args.directory ?? process.cwd();
+      let raw: string;
+
+      if (args.planNumber !== undefined && args.planNumber !== null) {
+        // Disk path: read CUBICORE_PLAN_N.json, enforce cycle budget and cross-plan checks.
+        const resolved = resolvePlanFile(dir, args.planNumber);
+        try {
+          raw = await Bun.file(resolved.planPath).text();
+        } catch {
+          return text(`No plan file found at ${resolved.planPath}. Run the plan command first.`, true);
+        }
+
+        const statePath = `${dir}/.cubicore-cycle.json`;
+        const state = readCycleState(statePath);
+        const gate = canExecute(state);
+        if (!gate.allowed) return text(gate.reason, true);
+
+        const collisions = validateCrossPlan(dir);
+        if (collisions.length > 0) {
+          return text(
+            [
+              `Refusing to dispatch: cross-plan problems detected.`,
+              "",
+              ...collisions.map((c) => `- ${c}`),
+              "",
+              "Fix the overlapping write scopes or unsatisfied reads before dispatching.",
+            ].join("\n"),
+            true,
+          );
+        }
+
+        writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+      } else if (args.plan) {
+        // Inline path: run the plan passed directly.
+        raw = args.plan;
+      } else {
+        return text("Pass either `plan` (inline JSON) or `planNumber` (read from disk).", true);
+      }
+
+      return execute(raw, args.parentSessionID, dir);
+    },
   },
   {
     name: "plan_write",
@@ -1160,25 +1150,6 @@ export const TOOLS = [
     },
     handler: async (args: { plan: string; directory?: string; planNumber?: number }) =>
       planWrite(args.plan, args.directory ?? process.cwd(), args.planNumber),
-  },
-  {
-    name: "execute_file",
-    description:
-      WHEN +
-      "Dispatches CUBICORE_PLAN.json across parallel associates. Returns a run id " +
-      "immediately; call status with that id and a generous waitMs to get the verdict in " +
-      "one call. Bounded by a cycle budget so fixes cannot " +
-      "loop without end. Pass planNumber to dispatch CUBICORE_PLAN_N.json instead.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        directory: { type: "string", description: "Working directory; defaults to the server's." },
-        parentSessionID: { type: "string", description: "Session to parent the associates to." },
-        planNumber: { type: "integer", description: "Optional plan number; dispatches CUBICORE_PLAN_N.json instead of the base file." },
-      },
-    },
-    handler: async (args: { directory?: string; parentSessionID?: string; planNumber?: number }) =>
-      executeFile(args.directory ?? process.cwd(), args.parentSessionID, args.planNumber),
   },
   {
     name: "continue",
@@ -1543,6 +1514,8 @@ export const TOOLS = [
 ];
 
 
+
+
 /**
  * Slash-command surface.
  *
@@ -1652,6 +1625,13 @@ export const PROMPTS = [
     name: "status",
     description:
       "Report what the run in flight is doing, and wait for it if it is not done yet.",
+    arguments: [],
+  },
+  {
+    name: "install",
+    description:
+      "Install Cubicore on this system. For LLM agents helping a founder who cannot install manually. " +
+      "Returns step-by-step instructions and can be followed by calling the plan tool.",
     arguments: [],
   },
 ];
@@ -2036,6 +2016,73 @@ instead of the run's.
 
 Report what the run did: how many associates finished, how many failed, and what each
 failure was. If it is still running, say so and say how long it has been going.`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "install") {
+    return {
+      description: "Install Cubicore on this system. For LLM agents helping a founder.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+`Install Cubicore on this system so the founder can use it with OpenCode.
+
+## What Cubicore is
+
+Cubicore is an MCP server for OpenCode that splits projects into independent contracts,
+dispatches them to parallel associates (sub-agents or sessions), gates each result with
+checks, and bounds the fix loop at three cycles. It prevents merge conflicts by enforcing
+disjoint write scopes at plan time.
+
+## Installation steps (follow in order)
+
+### 1. Install Cubicore from npm
+
+Run this command in a terminal:
+
+    npx cubicore
+
+This downloads Cubicore, registers its MCP server in the founder's OpenCode config
+(~/.config/opencode/opencode.json), installs the associate agents, and bounds the primary
+agent to 120 steps so planning cannot loop forever.
+
+### 2. Restart OpenCode
+
+The MCP server and agents are loaded at startup. The founder must quit and reopen OpenCode
+for the new config to take effect.
+
+### 3. Verify installation
+
+Open OpenCode in any project directory and type:
+
+    /cubicore:plan
+
+If the plan prompt appears, Cubicore is installed and working.
+
+## What the founder does next
+
+1. Pick a project directory
+2. Run /cubicore:prepare to initialise git and record a baseline
+3. Run /cubicore:plan to describe what they want built
+4. Run /cubicore:execute to dispatch associates in parallel
+5. Run /cubicore:test to check the results
+6. Run /cubicore:continue to resume after interruptions
+
+## Troubleshooting
+
+- **MCP connection refused**: Make sure bun is on PATH (run which bun to find it).
+  The npx installer records the bun path it finds.
+- **Plan tool says "no contracts"**: Run from a directory that contains code to split.
+- **/cubicore:execute does nothing**: Start OpenCode in the project directory so the
+  MCP server's working directory is the project root.
+
+If anything fails, report the exact error message and the step number above.`,
           },
         },
       ],

@@ -1,10 +1,12 @@
 {
   "name": "cubicore",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "bin": {
+    "cubicore": "./dist/cli.js"
+  },
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk",
+    "build": "bun build src/index.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/cli.ts --target=bun --outfile=dist/cli.js",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "bench": "bun run bench/run.ts"
@@ -15,6 +17,7 @@
   },
   "files": [
     "src",
+    "dist",
     "README.md"
   ],
   "peerDependencies": {

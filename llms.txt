@@ -1,0 +1,78 @@
+# Cubicore — llms.txt
+
+This file is for LLM agents helping founders install and use Cubicore.
+It is machine-readable and designed to be consumed by AI agents.
+
+## What is Cubicore
+
+Cubicore is an MCP server for OpenCode that splits projects into independent
+contracts with disjoint write scopes, dispatches them to parallel associates
+(sub-agents or sessions), gates each result with checks, and bounds the fix
+loop at three cycles.
+
+## Installation (for AI agents)
+
+### Step 1: Install via npx
+
+Run this command on the founder's machine:
+
+```
+npx cubicore
+```
+
+This:
+- Downloads Cubicore from npm
+- Registers the MCP server in `~/.config/opencode/opencode.json`
+- Installs associate agents (`cubicore-associate`, `cubicore-research`)
+- Bounds the primary agent to 120 steps
+
+### Step 2: Restart OpenCode
+
+The founder must quit and reopen OpenCode for the new config to take effect.
+
+### Step 3: Verify
+
+In any project directory, type:
+
+```
+/cubicore:plan
+```
+
+If the plan prompt appears, Cubicore is installed and working.
+
+## Key commands (for reference)
+
+- `/cubicore:plan` — Plan what to build
+- `/cubicore:execute` — Dispatch plan (pass `plan` inline or `planNumber` for disk file)
+- `/cubicore:continue` — Resume interrupted run (exempt from cycle budget)
+- `/cubicore:test` — Run checks, write `CUBICORE_DEBUG.md`
+- `/cubicore:fix` — Fix findings from debug file
+- `/cubicore:status` — Poll a run for its verdict
+- `/cubicore:undo` — Discard last execution
+- `/cubicore:install` — Re-run installation prompt
+
+## Multi-member flows
+
+Each team member can have their own plan file:
+
+- `CUBICORE_PLAN.json` — base plan
+- `CUBICORE_PLAN_1.json` … `CUBICORE_PLAN_N.json` — member plans
+
+Dispatch member N: `/cubicore:execute` with `planNumber: N`
+Resume member N: `/cubicore:continue` with `planNumber: N`
+
+Cross-plan validation (write collisions, orphan runs) runs automatically
+before dispatch when multiple plan files exist.
+
+## Troubleshooting
+
+- **MCP connection refused**: Ensure `bun` is on PATH (`which bun`)
+- **Plan tool says "no contracts"**: Run from a directory containing code
+- **`/cubicore:execute` does nothing**: Start OpenCode in the project directory
+  so the MCP server's working directory is the project root
+
+## Links
+
+- GitHub: https://github.com/velo4705/cubicore
+- npm: https://www.npmjs.com/package/cubicore
+- Bench results: bench/RESULTS.md

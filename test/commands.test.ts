@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { cancelRun, describe as describeRun, loadRuns, pauseRun, startRun } from "../src/mcp/runs";
 import { dispatch } from "../src/dispatch";
+import { validateCrossPlan, validateCrossPlanInterfaces } from "../src/mcp/protocol";
 import type { Contract, Plan } from "../src/contracts/types";
 
 /**
@@ -225,5 +226,112 @@ describe("refine does not re-run what already worked", () => {
     );
 
     expect(dispatched).toBe(1);
+  });
+});
+
+describe("cross-plan interface validation", () => {
+  const writeFile = (dir: string, name: string, content: string) =>
+    writeFileSync(join(dir, name), content);
+
+  const planWith = (
+    contracts: Array<{ id: string; reads: string[]; writes: string[] }>,
+    context?: unknown,
+  ) =>
+    JSON.stringify({
+      topology: "fan-out",
+      contracts: contracts.map((c) => ({
+        id: c.id,
+        objective: `Do ${c.id}`,
+        reads: c.reads,
+        writes: c.writes,
+        forbidden: [],
+        deliverable: "diff",
+        schema: { type: "object" },
+        doneWhen: "done",
+        checks: [
+          {
+            id: "k",
+            kind: "intent",
+            command: "test -f x",
+            expectation: "e",
+            gating: "blocking",
+            convergent: true,
+          },
+        ],
+        budget: { tokens: 1000, toolCalls: 10, wallMs: 1000 },
+      })),
+      graphBudget: { nodes: contracts.length, edges: 0, tokens: 10_000, wallMs: 60_000 },
+      ...(context ? { context } : {}),
+    });
+
+  it("reports no problems when every read is satisfied by some write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    // Each plan has one contract (fan-out = independent within plan).
+    // Cross-plan: plan 2 reads what plan 1 writes, plan 3 reads what plan 2 writes.
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "a", reads: [], writes: ["src/api.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_2.json", planWith([
+      { id: "b", reads: ["src/api.ts"], writes: ["src/app.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_3.json", planWith([
+      { id: "c", reads: ["src/app.ts"], writes: ["src/ui.ts"] },
+    ]));
+
+    const problems = validateCrossPlanInterfaces(dir);
+    expect(problems).toEqual([]);
+  });
+
+  it("reports orphan reads when no plan writes a file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "a", reads: [], writes: ["src/api.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_2.json", planWith([
+      { id: "b", reads: ["src/missing.ts"], writes: ["src/app.ts"] },
+    ]));
+
+    const problems = validateCrossPlanInterfaces(dir);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems[0]).toContain("orphan read");
+    expect(problems[0]).toContain("src/missing.ts");
+  });
+
+  it("returns empty when fewer than 2 plan files exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "a", reads: [], writes: ["src/api.ts"] },
+    ]));
+
+    const problems = validateCrossPlanInterfaces(dir);
+    expect(problems).toEqual([]);
+  });
+
+  it("validateCrossPlan combines collisions and interface checks", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    // Two plans both writing the same file -> collision
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "a", reads: [], writes: ["src/shared.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_2.json", planWith([
+      { id: "b", reads: [], writes: ["src/shared.ts"] },
+    ]));
+
+    const problems = validateCrossPlan(dir);
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems.some((p) => p.includes("write collision"))).toBe(true);
+  });
+
+  it("validateCrossPlan passes when plans are mutually compatible", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "a", reads: [], writes: ["src/api.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_2.json", planWith([
+      { id: "b", reads: ["src/api.ts"], writes: ["src/app.ts"] },
+    ]));
+
+    const problems = validateCrossPlan(dir);
+    expect(problems).toEqual([]);
   });
 });
