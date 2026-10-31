@@ -66,6 +66,75 @@ More agents are coming soon!
 
 ---
 
+## 🧪 Lazy Prompt Examples
+
+You don't need to write a spec. Just say what you want in plain words — Cubicore
+passes your exact request to the planner, researches your repo, asks clarifying
+questions, scopes down to an MVP, and writes a plan you review before anything
+is built. Cubicore builds what you ask for — a todo app stays a todo app, not
+an expense tracker.
+
+### Solo — Demo (`/cubicore:plan-demo`)
+
+> "Make me a simple todo app that works in the browser."
+
+Cubicore will **not** just build a todo app. It follows this order:
+
+1. **Prepare** — initialises git and records a baseline (or leaves an existing repo alone)
+2. **Research** — reports the tree, modules, and their exports; no shell exploring afterwards
+3. **Decide scope** — demo/MVP, conventional boring stack, one contract per file or feature, fewer larger contracts over many small ones
+4. **Write plan** — `CUBICORE_PLAN.md` (for you), `CUBICORE_PLAN.json` (dispatchable), `CUBICORE_CONTEXT.md` (for presenting in person)
+
+The plan includes a `summary` (one or two sentences at the top of `CUBICORE_PLAN.md`), a `context` field (problem, users, use cases, benefits, demo flow, future work — never affects what gets built), disjoint `writes` per contract, at least one failing check per contract, and a `graphBudget` sized to the contracts.
+
+**Dispatch nothing** — you review the plan first.
+
+Then run `/cubicore:execute` to build it, `/cubicore:test` to check it, and
+`/cubicore:try` to open it in the browser.
+
+### Solo — Full (`/cubicore:plan-full`)
+
+> "Build me a personal finance tracker with categories, monthly summaries, and CSV export."
+
+Same four steps, but scoped as a full product with 6–12 contracts (API, frontend,
+storage, checks). Review the plan before dispatching.
+
+Then run `/cubicore:execute` → `/cubicore:test` → `/cubicore:fix` → `/cubicore:deploy`.
+
+### Team of 3 — Demo (`/cubicore:plan-demo` then split)
+
+> "Make a hackathon project board where our team can drop ideas and vote on them."
+
+After the plan is written, split it across the team:
+
+```
+/cubicore:execute    planNumber 1   # Member A: frontend board UI
+/cubicore:execute    planNumber 2   # Member B: voting logic + API
+/cubicore:execute    planNumber 3   # Member C: idea storage + export
+```
+
+Each member works in their own worktree with disjoint write scopes — no merge
+conflicts. Use `/cubicore:status` to check a run, `/cubicore:continue`
+with `planNumber` to resume after interruptions.
+
+### Team of 3 — Full (`/cubicore:plan-full` then split)
+
+> "Build a client portal for our small design agency: client login, project uploads, invoice PDFs, and a dashboard."
+
+After the plan is written:
+
+```
+/cubicore:execute    planNumber 1   # Member A: auth + client portal UI
+/cubicore:execute    planNumber 2   # Member B: uploads + invoice generation
+/cubicore:execute    planNumber 3   # Member C: dashboard + reporting
+```
+
+Each member works in their own worktree with disjoint write scopes — no merge
+conflicts. Use `/cubicore:status` to check each run, `/cubicore:continue`
+with `planNumber` to resume after interruptions.
+
+---
+
 ## Commands
 
 | Command | What it does |

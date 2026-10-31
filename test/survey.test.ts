@@ -75,9 +75,10 @@ describe("survey", () => {
     expect(asked).not.toContain("No tests");
   });
 
-  it("gives an empty directory a starting question, not a file list", () => {
+  it("points an empty directory at the founder's request, not a file list", () => {
     const root = mkdtempSync(join(tmpdir(), "cubicore-empty-"));
     const asked = questionsFrom(survey(root)).join(" ");
-    expect(asked).toContain("nothing here yet");
+    expect(asked).toContain("user's request");
+    expect(asked).not.toContain("billing.ts");
   });
 });

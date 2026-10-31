@@ -1513,8 +1513,31 @@ export const TOOLS = [
   },
 ];
 
+/**
+ * OpenCode splits the text typed after a slash command into shell-like tokens
+ * and maps them onto the MCP prompt's declared arguments *by position*
+ * (`Object.fromEntries((prompt.arguments ?? []).map((arg, i) => [arg.name, tokens[i] ?? ""]))`).
+ * Declaring a single `request` argument therefore delivers only the first word
+ * of what the founder typed. Declaring one slot per possible word is how the
+ * whole request survives the client: it fills them in order and leaves the
+ * unused slots empty, and the server joins them back together verbatim.
+ */
+const REQUEST_WORDS = 96;
 
+/** Declares one positional slot per word the founder might type after a command. */
+function wordArguments(name: string, description: string) {
+  return [
+    { name, description, required: false },
+    ...Array.from({ length: REQUEST_WORDS - 1 }, (_, index) => ({
+      name: `${name}${index + 2}`,
+      description: "Next word",
+      required: false,
+    })),
+  ];
+}
 
+const PLAN_REQUEST_ARGUMENTS = wordArguments("request", "What you want built");
+const REFINE_CHANGE_ARGUMENTS = wordArguments("change", "What to change or add");
 
 /**
  * Slash-command surface.
@@ -1534,7 +1557,7 @@ export const PROMPTS = [
     description:
       "Plan a demo or MVP. Same shape as plan, but optimised for shipping fast: simpler stack, " +
       "fewer checks, cut corners where safe, and a single deployable artifact.",
-    arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
+    arguments: PLAN_REQUEST_ARGUMENTS,
   },
   {
     name: "plan-full",
@@ -1542,7 +1565,7 @@ export const PROMPTS = [
       "Plan a full enterprise product from scratch. Same shape as plan, but optimised for " +
       "production: thorough contracts, health endpoints, config, observability, CI/CD, and " +
       "checks that can fail on real systems.",
-    arguments: [{ name: "request", description: "What you want built; omit to use the current conversation", required: false }],
+    arguments: PLAN_REQUEST_ARGUMENTS,
   },
   {
     name: "execute",
@@ -1562,7 +1585,7 @@ export const PROMPTS = [
       "Improve the current plan before running it, or add features to a project that has " +
       "already been built. Reads the existing plan, works out what should change, and " +
       "rewrites the plan.",
-    arguments: [{ name: "change", description: "What to change or add", required: false }],
+    arguments: REFINE_CHANGE_ARGUMENTS,
   },
   {
     name: "fix",
@@ -1636,15 +1659,36 @@ export const PROMPTS = [
   },
 ];
 
+/** Joins the positional word arguments back into the text the founder typed. */
+function wordsFrom(args: Record<string, string>, name: string): string {
+  const words: string[] = [];
+  for (let index = 1; index <= REQUEST_WORDS; index++) {
+    const word = args[index === 1 ? name : `${name}${index}`];
+    if (typeof word !== "string") break;
+    if (word.length > 0) words.push(word);
+  }
+  return words.join(" ").trim();
+}
+
 /**
  * Renders the shared plan-writing prompt structure used by plan-demo and
- * plan-full. Only the title and the "decide scope" section differ; steps 0,
- * 1, 3, the contract rules, and the schema are identical.
+ * plan-full. Only the title and the "decide scope" section differ; the steps,
+ * the contract rules, and the schema are identical.
  */
-function renderPlanPrompt(title: string, decideScope: string): string {
-  return `
+function renderPlanPrompt(title: string, decideScope: string, request: string): string {
+  if (request.length === 0) {
+    return `
 ${title}
 
+${ENDING}
+
+No request was supplied. Do NOT guess the project. Do NOT write any plan. Do NOT call any tools.
+Reply only with: "What do you want me to build?"
+`;
+  }
+
+  return `
+${title}
 
 ${ENDING}
 Work in this order, and do not skip a step.
@@ -1652,14 +1696,15 @@ Work in this order, and do not skip a step.
 **0. Prepare.** Call the prepare tool. If the project is not a git repository it
 initialises one and records a baseline. If it already is one, the tool leaves it alone.
 
-**1. Research once.** Call the research tool. It reports the tree, the modules and
-their exports. Do not go exploring with the shell afterwards.
+**1. Decide scope.** ${decideScope}
 
-**2. Decide scope.** ${decideScope}
+**User request:** ${request}
 
-**3. Write the plan.** Produce the plan JSON and pass it to the plan tool, which
-writes CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher,
-and CUBICORE_CONTEXT.md for team members who need to present the project in person.
+**2. Write the plan.** Build exactly what the user requested above. Do not
+substitute, upgrade, or replace it with a project of your own choosing. Then
+produce the plan JSON and pass it to the plan tool, which writes
+CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
+CUBICORE_CONTEXT.md for team members who need to present the project in person.
 
 The plan needs:
 - A \`summary\` field — one or two sentences describing what this project is,
@@ -1684,22 +1729,22 @@ ${PLAN_SCHEMA_JSON}`;
 
 /** Builds the demo/MVP decide-scope section. */
 function planDemoScope(): string {
-  return `
-This is a demo or MVP. Choose a conventional, boring stack that ships fast.
-Skip observability, health endpoints, CI/CD, and multi-stage config unless the
-founder explicitly asks. One contract per file or feature; prefer fewer, larger
-contracts over many small ones. The goal is a single deployable artifact, not a
-production system.`;
+  return "This is a demo or MVP. Build exactly what the founder requested. " +
+    "Do not choose your own project idea and do not substitute a different product. " +
+    "Skip observability, health endpoints, CI/CD, and multi-stage config unless the " +
+    "founder explicitly asks. One contract per file or feature; prefer fewer, larger " +
+    "contracts over many small ones. The goal is a single deployable artifact, not a " +
+    "production system.";
 }
 
 /** Builds the enterprise decide-scope section. */
 function planFullScope(): string {
-  return `
-This is an enterprise product, built from scratch. Choose a production-grade
-stack with health endpoints, config, observability, CI/CD, and proper error
-handling. Split into one contract per bounded context or service; prefer more,
-smaller contracts with clear boundaries. Every contract needs a check that can
-fail against a real system.`;
+  return "This is an enterprise product, built from scratch. Build exactly what the " +
+    "founder requested. Do not choose your own project idea and do not substitute a " +
+    "different product. Stack with health endpoints, config, observability, CI/CD, and " +
+    "proper error handling. Split into one contract per bounded context or service; " +
+    "prefer more, smaller contracts with clear boundaries. Every contract needs a check " +
+    "that can fail against a real system.";
 }
 
 export function promptFor(name: string, args: Record<string, string>) {
@@ -1711,7 +1756,7 @@ export function promptFor(name: string, args: Record<string, string>) {
           role: "user",
           content: {
             type: "text",
-            text: renderPlanPrompt("Plan a demo or MVP of this project.", planDemoScope()),
+            text: renderPlanPrompt("Plan a demo or MVP of this project.", planDemoScope(), wordsFrom(args, "request")),
           },
         },
       ],
@@ -1726,7 +1771,7 @@ export function promptFor(name: string, args: Record<string, string>) {
           role: "user",
           content: {
             type: "text",
-            text: renderPlanPrompt("Plan a full enterprise product from scratch.", planFullScope()),
+            text: renderPlanPrompt("Plan a full enterprise product from scratch.", planFullScope(), wordsFrom(args, "request")),
           },
         },
       ],
@@ -1790,6 +1835,7 @@ the results with the test tool.`,
   }
 
   if (name === "refine") {
+    const change = wordsFrom(args, "change");
     return {
       description: "Improve the plan, or add features to what was built.",
       messages: [
@@ -1798,9 +1844,9 @@ the results with the test tool.`,
           content: {
             type: "text",
             text:
-`${ENDING}Improve the current plan${args.change ? ` to: ${args.change}` : ""}.
+`${ENDING}Improve the current plan${change ? ` to: ${change}` : ""}.
 
-${args.change ? "" : "Ask what should change, or work it out from the plan and from the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then decide which of two things this is.
+${change ? "" : "Ask what should change, or work it out from the plan and from the work already done and say what you decided.\n\n"}Read CUBICORE_PLAN.md and CUBICORE_PLAN.json first, and CUBICORE_DEBUG.md if it exists. Then decide which of two things this is.
 
 **Adding.** The existing work stays and something new is added. Keep every existing contract
 exactly as it is -- same id, same write scope, same checks -- and add contracts for the new

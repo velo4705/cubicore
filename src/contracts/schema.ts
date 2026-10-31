@@ -267,6 +267,12 @@ Rules:
   needs to evaluate the idea. It is rendered at the top of CUBICORE_CONTEXT.md
   and never affects what gets built.
 
+- **Build exactly what the user requested.** The "User request" below is the
+  source of truth. Do not substitute your own project idea, do not upgrade it
+  to something "bigger" or "more impressive", and do not build something else
+  when the user asked for something specific. If the user's request is too
+  vague to split, return topology "refuse" rather than guessing what they meant.
+
 Refusing is a valid answer. Use topology "refuse" with an empty contracts
 array when the request:
   - changes a public interface, type, or shared config

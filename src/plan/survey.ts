@@ -1,8 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname, relative } from "node:path";
 
-import { renderSlices } from "./slices";
-
 /**
  * What is actually in this repository.
  *
@@ -193,7 +191,7 @@ export function render(s: Survey): string {
   // searching with the shell for something that was not there. Give it the
   // conventional starting points instead, so the question is answerable.
   if (!s.exists) {
-    return [`No project at ${s.root}.`, "", renderSlices()].join("\n");
+    return [`No project at ${s.root}.`].join("\n");
   }
 
   const lines = [
@@ -228,7 +226,7 @@ export function render(s: Survey): string {
   }
 
   if (s.totalFiles === 0) {
-    lines.push(`The project is empty.`, ``, renderSlices(), ``);
+    lines.push(`The project is empty.`);
   }
 
   return lines.join("\n");
@@ -245,8 +243,7 @@ export function questionsFrom(s: Survey): string[] {
   // question differs: there is no code to point at, so ask what to create.
   if (!s.exists || (s.exists && s.totalFiles === 0)) {
     return [
-      "There is nothing here yet. What is the first thing worth building — not the product, " +
-        "the smallest slice you could put in front of someone?",
+      "The user's request is in the conversation history above. Use that as the scope; do not invent a project.",
       "What language and tooling should it use?",
     ];
   }

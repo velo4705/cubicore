@@ -15,15 +15,20 @@ import { render as renderSurvey, survey } from "../src/plan/survey";
  */
 
 describe("conventional starting points", () => {
-  it("offers a shortlist when there is no project to survey", () => {
+  // The survey used to suggest a shortlist of stock projects here. The founder
+  // already said what they want on the command line, so suggesting a URL
+  // shortener on top of that turned a todo app into something else entirely.
+  it("does not suggest a project when there is nothing to survey", () => {
     const text = renderSurvey(survey("/nonexistent-cubicore-path-9f2a"));
-    expect(text).toContain("Conventional starting points");
-    expect(text).toContain("url-shortener");
+    expect(text).not.toContain("Conventional starting points");
+    expect(text).not.toContain("url-shortener");
   });
 
-  it("offers them for an empty project too", () => {
+  it("does not suggest a project for an empty project either", () => {
     const root = mkdtempSync(join(tmpdir(), "cubicore-empty-"));
-    expect(renderSurvey(survey(root))).toContain("Conventional starting points");
+    const text = renderSurvey(survey(root));
+    expect(text).not.toContain("Conventional starting points");
+    expect(text).not.toContain("url-shortener");
   });
 
   it("names the stack for each, so the agent can choose one", () => {
