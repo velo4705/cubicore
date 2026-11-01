@@ -1,33 +1,24 @@
 {
   "name": "cubicore",
-  "version": "0.1.0",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Cubicore — build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
+  "main": "dist/mcp-main.js",
   "bin": {
-    "cubicore": "./dist/cli.js"
+    "cubicore": "dist/mcp-main.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --outfile=dist/index.js --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/cli.ts --target=bun --outfile=dist/cli.js",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "bench": "bun run bench/run.ts"
+    "setup": "node setup.js",
+    "build": "bun build src/mcp/main.ts --target=bun --outfile=dist/mcp-main.js",
+    "typecheck": "tsc --noEmit"
   },
-  "main": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
+  "keywords": ["mcp", "plan", "dispatch", "build", "sub-agent", "cubicore"],
+  "author": "Cubicore",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   },
   "files": [
-    "src",
-    "dist",
+    "dist/",
     "README.md"
-  ],
-  "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.18.0",
-    "@opencode-ai/sdk": ">=1.18.0"
-  },
-  "devDependencies": {
-    "@opencode-ai/plugin": "1.18.35",
-    "@opencode-ai/sdk": "1.18.35",
-    "@types/bun": "latest",
-    "typescript": "^5"
-  }
+  ]
 }

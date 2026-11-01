@@ -139,9 +139,8 @@ with `planNumber` to resume after interruptions.
 
 | Command | What it does |
 |---|---|
-| `/cubicore:install` | Install Cubicore MCP server and agents into OpenCode. One-time setup: writes the MCP server entry to opencode.json, installs associate agents, and bounds the primary agent to 120 steps. For LLM agents helping a founder who cannot install manually. |
-| `/cubicore:plan-demo` | Demo mode. Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. |
-| `/cubicore:plan-full` | Full product mode of the command above. |
+| `/cubicore:plan-demo` | Demo mode. Research the repository, ask the founder what the repo cannot answer, then write `CUBICORE_PLAN.md` and `CUBICORE_PLAN.json`. Dispatches nothing. **Use for a fresh start; `refine` to change an existing plan.** |
+| `/cubicore:plan-full` | Full product mode of the command above. **Use for a fresh start; `refine` to change an existing plan.** |
 | `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Pass `plan` (inline JSON) or `planNumber` (reads `CUBICORE_PLAN_N.json` from disk). `planNumber` is optional: omit it to run the inline plan, or pass a number to dispatch a member plan file. Enforces the cycle budget and cross-plan validation when reading from disk. |
 | `/cubicore:continue` | Resume the last run from where it stopped — skips contracts already done, dispatches only what remains. Exempt from the cycle budget. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
 | `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
@@ -153,6 +152,8 @@ with `planNumber` to resume after interruptions.
 | `/cubicore:deploy` | Plan the deployment. Asks about the tier, offers stacks with a recommendation, writes the deploy files, and explains the manual steps. Deploys nothing. |
 | `/cubicore:try` | Run the delivered thing and say whether it actually works, using the plan's own `try` block. A contract can be correct and still not run. |
 | `/cubicore:status` | Report what the run in flight is doing, and wait for it if it is not finished. |
+
+**Quick command guide:** `plan-demo`/`plan-full` = fresh plan (always writes from scratch; note warns if plan exists); `refine` = edit existing plan (adds/changes without destroying); `cancel` = stop running plan; `execute` = dispatch; `test` = check; `fix` = repair; `undo` = discard; `continue` = resume; `estimate` = budget; `deploy` = deploy plan; `refine` = add/change features; `try` = verify. Use the right one — `refine` and `cancel` are mandatory for iterative work; they do jobs no other command can do.
 
 ### The flow guides itself
 
@@ -170,6 +171,8 @@ everything passes  /cubicore:deploy    · refine · undo
 ---
 
 ## Installation
+
+Copy the installation instructions from this README (see the **Installation** section above) to set up Cubicore manually. The `install` prompt has been removed; LLM agents assisting a founder can simply copy these instructions directly.
 
 See [OpenCode Installation](opencode/opencode.md) for full installation instructions,
 troubleshooting, FAQs, and AI agent installation.

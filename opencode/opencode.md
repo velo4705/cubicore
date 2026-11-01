@@ -6,14 +6,10 @@ troubleshooting, FAQs, and AI agent installation.
 ## Install with npx (recommended)
 
 ```bash
-npx cubicore
+npx cubicore@latest setup
 ```
 
-This downloads Cubicore from npm, registers its MCP server in your OpenCode config
-(`~/.config/opencode/opencode.json`), installs the associate agents, and bounds the
-primary agent to 120 steps so planning cannot loop forever.
-
-After it finishes, **restart OpenCode** so it picks up the new MCP server and agents.
+This installs Cubicore globally (`npm install -g cubicore` or via `npx`), writes the MCP entry to both `~/.config/opencode/opencode.json` (host) and `~/.var/app/ai.opencode.opencode/config/opencode/opencode.json` (Flatpak), sets `enabled: true`, points to `dist/mcp-main.js`, adds the Flatpak filesystem override (`~/Projects/cubicore`), and installs the associate agents (`/cubicore:install`). After it finishes, **restart OpenCode fully** so it picks up the new MCP server.
 
 Then in any project directory, type:
 

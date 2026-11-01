@@ -85,11 +85,11 @@ export function nextOptions(directory: string): Option[] {
     return [{ step: "plan-demo", note: "there is no plan yet", recommended: true }];
   }
 
-  if (!latest) {
+if (!latest) {
     return [
-      { step: "execute", note: "the plan is written and has not been dispatched", recommended: true },
-      { step: "estimate", note: "see what it will cost first" },
-      { step: "refine", note: "change the plan before running it" },
+      { step: "execute", note: "Run the plan (/cubicore:execute)", recommended: true },
+      { step: "estimate", note: "See what it will cost first (/cubicore:estimate)" },
+      { step: "refine", note: "Adjust the plan (/cubicore:refine)" },
     ];
   }
 

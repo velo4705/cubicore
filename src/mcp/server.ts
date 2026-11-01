@@ -1356,43 +1356,6 @@ export const TOOLS = [
     handler: async (args: { directory?: string; projectKind?: string }) => research(args.directory ?? process.cwd()),
   },
   {
-    name: "cancel",
-    description:
-      WHEN +
-      "Cancels a run. Associates that have not finished are stopped and the rest are " +
-      "marked skipped; the dispatch checks between stages so cancelling actually stops " +
-      "the spending. The plan files stay -- cancelling the work is not the same as " +
-      "discarding the plan. Pass a run id, or nothing for the most recent run.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        runId: { type: "string", description: "Run to cancel; omit for the most recent." },
-        reason: { type: "string", description: "Why it is being cancelled." },
-        directory: { type: "string", description: "Working directory" },
-      },
-    },
-    handler: async (args: { runId?: string; reason?: string; directory?: string }) => {
-      const dir = args.directory ?? process.cwd();
-      const runs = loadRuns(dir);
-      if (runs.length === 0) return text("There are no runs in this directory to cancel.", true);
-      const run = args.runId ? runs.find((r) => r.id === args.runId) : runs[0];
-      if (!run) return text(`No run ${args.runId ?? ""} in this directory.`, true);
-      if (run.state === "done") {
-        return text(`Run ${run.id} already finished. Cancelling it would change nothing.`);
-      }
-      const cancelled = cancelRun(run.id, dir, args.reason ?? "cancelled by the founder");
-      if (!cancelled) return text(`Could not cancel ${run.id}.`, true);
-      return reply(
-        [
-          `Cancelled ${run.id}: ${cancelled.cancelledBecause}.`,
-          `${cancelled.progress.filter((p) => p.state === "skipped").length} associate(s) skipped.`,
-          `The plan is still on disk. Use undo to discard it as well, or execute to run it again.`,
-        ].join("\n"),
-        dir,
-      );
-    },
-  },
-  {
     name: "estimate",
     description:
       WHEN +
@@ -1610,11 +1573,6 @@ export const PROMPTS = [
     arguments: [],
   },
   {
-    name: "cancel",
-    description: "Cancels a run. Stops the associates that have not finished.",
-    arguments: [],
-  },
-  {
     name: "continue",
     description: "Resume the last run from where it stopped, skipping contracts already done. " +
       "Exempt from the cycle budget. Reads CUBICORE_PLAN.json by default, " +
@@ -1647,14 +1605,7 @@ export const PROMPTS = [
   {
     name: "status",
     description:
-      "Report what the run in flight is doing, and wait for it if it is not done yet.",
-    arguments: [],
-  },
-  {
-    name: "install",
-    description:
-      "Install Cubicore on this system. For LLM agents helping a founder who cannot install manually. " +
-      "Returns step-by-step instructions and can be followed by calling the plan tool.",
+      "Report what the run in flight is doing (planned / finished / failed / skipped contracts), wait if not done, and clearly state which contract failed and suggest `/cubicore: fix` or `/cubicore: refine`.",
     arguments: [],
   },
 ];
@@ -1675,7 +1626,7 @@ function wordsFrom(args: Record<string, string>, name: string): string {
  * plan-full. Only the title and the "decide scope" section differ; the steps,
  * the contract rules, and the schema are identical.
  */
-function renderPlanPrompt(title: string, decideScope: string, request: string): string {
+function renderPlanPrompt(title: string, decideScope: string, request: string, extraNote?: string): string {
   if (request.length === 0) {
     return `
 ${title}
@@ -1686,6 +1637,8 @@ No request was supplied. Do NOT guess the project. Do NOT write any plan. Do NOT
 Reply only with: "What do you want me to build?"
 `;
   }
+
+
 
   return `
 ${title}
@@ -1698,7 +1651,11 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **1. Decide scope.** ${decideScope}
 
-**User request:** ${request}
+**Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, use the recommended (most widely used) framework and language for this domain (React/Vite + TypeScript for web, Python + tkinter for desktop GUI, Express + JavaScript for APIs) and state it clearly in the plan. Do not ask — pick and state.
+
+**Style (web apps only):** If the user wants a web app and did not specify a style, recommend and use Modern Minimal (clean typography, neutral palette, subtle shadows) — state it in the plan. If the user specified glassmorphism, cute, retro, dark, or any other style, use only that and do not override.
+
+**User request:** ${request}${extraNote}
 
 **2. Write the plan.** Build exactly what the user requested above. Do not
 substitute, upgrade, or replace it with a project of your own choosing. Then
@@ -1734,7 +1691,8 @@ function planDemoScope(): string {
     "Skip observability, health endpoints, CI/CD, and multi-stage config unless the " +
     "founder explicitly asks. One contract per file or feature; prefer fewer, larger " +
     "contracts over many small ones. The goal is a single deployable artifact, not a " +
-    "production system.";
+    "production system. If the request names a framework or tool, include an installation " +
+    "contract that installs its dependencies (npm, pip, cargo, apt, brew, etc.).";
 }
 
 /** Builds the enterprise decide-scope section. */
@@ -1744,11 +1702,14 @@ function planFullScope(): string {
     "different product. Stack with health endpoints, config, observability, CI/CD, and " +
     "proper error handling. Split into one contract per bounded context or service; " +
     "prefer more, smaller contracts with clear boundaries. Every contract needs a check " +
-    "that can fail against a real system.";
+    "that can fail against a real system. If the request names a framework or tool, " +
+    "include an installation contract that installs its dependencies (npm, pip, cargo, " +
+    "apt, brew, etc.).";
 }
 
 export function promptFor(name: string, args: Record<string, string>) {
   if (name === "plan-demo") {
+    const existingPlan = existsSync(join(process.cwd(), "CUBICORE_PLAN.json"));
     return {
       description: "Plan a demo or MVP — ship fast, cut safe corners.",
       messages: [
@@ -1756,7 +1717,12 @@ export function promptFor(name: string, args: Record<string, string>) {
           role: "user",
           content: {
             type: "text",
-            text: renderPlanPrompt("Plan a demo or MVP of this project.", planDemoScope(), wordsFrom(args, "request")),
+            text: renderPlanPrompt(
+              "Plan a demo or MVP of this project.",
+              planDemoScope(),
+              wordsFrom(args, "request"),
+              existingPlan ? "\n\nNOTE: A plan already exists at CUBICORE_PLAN.json. If the founder wants to change or add a feature to the existing project, use `/cubicore:refine` instead of `/cubicore:plan-demo`. Only proceed with a new plan here if the founder explicitly confirms they want to start over." : ""
+            ),
           },
         },
       ],
@@ -1764,6 +1730,7 @@ export function promptFor(name: string, args: Record<string, string>) {
   }
 
   if (name === "plan-full") {
+    const existingPlan = existsSync(join(process.cwd(), "CUBICORE_PLAN.json"));
     return {
       description: "Plan a full enterprise product from scratch — production-ready, observable, CI/CD.",
       messages: [
@@ -1771,7 +1738,12 @@ export function promptFor(name: string, args: Record<string, string>) {
           role: "user",
           content: {
             type: "text",
-            text: renderPlanPrompt("Plan a full enterprise product from scratch.", planFullScope(), wordsFrom(args, "request")),
+            text: renderPlanPrompt(
+              "Plan a full enterprise product from scratch.",
+              planFullScope(),
+              wordsFrom(args, "request"),
+              existingPlan ? "\n\nNOTE: A plan already exists at CUBICORE_PLAN.json. If the founder wants to change or add a feature to the existing project, use `/cubicore:refine` instead of `/cubicore:plan-full`. Only proceed with a new plan here if the founder explicitly confirms they want to start over." : ""
+            ),
           },
         },
       ],
@@ -1956,30 +1928,6 @@ between identical runs, so it is a floor, not an estimate of what will happen.`,
     };
   }
 
-  if (name === "cancel") {
-    return {
-      description: "Cancel the current run.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`Cancel the current run.
-
-
-${ENDING}
-Call the cancel tool. Associates that have not finished are stopped and the rest are
-marked skipped. The run stays on disk so it can be inspected, and the plan files stay
-too -- cancelling the work is not the same as discarding the plan.
-
-Say what was cancelled and how much of the work had already landed.`,
-          },
-        },
-      ],
-    };
-  }
-
   if (name === "continue") {
     return {
       description: "Resume the last run from where it stopped.",
@@ -2062,73 +2010,6 @@ instead of the run's.
 
 Report what the run did: how many associates finished, how many failed, and what each
 failure was. If it is still running, say so and say how long it has been going.`,
-          },
-        },
-      ],
-    };
-  }
-
-  if (name === "install") {
-    return {
-      description: "Install Cubicore on this system. For LLM agents helping a founder.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`Install Cubicore on this system so the founder can use it with OpenCode.
-
-## What Cubicore is
-
-Cubicore is an MCP server for OpenCode that splits projects into independent contracts,
-dispatches them to parallel associates (sub-agents or sessions), gates each result with
-checks, and bounds the fix loop at three cycles. It prevents merge conflicts by enforcing
-disjoint write scopes at plan time.
-
-## Installation steps (follow in order)
-
-### 1. Install Cubicore from npm
-
-Run this command in a terminal:
-
-    npx cubicore
-
-This downloads Cubicore, registers its MCP server in the founder's OpenCode config
-(~/.config/opencode/opencode.json), installs the associate agents, and bounds the primary
-agent to 120 steps so planning cannot loop forever.
-
-### 2. Restart OpenCode
-
-The MCP server and agents are loaded at startup. The founder must quit and reopen OpenCode
-for the new config to take effect.
-
-### 3. Verify installation
-
-Open OpenCode in any project directory and type:
-
-    /cubicore:plan
-
-If the plan prompt appears, Cubicore is installed and working.
-
-## What the founder does next
-
-1. Pick a project directory
-2. Run /cubicore:prepare to initialise git and record a baseline
-3. Run /cubicore:plan to describe what they want built
-4. Run /cubicore:execute to dispatch associates in parallel
-5. Run /cubicore:test to check the results
-6. Run /cubicore:continue to resume after interruptions
-
-## Troubleshooting
-
-- **MCP connection refused**: Make sure bun is on PATH (run which bun to find it).
-  The npx installer records the bun path it finds.
-- **Plan tool says "no contracts"**: Run from a directory that contains code to split.
-- **/cubicore:execute does nothing**: Start OpenCode in the project directory so the
-  MCP server's working directory is the project root.
-
-If anything fails, report the exact error message and the step number above.`,
           },
         },
       ],

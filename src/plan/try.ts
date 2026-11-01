@@ -255,3 +255,95 @@ async function waitForReady(
     reason: spec.readyLine ? "no-ready-line" : "never-answered",
   };
 }
+
+/** Kill a process group (POSIX). On non-POSIX, falls back to kill the pid. */
+function killProcessGroup(pid: number): void {
+  try {
+    // eslint-disable-next-line no-underscore-dangle
+    if (typeof process !== "undefined" && process.kill) {
+      try {
+        // Negative pid means kill the process group on POSIX
+        process.kill(-pid, "SIGTERM");
+        return;
+      } catch (_) {
+        /* ignored */
+      }
+    }
+    // Fallback: try to kill the pid itself (best effort on Windows)
+    try {
+      if (typeof process !== "undefined" && process.kill) process.kill(pid, "SIGTERM");
+    } catch (_) {
+      /* ignored */
+    }
+  } catch (_) {
+    /* ignored */
+  }
+}
+
+/**
+ * Start a detached preview server based on the plan's try block.
+ * Returns { pid, url } if successful, or throws.
+ * Does NOT wait for readiness; caller should handle that.
+ */
+export async function previewIt(spec: TrySpec, cwd: string): Promise<{ pid: number; url: string }> {
+  const decoder = new TextDecoder();
+  let output = "";
+  const child = Bun.spawn(["sh", "-c", spec.command], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: nodePathEnv(),
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  // Ensure we have a pid
+  const pid = child.pid;
+  if (!pid) {
+    throw new Error("Failed to obtain PID from spawned process");
+  }
+  // Write preview state file
+  const previewState = {
+    pid,
+    url: spec.url ?? "",
+    cwd,
+    startedAt: Date.now(),
+  };
+  try {
+    await Bun.write(`${cwd}/.cubicore-preview.json`, JSON.stringify(previewState, null, 2));
+  } catch {
+    // Non-fatal: we still return the pid/url; the caller can decide.
+    console.warn("Failed to write preview state:");
+  }
+  // Return info for the caller to report.
+  return { pid, url: spec.url ?? "" };
+}
+
+/**
+ * Stop a preview server started by /cubicore:preview.
+ * Reads the preview state file, kills the process group, and deletes the file.
+ * Returns an object with ok and detail.
+ */
+export async function stopIt(cwd: string): Promise<{ ok: boolean; detail: string }> {
+  const previewStatePath = `${cwd}/.cubicore-preview.json`;
+  try {
+    const raw = await Bun.file(previewStatePath).text();
+    const state = JSON.parse(raw);
+    const { pid, url } = state;
+    if (typeof pid !== "number") {
+      return { ok: false, detail: "Invalid preview state file: missing or invalid PID." };
+    }
+    killProcessGroup(pid);
+    // Delete the file
+    try {
+      await Bun.file(previewStatePath).delete();
+    } catch {
+      // Ignore deletion errors
+    }
+    return { ok: true, detail: `Stopped preview server (PID ${pid}) at ${url}.` };
+  } catch (e) {
+    if (e instanceof Error && ("code" in e) && e.code === "ENOENT") {
+      return { ok: false, detail: "No preview server is running." };
+    }
+    return { ok: false, detail: `Failed to stop preview server: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
