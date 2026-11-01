@@ -1,8 +1,8 @@
+<div align="center">
+
 # Cubicore
 
-What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you?
-
-Enter Cubicore, A Dynamic Multi-Agent Factory System that interacts with Sub-tasks and Sessions (if present). The system is designed as an MCP for enhanced portability across multiple AI agents - Opencode or Claude Code, to name a few.
+</div>
 
 ---
 
@@ -15,6 +15,11 @@ English · 中文 (coming soon) · Español (coming soon) · Français (coming s
 Contributions welcome — open a PR to add your language.
 
 </div>
+
+What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you?
+
+Enter Cubicore, A Dynamic Multi-Agent Factory System that interacts with Sub-tasks and Sessions (if present). The system is designed as an MCP for enhanced portability across multiple AI agents - Opencode or Claude Code, to name a few.
+
 
 ---
 
