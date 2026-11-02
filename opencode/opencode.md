@@ -14,10 +14,12 @@ This installs Cubicore globally (`npm install -g cubicore` or via `npx`), writes
 Then in any project directory, type:
 
 ```
-/cubicore:plan
+/cubicore:plan-demo
 ```
 
 If the plan prompt appears, Cubicore is installed and working.
+
+**Note:** `execute` requires `OPENCODE_SERVER_USERNAME` and `OPENCODE_SERVER_PASSWORD` environment variables (for the MCP server connection). Set these in OpenCode settings before calling `/cubicore:execute`. Without them, sub-agent dispatch may fail.
 
 ## Build from source (for development)
 

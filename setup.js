@@ -3,6 +3,13 @@ const { writeFileSync, existsSync, readFileSync, mkdirSync } = require("fs");
 const { join } = require("path");
 const { homedir } = require("os");
 
+function getEnv() {
+  return {
+    OPENCODE_SERVER_USERNAME: process.env.OPENCODE_SERVER_USERNAME || "",
+    OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD || ""
+  };
+}
+
 function writeConfig(path, entry) {
   let cfg = { servers: {}, enabled: true };
   try {
@@ -20,14 +27,17 @@ function writeConfig(path, entry) {
 writeConfig(join(homedir(), ".config/opencode/opencode.json"), {
   command: "node",
   args: ["dist/mcp-main.js"],
-  enabled: true
+  enabled: true,
+  env: getEnv()
 });
 
 writeConfig(join(homedir(), ".var/app/ai.opencode.opencode/config/opencode/opencode.json"), {
   command: "node",
   args: ["dist/mcp-main.js"],
   enabled: true,
-  filesystem: ["~/Projects/cubicore"]
+  filesystem: ["~/Projects/cubicore"],
+  env: getEnv()
 });
 
 console.log("Cubicore installed to opencode configs (host + Flatpak). Restart OpenCode fully.");
+console.log("If execute/dispatch fails: set env vars OPENCODE_SERVER_USERNAME / OPENCODE_SERVER_PASSWORD in OpenCode settings, or call /cubicore:plan-demo first to create CUBICORE_PLAN.json.");

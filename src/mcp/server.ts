@@ -1679,7 +1679,7 @@ Every contract needs:
 - At least one check that \`can fail\`
 - Disjoint \`writes\` from every other contract
 
-Plan JSON must match:
+Plan JSON must match the schema below, but the OUTPUT must NOT include "$schema", "type", "required", or "additionalProperties" fields — those are validator metadata only. Every contract must have exactly: id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget. No other fields (no "try", no "$schema").
 
 ${PLAN_SCHEMA_JSON}`;
 }
