@@ -7,13 +7,13 @@
  * not be started. `listen()` was there, every check was green, and the founder
  * still had to write two lines to see anything.
  *
- * So the plan declares how to try the result, and a tool actually does it.
+ * So the plan declares how to preview the result, and a tool actually does it.
  * A contract can be correct and still not run, and that is a defect no
  * assertion on the code can find.
  */
 
 /** How to run the delivered thing, and what "working" looks like. */
-export interface TrySpec {
+export interface PreviewSpec {
   /** The command that starts it. */
   command: string;
   /** A URL to poll until the thing answers, if it serves anything. */
@@ -29,7 +29,7 @@ export interface TrySpec {
   readyLine?: string;
 }
 
-export interface TryOutcome {
+export interface PreviewOutcome {
   ok: boolean;
   /** What the founder would see. */
   detail: string;
@@ -110,7 +110,7 @@ function nodePathEnv(): Record<string, string> {
   return env;
 }
 
-export async function tryIt(spec: TrySpec, cwd: string): Promise<TryOutcome> {
+export async function previewCheckOnce(spec: PreviewSpec, cwd: string): Promise<PreviewOutcome> {
   const started = Date.now();
   const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
 
@@ -226,7 +226,7 @@ export async function tryIt(spec: TrySpec, cwd: string): Promise<TryOutcome> {
 }
 
 async function waitForReady(
-  spec: TrySpec,
+  spec: PreviewSpec,
   timeout: number,
   readOutput: () => string,
 ): Promise<{ ok: boolean; reason?: string }> {
@@ -280,42 +280,158 @@ function killProcessGroup(pid: number): void {
   }
 }
 
+export interface PreviewStartOutcome extends PreviewOutcome {
+  /** The detached preview process, retained for the founder to use. */
+  pid?: number;
+}
+
 /**
- * Start a detached preview server based on the plan's try block.
- * Returns { pid, url } if successful, or throws.
- * Does NOT wait for readiness; caller should handle that.
+ * Start the delivered thing and keep it running.
+ *
+ * Preview is deliberately one-way for a good reason: the founder opens the app
+ * (or runs the built tool) and checks it while it is actually available. A
+ * contract can be correct and still not start, and a short-lived check cannot
+ * help somebody using the result. On success the process is left running and
+ * its pid is recorded in `.cubicore-preview.json`; on failure it is killed.
  */
-export async function previewIt(spec: TrySpec, cwd: string): Promise<{ pid: number; url: string }> {
-  const decoder = new TextDecoder();
+export async function previewIt(spec: PreviewSpec, cwd: string): Promise<PreviewStartOutcome> {
+  const started = Date.now();
+  const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
   let output = "";
-  const child = Bun.spawn(["sh", "-c", spec.command], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: nodePathEnv(),
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  // Ensure we have a pid
-  const pid = child.pid;
-  if (!pid) {
-    throw new Error("Failed to obtain PID from spawned process");
-  }
-  // Write preview state file
-  const previewState = {
-    pid,
-    url: spec.url ?? "",
-    cwd,
-    startedAt: Date.now(),
-  };
+  let child: ReturnType<typeof Bun.spawn> | undefined;
+
   try {
-    await Bun.write(`${cwd}/.cubicore-preview.json`, JSON.stringify(previewState, null, 2));
-  } catch {
-    // Non-fatal: we still return the pid/url; the caller can decide.
-    console.warn("Failed to write preview state:");
+    child = Bun.spawn(["sh", "-c", spec.command], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: nodePathEnv(),
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const pid = child.pid;
+    if (!pid) {
+      return {
+        ok: false,
+        detail: "Failed to obtain a PID from the preview process.",
+        output: output.trim(),
+        elapsedMs: Date.now() - started,
+        reason: "spawn-failed",
+      };
+    }
+
+    // Drain both streams so a noisy command cannot block waiting for a pipe.
+    const decoder = new TextDecoder();
+    const drain = (async () => {
+      for (const stream of [child.stdout, child.stderr]) {
+        if (!stream) continue;
+        const reader = (stream as ReadableStream<Uint8Array>).getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          output += decoder.decode(value);
+          if (output.length > 20_000) output = output.slice(-20_000);
+        }
+      }
+    })();
+    drain.catch(() => {});
+
+    const ready = await waitForReady(spec, timeout, () => output);
+    if (!ready.ok) {
+      killProcessGroup(pid);
+      return {
+        ok: false,
+        detail: `The command did not become ready within ${timeout}ms.`,
+        output: output.trim(),
+        elapsedMs: Date.now() - started,
+        reason: ready.reason,
+      };
+    }
+
+    // If a URL was given, make sure it answered the way the plan said it would.
+    if (spec.url) {
+      const response = await fetch(spec.url, { signal: AbortSignal.timeout(5_000) }).catch(() => undefined);
+      if (!response) {
+        killProcessGroup(pid);
+        return {
+          ok: false,
+          detail: `Nothing answered ${spec.url}.`,
+          output: output.trim(),
+          elapsedMs: Date.now() - started,
+          reason: "no-response",
+        };
+      }
+      const body = await response.text();
+      const status = response.status;
+
+      if (spec.expect?.status !== undefined && status !== spec.expect.status) {
+        killProcessGroup(pid);
+        return {
+          ok: false,
+          detail: `${spec.url} answered ${status}, expected ${spec.expect.status}.`,
+          output: output.trim(),
+          body,
+          status,
+          elapsedMs: Date.now() - started,
+          reason: "wrong-status",
+        };
+      }
+      if (spec.expect?.bodyContains && !body.includes(spec.expect.bodyContains)) {
+        killProcessGroup(pid);
+        return {
+          ok: false,
+          detail: `${spec.url} answered ${status} but the body did not contain ${JSON.stringify(spec.expect.bodyContains)}.`,
+          output: output.trim(),
+          body,
+          status,
+          elapsedMs: Date.now() - started,
+          reason: "body-mismatch",
+        };
+      }
+
+      await writePreviewState(cwd, { pid, url: spec.url, startedAt: Date.now() });
+      return {
+        ok: true,
+        detail: `${spec.url} answered ${status}. Preview is still running.`,
+        output: output.trim(),
+        body,
+        status,
+        elapsedMs: Date.now() - started,
+        pid,
+      };
+    }
+
+    await writePreviewState(cwd, { pid, url: "", startedAt: Date.now() });
+    return {
+      ok: true,
+      detail: "The command started and is still running.",
+      output: output.trim(),
+      elapsedMs: Date.now() - started,
+      pid,
+    };
+  } catch (error) {
+    const pid = child?.pid;
+    if (pid) killProcessGroup(pid);
+    return {
+      ok: false,
+      detail: `The command could not be run: ${error instanceof Error ? error.message : String(error)}`,
+      output: output.trim(),
+      elapsedMs: Date.now() - started,
+      reason: "spawn-failed",
+    };
   }
-  // Return info for the caller to report.
-  return { pid, url: spec.url ?? "" };
+}
+
+async function writePreviewState(
+  cwd: string,
+  state: { pid: number; url: string; startedAt: number },
+): Promise<void> {
+  try {
+    await Bun.write(`${cwd}/.cubicore-preview.json`, JSON.stringify({ ...state, cwd }, null, 2));
+  } catch {
+    // Non-fatal: the preview is still usable; the stop path just cannot read state.
+  }
 }
 
 /**

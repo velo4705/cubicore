@@ -144,22 +144,21 @@ describe("the emitted schema matches the parser", () => {
   });
 
   test("the plan's top-level keys are the same in the schema and the parser", () => {
-    // The agreement test only ever covered the contract's properties, so
-    // adding `try` to the schema did not have to be added to the parser
-    // either. Every plan carrying a try block was rejected as "plan has
-    // unknown field try", and the planner had to discover that by trying.
+    // adding `preview` to the schema did not have to be added to the parser
+    // either. Every plan carrying a preview block was rejected as "plan has
+    // unknown field preview", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "context", "graphBudget", "summary", "topology", "try"].sort();
+    const parserKeys = ["contracts", "context", "graphBudget", "summary", "topology", "preview"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.
-    const withTry = parsePlan(
+    const withPreview = parsePlan(
       JSON.stringify({
         ...VALID,
-        try: { command: "npm start", url: "http://127.0.0.1:3000/health" },
+        preview: { command: "npm start", url: "http://127.0.0.1:3000/health" },
       }),
     );
-    expect(withTry.try?.command).toBe("npm start");
+    expect(withPreview.preview?.command).toBe("npm start");
   });
 
   test("the parser accepts a plan with context", () => {

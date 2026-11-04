@@ -179,7 +179,7 @@ export const planSchema = {
       ],
     },
     contracts: { type: "array", items: contract },
-    try: {
+    preview: {
       type: "object",
       additionalProperties: false,
       description:

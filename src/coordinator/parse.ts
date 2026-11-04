@@ -1,5 +1,5 @@
 import type { Check, Contract, Finding, Plan, PlanContext, Step, Topology } from "../contracts/types";
-import type { TrySpec } from "../plan/try";
+import type { PreviewSpec } from "../plan/preview";
 
 /**
  * Runtime validation against the emitted schema's shape.
@@ -308,7 +308,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "context", "contracts", "graphBudget", "try"].includes(key)) {
+    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -392,60 +392,60 @@ export function parsePlan(raw: string): Plan {
     context,
     contracts,
     graphBudget,
-    try: parseTry(json.try, problems),
+    preview: parsePreview(json.preview, problems),
   };
 }
 
 /**
  * The optional run block.
  *
- * Parsed, not merely tolerated. When `try` was added to the schema the
+ * Parsed, not merely tolerated. When `preview` was added to the schema the
  * parser's key list was never updated, so every plan carrying one was
  * rejected -- and once the key was allowed, the value was read from nowhere
  * and silently dropped, so the run instructions vanished between the plan
  * file and the dispatcher.
  */
-function parseTry(value: unknown, problems: string[]): TrySpec | undefined {
+function parsePreview(value: unknown, problems: string[]): PreviewSpec | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) {
-    problems.push("try must be an object");
+    problems.push("preview must be an object");
     return undefined;
   }
 
   const command = value.command;
   if (typeof command !== "string" || command.trim().length === 0) {
-    problems.push("try.command must be a non-empty string");
+    problems.push("preview.command must be a non-empty string");
     return undefined;
   }
 
-  const spec: TrySpec = { command };
+  const spec: PreviewSpec = { command };
 
   if (value.url !== undefined) {
-    if (typeof value.url !== "string") problems.push("try.url must be a string");
+    if (typeof value.url !== "string") problems.push("preview.url must be a string");
     else spec.url = value.url;
   }
   if (value.readyLine !== undefined) {
-    if (typeof value.readyLine !== "string") problems.push("try.readyLine must be a string");
+    if (typeof value.readyLine !== "string") problems.push("preview.readyLine must be a string");
     else spec.readyLine = value.readyLine;
   }
   if (value.readyTimeoutMs !== undefined) {
     if (typeof value.readyTimeoutMs !== "number" || !Number.isFinite(value.readyTimeoutMs) || value.readyTimeoutMs <= 0) {
-      problems.push("try.readyTimeoutMs must be a positive number");
+      problems.push("preview.readyTimeoutMs must be a positive number");
     } else {
       spec.readyTimeoutMs = value.readyTimeoutMs;
     }
   }
   if (value.expect !== undefined) {
     if (!isRecord(value.expect)) {
-      problems.push("try.expect must be an object");
+      problems.push("preview.expect must be an object");
     } else {
-      const expect: TrySpec["expect"] = {};
+      const expect: PreviewSpec["expect"] = {};
       if (value.expect.status !== undefined) {
-        if (typeof value.expect.status !== "number") problems.push("try.expect.status must be a number");
+        if (typeof value.expect.status !== "number") problems.push("preview.expect.status must be a number");
         else expect.status = value.expect.status;
       }
       if (value.expect.bodyContains !== undefined) {
-        if (typeof value.expect.bodyContains !== "string") problems.push("try.expect.bodyContains must be a string");
+        if (typeof value.expect.bodyContains !== "string") problems.push("preview.expect.bodyContains must be a string");
         else expect.bodyContains = value.expect.bodyContains;
       }
       spec.expect = expect;

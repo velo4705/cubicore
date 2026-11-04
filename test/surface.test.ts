@@ -13,8 +13,8 @@ import { DEBUG_MD } from "../src/mcp/protocol";
  *
  * The Main agent writes the guidance that follows every step, and it
  * reaches for whatever the system has given it. When a plan carried a
- * `try` block and the system had a `try` tool, it told the founder to
- * run `/cubicore:try` — a command that did not exist, because `try` was
+ * `preview` block and the system had a `preview` tool, it told the founder to
+ * run `/cubicore:preview` — a command that did not exist, because `preview` was
  * a tool and not a prompt. The founder would have typed it and got
  * nothing.
  *
@@ -29,13 +29,11 @@ const COMMANDS = [
   "plan-full",
   "execute",
   "refine",
-  "fix",
+  "debug",
   "undo",
   "estimate",
-  "cancel",
   "deploy",
-  "test",
-  "try",
+  "preview",
   "status",
 ] as const;
 
@@ -88,7 +86,7 @@ describe("the guidance names real commands", () => {
     }
   });
 
-  it("test with no blocking findings suggests deploy, not execute", () => {
+  it("debug with no blocking findings suggests deploy, not execute", () => {
     const dir = mkdtempSync(join(tmpdir(), "cubicore-surface-"));
     writeFileSync(join(dir, "CUBICORE_PLAN.json"), JSON.stringify({ topology: "fan-out", contracts: [] }));
     writeFileSync(join(dir, DEBUG_MD), "Cycle 0 of 3. 0 blocking, 2 advisory.");

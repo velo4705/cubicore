@@ -41,9 +41,9 @@ After when its done, it finally determines the Project Size, displays the tasks,
 
 Once done, Hit the "execute" command - The Main agents summon the N "cubicores" as if its constructing an urgent megaproject. These sub-tasks fill in the gaps by finishing its tasks, and avoid conflicts with other workers in the process.
 
-In the end, It finally gives the result you (the founder) wanted. You can try the "test" command to go even further, by asking the Main agent to summon testers for your project, to make sure all broken interactions, and errors, and fixable warnings are recorded in the DEBUG file. Again, anyone is free to see the DEBUG file, as it shows how many problems it has been encountered through the corners of your masterpiece.
+In the end, It finally gives the result you (the founder) wanted. You can run `preview` to leave the built app or server running, and `debug` to review, test, and fix the project in a loop until the remaining issues disappear. Again, anyone is free to see the DEBUG file, as it shows how many problems were encountered through the corners of your masterpiece.
 
-After this, Run the "fix" command, and it starts fixing the issues by reading the DEBUG file. These two commands: "test" and "fix" are basically "rinse-and-repeat" - which means once errors are fixed, the next time when the user retests the project and its codebase, it shouldnt have a DEBUG file present.
+`preview` starts and keeps the delivered thing available — a localhost server for a web app, or the built software. `debug` then runs code review plus the mechanical checks, finds the issues, attempts fixes, and repeats until the failures disappear (un-fixable warnings/errors are marked unresolved after retries).
 
 About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
 
@@ -88,8 +88,8 @@ The plan includes a `summary` (one or two sentences at the top of `CUBICORE_PLAN
 
 **Dispatch nothing** — you review the plan first.
 
-Then run `/cubicore:execute` to build it, `/cubicore:test` to check it, and
-`/cubicore:try` to open it in the browser.
+Then run `/cubicore:execute` to build it, `/cubicore:preview` to leave it running, and
+`/cubicore:debug` to review/test/fix it.
 
 ### Solo — Full (`/cubicore:plan-full`)
 
@@ -98,7 +98,7 @@ Then run `/cubicore:execute` to build it, `/cubicore:test` to check it, and
 Same four steps, but scoped as a full product with 6–12 contracts (API, frontend,
 storage, checks). Review the plan before dispatching.
 
-Then run `/cubicore:execute` → `/cubicore:test` → `/cubicore:fix` → `/cubicore:deploy`.
+Then run `/cubicore:execute` → `/cubicore:debug` → `/cubicore:preview` → `/cubicore:deploy`.
 
 ### Team of 3 — Demo (`/cubicore:plan-demo` then split)
 
@@ -142,17 +142,15 @@ with `planNumber` to resume after interruptions.
 | `/cubicore:plan-full` | Full product mode of the command above. **Use for a fresh start; `refine` to change an existing plan.** |
 | `/cubicore:execute` | Dispatch the plan — one brief per associate, summoned in parallel, each result gated. Pass `plan` (inline JSON) or `planNumber` (reads `CUBICORE_PLAN_N.json` from disk). `planNumber` is optional: omit it to run the inline plan, or pass a number to dispatch a member plan file. Enforces the cycle budget and cross-plan validation when reading from disk. |
 | `/cubicore:continue` | Resume the last run from where it stopped — skips contracts already done, dispatches only what remains. Exempt from the cycle budget. Reads `CUBICORE_PLAN.json` by default, falls back to `CUBICORE_PLAN_1.json`, or `CUBICORE_PLAN_N.json` when a plan number is given. |
-| `/cubicore:test` | Run the mechanical matrix over the delivered work and write `CUBICORE_DEBUG.md`. Errors and warnings block; judgement calls are reported and never block. |
+| `/cubicore:debug` | Review, test, and fix the delivered work until the issues disappear. Runs the mechanical matrix, records findings, and attempts narrowly-scoped fixes. Errors and warnings block; judgement calls are reported and never block. Writes `CUBICORE_DEBUG.md`. |
 | `/cubicore:refine` | Change the current plan before running it, or add a feature to a project that has already been built. Contracts that already passed and were left alone are not re-run, so the second cycle costs the change and not the project. |
-| `/cubicore:fix` | Fix what the test command found. Reads `CUBICORE_DEBUG.md`, plans the fixes and dispatches them — the work is already decided, so it skips the re-planning and the checks that are already green. |
 | `/cubicore:estimate` | What the plan will cost before anything is spent: how many associates, the token and wall ceilings, and who owns what. It is the plan's own budget, not a forecast. |
 | `/cubicore:undo` | Undo the last execution — discard its changes and return the tree to the baseline commit Cubicore recorded. Destroys work, so it says what it will destroy first. |
-| `/cubicore:cancel` | Cancel a run. The associates that have not finished are stopped and the rest are marked skipped. The work already on disk stays. |
 | `/cubicore:deploy` | Plan the deployment. Asks about the tier, offers stacks with a recommendation, writes the deploy files, and explains the manual steps. Deploys nothing. |
-| `/cubicore:try` | Run the delivered thing and say whether it actually works, using the plan's own `try` block. A contract can be correct and still not run. |
+| `/cubicore:preview` | Keep the delivered thing running: start/keep a localhost server for web apps, or run the built software. A contract can be correct and still not run. Uses the plan's own `preview` block. |
 | `/cubicore:status` | Report what the run in flight is doing, and wait for it if it is not finished. |
 
-**Quick command guide:** `plan-demo`/`plan-full` = fresh plan (always writes from scratch; note warns if plan exists); `refine` = edit existing plan (adds/changes without destroying); `cancel` = stop running plan; `execute` = dispatch; `test` = check; `fix` = repair; `undo` = discard; `continue` = resume; `estimate` = budget; `deploy` = deploy plan; `refine` = add/change features; `try` = verify. Use the right one — `refine` and `cancel` are mandatory for iterative work; they do jobs no other command can do.
+**Quick command guide:** `plan-demo`/`plan-full` = fresh plan (always writes from scratch; note warns if plan exists); `refine` = edit existing plan (adds/changes without destroying); `execute` = dispatch; `preview` = keep it running; `debug` = review/test/fix; `undo` = discard; `continue` = resume; `estimate` = budget; `deploy` = deploy plan; `refine` = add/change features. Use the right one — `refine` is the mandatory iterative-editing command; it does jobs no other command can do.
 
 ### The flow guides itself
 
@@ -162,8 +160,8 @@ After every step the agent ends its reply with what to type next, and the altern
 no plan            /cubicore:plan
 after plan         /cubicore:execute   · estimate · refine
 run in flight      /cubicore:status
-after the run      /cubicore:test      · refine · undo · continue
-blocking findings  /cubicore:fix       · refine · undo · continue
+after the run      /cubicore:preview   · debug · refine · undo · continue
+issues found       /cubicore:debug     · refine · undo · continue
 everything passes  /cubicore:deploy    · refine · undo
 ```
 
@@ -258,7 +256,7 @@ Full numbers and the caveats: [bench/RESULTS.md](bench/RESULTS.md).
 - **Fourteen commands, and the flow guides itself.** Every reply ends with the
   next step and the alternatives, derived from the state on disk rather than
   remembered.
-- **A bounded loop.** `plan → execute → test → execute`, capped at three
+- **A bounded loop.** `plan → execute → debug → execute`, capped at three
   cycles. Not "until the debug file is empty" — that is an unbounded loop whose
   terminal case is an agent that never stops finding things to fix.
 - **Judgement never blocks.** Errors and warnings block. "Is this useful" and

@@ -229,8 +229,8 @@ that helps one can do nothing for the other, so they are listed separately.
 | `execute` — workers | no | **the whole bill** | the parallel phase | the tool restriction, above |
 | `execute` — gates | no | none | N check commands | dedupe identical commands |
 | `execute` — collect | no | none | N × git read | scope the read to the contract's own paths |
-| `test` | no | none | N check commands | dedupe identical commands |
-| `try` | yes | none | one run | fine as it is |
+| `debug` | no | none | N check commands | dedupe identical commands |
+| `preview` | yes | none | one run | keeps it running |
 | `aggregate` | **yes** | one Main-agent turn | the second serial phase | aggregate machine-readable artifacts mechanically |
 | `status` | no | none | one read | fine as it is |
 

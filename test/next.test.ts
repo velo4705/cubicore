@@ -10,7 +10,7 @@ import type { Plan } from "../src/contracts/types";
 /**
  * The founder should never have to remember the order.
  *
- * Fix only makes sense after a test found something. Execute is wrong before
+ * The debug command only makes sense after work was delivered. Execute is wrong before
  * a plan exists. The next command is derived from what is on disk, so it
  * survives a restart and a new session.
  */
@@ -54,7 +54,7 @@ describe("the next step", () => {
     expect(nextStep(d)).toBe("status");
   });
 
-  it("asks to test when the run finished but nothing was tested", () => {
+  it("asks to debug when the run finished but nothing was tested or debugged", () => {
     const d = dir();
     writeFileSync(join(d, "CUBICORE_PLAN.json"), "{}");
     const run = startRun(plan(), d);
@@ -63,17 +63,17 @@ describe("the next step", () => {
       join(d, ".cubicore", "runs.json"),
       JSON.stringify([{ ...run, state: "done" }]),
     );
-    expect(nextStep(d)).toBe("test");
+    expect(nextStep(d)).toBe("debug");
   });
 
-  it("asks to fix when the test found blocking findings", () => {
+  it("asks to debug when the debug found blocking findings", () => {
     const d = dir();
     writeFileSync(join(d, "CUBICORE_PLAN.json"), "{}");
     const run = startRun(plan(), d);
     writeFileSync(join(d, ".cubicore", "runs.json"), JSON.stringify([{ ...run, state: "done" }]));
     writeFileSync(join(d, "CUBICORE_DEBUG.md"), "Cycle 1 of 3. 2 blocking, 1 advisory.\n");
     expect(blockingFindings(d)).toBe(2);
-    expect(nextStep(d)).toBe("fix");
+    expect(nextStep(d)).toBe("debug");
   });
 
   it("asks to deploy once everything passes", () => {

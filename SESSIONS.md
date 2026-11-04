@@ -51,7 +51,7 @@ associates able to work in parallel against one global rule.
 
 **Watch for.** The plan splitting by source (3 contracts, disjoint
 `writes`), the per-section check landing in each contract's matrix, the
-whole-set check landing in the plan's `try` block, and the scope gate
+whole-set check landing in the plan's `preview` block, and the scope gate
 noticing if a worker touches `sources/`.
 
 ---

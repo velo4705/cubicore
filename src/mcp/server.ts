@@ -15,7 +15,7 @@ import {
 import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
-import { tryIt } from "../plan/try";
+import { previewIt } from "../plan/preview";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
@@ -269,8 +269,8 @@ export function satisfiedContracts(directory: string, plan: Plan): string[] {
 /**
  * A reply that ends by saying what to type next.
  *
- * The founder should never have to remember the order -- fix is only
- * meaningful after a test found something, execute is wrong before a plan
+ * The founder should never have to remember the order -- debug is only
+ * meaningful after a run delivered work, and execute is wrong before a plan
  * exists. The next command is derived from what is on disk, so it stays
  * right after a restart.
  */
@@ -592,7 +592,7 @@ async function status(runId: string, waitMs = 0, directory?: string): Promise<To
 /**
  * How many times a plan has been rejected for a directory.
  *
- * The execute -> test loop is capped at three cycles. The plan loop was not
+ * The execute -> debug loop is capped at three cycles. The plan loop was not
  * capped at all: plan_write rejects a bad plan, the agent re-plans, it is
  * rejected again, and nothing stops that except the founder giving up. The
  * bound belongs in code rather than in the model's restraint.
@@ -881,7 +881,7 @@ async function continueRun(directory: string, parentSessionID?: string, planNumb
  * rejected by the validator in v1. Auto-failing on taste is a loop with no
  * terminator; auto-passing on taste is worse, because it looks like a verdict.
  */
-async function testRun(args: { findings?: TestFinding[] }, directory: string): Promise<ToolResult> {
+async function debugRun(args: { findings?: TestFinding[] }, directory: string): Promise<ToolResult> {
   const statePath = `${directory}/.cubicore-cycle.json`;
   const state = readCycleState(statePath);
   const findings = args.findings ?? [];
@@ -980,7 +980,7 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
       "",
       `An associate reads exactly one file and starts building.`,
       "",
-      `When they return, run each contract's blocking checks and record the results with the test tool.`,
+      `When they return, run each contract's blocking checks and record the results with the debug tool.`,
       "",
     ].join("\n"),
   );
@@ -1172,11 +1172,14 @@ export const TOOLS = [
       continueRun(args.directory ?? process.cwd(), args.parentSessionID, args.planNumber),
   },
   {
-    name: "test",
+    name: "debug",
     description:
       WHEN +
-      "Runs the mechanical check matrix and writes CUBICORE_DEBUG.md. Blocking findings " +
-      "are errors and warnings; judgement calls are reported but never block.",
+      "Reviews, tests, and fixes the delivered work until the issues disappear. Runs the " +
+      "mechanical check matrix over every contract, finds broken syntax, layout, buttons, " +
+      "loose code, and 0-day style defects, and keeps fixing and re-checking until clean " +
+      "(except un-fixable warnings/errors, which are reported after repeated attempts). " +
+      "Writes CUBICORE_DEBUG.md.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1198,16 +1201,16 @@ export const TOOLS = [
       },
     },
     handler: async (args: { findings?: TestFinding[]; directory?: string }) =>
-      testRun(args, args.directory ?? process.cwd()),
+      debugRun(args, args.directory ?? process.cwd()),
   },
   {
-    name: "try",
+    name: "preview",
     description:
       WHEN +
-      "Actually runs the delivered thing and reports whether it works. Reads the plan's " +
-      "`try` block -- the command, and what a working response looks like -- starts it, " +
-      "checks it, and stops it. Use before declaring a project ready: a contract can be " +
-      "correct and still not run.",
+      "Actually runs the delivered thing and keeps it available. Reads the plan's " +
+      "`preview` block -- the command, and what a working response looks like -- starts it, " +
+      "checks it, and leaves it running for web apps, or runs the built software. Use to " +
+      "inspect the real result before declaring a project ready.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1229,25 +1232,26 @@ export const TOOLS = [
       const loaded = loadPlan(raw);
       if (!loaded.ok) return text(`Refusing: ${loaded.reason}`, true);
 
-      const spec = loaded.plan.try;
+      const spec = loaded.plan.preview;
       if (!spec) {
         return text(
-          "This plan has no `try` block, so there is nothing to run. That is correct for a " +
+          "This plan has no `preview` block, so there is nothing to run. That is correct for a " +
             "library or a report. If this is something the founder is meant to start, the plan " +
             "should say how.",
         );
       }
 
-      const outcome = await tryIt(spec, dir);
+      const outcome = await previewIt(spec, dir);
       const lines = [
-        outcome.ok ? "It runs." : "It does not run.",
+        outcome.ok ? "Preview started." : "It does not run.",
         outcome.detail,
         `(${Math.round(outcome.elapsedMs)}ms)`,
       ];
+      if (outcome.pid !== undefined) lines.push(`pid: ${outcome.pid}`);
       if (outcome.status !== undefined) lines.push(`status: ${outcome.status}`);
       if (outcome.body) lines.push(`body: ${outcome.body.slice(0, 300)}`);
       if (outcome.output) lines.push("", "--- output ---", outcome.output.slice(-800));
-      lines.push("", "To keep it running manually:", `  cd ${dir}`, `  ${spec.command}`);
+      if (outcome.pid !== undefined) lines.push("", "Leave it running for the founder to test.");
 
       return text(lines.join("\n"), !outcome.ok);
     },
@@ -1551,14 +1555,6 @@ export const PROMPTS = [
     arguments: REFINE_CHANGE_ARGUMENTS,
   },
   {
-    name: "fix",
-    description:
-      "Fixes what the test command found. Reads CUBICORE_DEBUG.md, plans the fixes, and " +
-      "dispatches them. Simpler than the full execute cycle because the work is already " +
-      "decided.",
-    arguments: [],
-  },
-  {
     name: "undo",
     description:
       "Undoes the last execution, discarding its changes and returning the tree to the " +
@@ -1589,23 +1585,23 @@ export const PROMPTS = [
     arguments: [],
   },
   {
-    name: "test",
+    name: "debug",
     description:
-      "Run the mechanical check matrix over the delivered work and write CUBICORE_DEBUG.md. " +
-      "Blocks on errors and warnings only -- judgement calls are reported, never blocking.",
+      "Review, test, and fix the delivered work until the issues disappear. Writes " +
+      "CUBICORE_DEBUG.md. Repeats automatically (outside a running preview) until the same " +
+      "failure no longer reproduces; un-fixable warnings/errors are reported after retries.",
     arguments: [],
   },
   {
-    name: "try",
+    name: "preview",
     description:
-      "Run the delivered thing and say whether it actually works. " +
-      "Uses the plan's own try block.",
+      "Run the delivered thing and keep it available. Starts/keeps the localhost server for web apps, or runs the built software. Leaves it running for the founder to inspect. Uses the plan's own preview block.",
     arguments: [],
   },
   {
     name: "status",
     description:
-      "Report what the run in flight is doing (planned / finished / failed / skipped contracts), wait if not done, and clearly state which contract failed and suggest `/cubicore: fix` or `/cubicore: refine`.",
+      "Report what the run in flight is doing (planned / finished / failed / skipped contracts), wait if not done, and clearly state which contract failed and suggest `/cubicore:debug` or `/cubicore:refine`.",
     arguments: [],
   },
 ];
@@ -1673,13 +1669,16 @@ The plan needs:
   Never affects what gets built.
 - \`graphBudget.nodes\` at least the number of contracts.
 - \`graphBudget.edges\` at least the read/write dependencies between contracts.
+- If the result can be started or served, a top-level \`preview\` object with the command,
+  and any URL/readyLine/expectation needed to know it came up. If the result is a
+  library or a report with nothing to run, omit it.
 
 Every contract needs:
 - A \`schema\` field describing its output
 - At least one check that \`can fail\`
 - Disjoint \`writes\` from every other contract
 
-Plan JSON must match the schema below, but the OUTPUT must NOT include "$schema", "type", "required", or "additionalProperties" fields — those are validator metadata only. Every contract must have exactly: id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget. No other fields (no "try", no "$schema").
+Plan JSON must match the schema below, but the OUTPUT must NOT include "$schema", "type", "required", or "additionalProperties" fields — those are validator metadata only. Every contract must have exactly: id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget. No other fields (no "preview", no "$schema").
 
 ${PLAN_SCHEMA_JSON}`;
 }
@@ -1799,7 +1798,7 @@ instead (for multi-member flows where each member has their own plan file).
 sessions itself.
 
 **When they return**, run every blocking check from CUBICORE_PLAN.json yourself and record
-the results with the test tool.`,
+the results with the debug tool.`,
           },
         },
       ],
@@ -1841,39 +1840,6 @@ next command will say so.
 
 If the plan is for a project that was already built, read the files and not just the plan --
 the new contracts must not assume the old ones still exist.`,
-          },
-        },
-      ],
-    };
-  }
-
-  if (name === "fix") {
-    return {
-      description: "Fix what the test command found.",
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-`Fix what the test command found.
-
-
-${ENDING}
-Read CUBICORE_DEBUG.md. It lists the findings, each with a source and a suggested fix.
-Turn each one into a contract:
-
-- One contract per finding that needs a code change, scoped to the files that fix it.
-- Keep the scopes disjoint. Two findings in the same file are one contract, not two.
-- The check that caught it becomes the check that guards it, so the same failure cannot
-  come back silently. A grep is not enough -- the check has to be able to fail.
-
-Then pass the plan to the plan tool and dispatch it. This is the same loop as execute,
-with the work already decided, so do not re-plan from scratch and do not re-run the
-checks that are already green.
-
-Findings marked advisory are judgement calls, not defects. They are not yours to fix
-unless the founder asks.`,
           },
         },
       ],
@@ -2016,22 +1982,23 @@ failure was. If it is still running, say so and say how long it has been going.`
     };
   }
 
-  if (name === "try") {
+  if (name === "preview") {
     return {
-      description: "Run the delivered thing and report whether it works.",
+      description: "Run the delivered thing and keep it available.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
             text:
-`${ENDING}Run the try tool. It starts what the plan says to start and checks that it came up
-the way the plan said it would.
+`${ENDING}Run the preview tool. It starts what the plan says to start and checks that it came up
+the way the plan said it would, and it leaves the result running.
 
-The plan's try block is the founder's own statement of what working looks like -- the command,
-the ready line, and how long to wait for it. The tool runs that and reports the real result.
+The plan's preview block is the founder's own statement of what working looks like -- the command,
+the ready line, and how long to wait for it. For a web app this is a localhost server the founder
+can open. For built software it is the built artifact, running.
 
-If there is no try block, say so plainly. A library or a report has nothing to run, and that
+If there is no preview block, say so plainly. A library or a report has nothing to run, and that
 is a correct plan, not a failure. Do not invent something to start.
 
 If it fails, report the actual output rather than a summary of it. The founder is finding out
@@ -2042,31 +2009,41 @@ whether this works, and "it did not start" is only useful with the reason attach
     };
   }
 
-  if (name === "test") {
+  if (name === "debug") {
     return {
-      description: "Test the delivered work and record findings.",
+      description: "Review, test, and fix the delivered work until the issues disappear.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
             text:
-`${ENDING}Run the test tool over the work that was just delivered.
+`${ENDING}Run the debug tool over the work that was just delivered.
 
 First, execute the blocking checks from every contract in ${PLAN_JSON} yourself and record what
 actually happened -- the tool records findings, it does not discover them.
 
-For each finding call test with:
+Debug is a loop, not a report:
+
+1. Review the code and configuration for layout, buttons, loose code, broken syntax,
+   dead imports/exports, and 0-day style defects. Tests are not a substitute for reading.
+2. Run the mechanical check matrix and the baseline checks.
+3. For each real failure, turn it into a narrowly-scoped fix contract, dispatch it, and
+   re-run the check that caught it.
+4. Repeat until the same failure no longer reproduces.
+
+For each finding call debug with:
   - severity "error"   -- the code is broken: it does not compile, a check exits non-zero
   - severity "warning" -- it works but something is off: a dead export, an unused path
   - severity "judgment" -- a call only a human can make: is this feature useful, is this
                            ready for production, is this API free to ship
 
 Errors and warnings block. Judgement calls never block -- they are written to ${DEBUG_MD} as
-advisory and left for the founder, because "judgment" checks are rejected by the validator
-and a loop that waits on taste never terminates.
+advisory and left for the founder, because judgment checks are rejected by the validator and a
+loop that waits on taste never terminates. Un-fixable warnings/errors that cannot be repaired
+after repeated attempts are recorded as unresolved for a human to triage.
 
-Give every finding a one-line concrete fix. Do not invent failures to justify an Execute cycle:
+Give every finding a one-line concrete fix. Do not invent failures to justify another cycle:
 if nothing mechanical is wrong, say so.`,
           },
         },

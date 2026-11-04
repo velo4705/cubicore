@@ -99,7 +99,7 @@ export interface Contract {
   tools?: string[];
 }
 
-import type { TrySpec } from "../plan/try";
+import type { PreviewSpec } from "../plan/preview";
 
 export interface PlanContext {
   /** What problem does this solve? One or two sentences. */
@@ -154,7 +154,7 @@ export interface Plan {
    * meant to start. The absence is not a defect: some deliverables have
    * nothing to run.
    */
-  try?: TrySpec;
+  preview?: PreviewSpec;
 }
 
 /**

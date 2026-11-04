@@ -8,7 +8,7 @@ import { loadRuns } from "./runs";
  * What to do next.
  *
  * A founder who has to remember the order loses the thread, and the order is
- * not obvious: fix is only meaningful after a test found something, and execute
+ * not obvious: debug is only meaningful after work was delivered, and execute
  * is wrong after a plan that was never written.
  *
  * But it is not one answer either. After a plan the founder may want to run
@@ -26,8 +26,8 @@ export type NextStep =
   | "plan-full"
   | "execute"
   | "status"
-  | "test"
-  | "fix"
+  | "preview"
+  | "debug"
   | "deploy"
   | "refine"
   | "estimate"
@@ -39,8 +39,8 @@ export const COMMAND: Record<NextStep, string> = {
   "plan-full": "/cubicore:plan-full",
   execute: "/cubicore:execute",
   status: "/cubicore:status",
-  test: "/cubicore:test",
-  fix: "/cubicore:fix",
+  preview: "/cubicore:preview",
+  debug: "/cubicore:debug",
   deploy: "/cubicore:deploy",
   refine: "/cubicore:refine",
   estimate: "/cubicore:estimate",
@@ -56,7 +56,7 @@ export interface Option {
   recommended?: boolean;
 }
 
-/** How many blocking findings the last test recorded. */
+/** How many blocking findings the last debug run recorded. */
 export function blockingFindings(directory: string): number {
   const path = join(directory, DEBUG_MD);
   if (!existsSync(path)) return 0;
@@ -114,7 +114,7 @@ if (!latest) {
   // The run finished.
   if (blockingFindings(directory) > 0) {
     return [
-      { step: "fix", note: "the test found blocking findings", recommended: true },
+      { step: "debug", note: "blocking findings reported; debug and fix them", recommended: true },
       { step: "refine", note: "change the plan instead" },
       { step: "undo", note: "discard the run and start over" },
     ];
@@ -122,9 +122,9 @@ if (!latest) {
 
   if (!existsSync(join(directory, DEBUG_MD))) {
     return [
-      { step: "test", note: "the run finished but nothing has been tested", recommended: true },
+      { step: "debug", note: "the run finished but nothing has been tested or debugged", recommended: true },
+      { step: "preview", note: "start/keep the delivered thing running (/cubicore:preview)" },
       { step: "refine", note: "change the plan instead" },
-      { step: "undo", note: "discard the run and start over" },
     ];
   }
 

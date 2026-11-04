@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { gateScope } from "../src/gate";
 import { changedFilesSince, isRepository, prepareRepository } from "../src/dispatch/changes";
 import { parsePlan } from "../src/coordinator/parse";
-import { tryIt } from "../src/plan/try";
+import { previewCheckOnce } from "../src/plan/preview";
 import type { Contract } from "../src/contracts/types";
 
 /**
@@ -153,7 +153,7 @@ describe("the run block survives the whole round trip", () => {
           },
         ],
         graphBudget: { nodes: 1, edges: 0, tokens: 1000, wallMs: 1000 },
-        try: {
+        preview: {
           command: "node src/health.js",
           url: "http://127.0.0.1:3111/health",
           expect: { status: 200, bodyContains: "ok" },
@@ -161,15 +161,15 @@ describe("the run block survives the whole round trip", () => {
       }),
     );
 
-    expect(parsed.try?.command).toBe("node src/health.js");
-    expect(parsed.try?.url).toBe("http://127.0.0.1:3111/health");
-    expect(parsed.try?.expect?.status).toBe(200);
+    expect(parsed.preview?.command).toBe("node src/health.js");
+    expect(parsed.preview?.url).toBe("http://127.0.0.1:3111/health");
+    expect(parsed.preview?.expect?.status).toBe(200);
     // A fan-out with no dependencies has zero edges, honestly.
     expect(parsed.graphBudget.edges).toBe(0);
   });
 
   it("runs what the plan said to run", async () => {
-    const root = mkdtempSync(join(tmpdir(), "cubicore-try-"));
+    const root = mkdtempSync(join(tmpdir(), "cubicore-preview-"));
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "health.js"),
@@ -177,7 +177,7 @@ describe("the run block survives the whole round trip", () => {
         's.end(JSON.stringify({status:"ok"}))}).listen(3211);\n',
     );
 
-    const outcome = await tryIt(
+    const outcome = await previewCheckOnce(
       { command: "node src/health.js", url: "http://127.0.0.1:3211/health", expect: { status: 200, bodyContains: "ok" } },
       root,
     );

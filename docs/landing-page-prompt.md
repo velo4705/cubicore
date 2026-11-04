@@ -84,7 +84,7 @@ A virtual company that turns a prompt into verified, parallel, contract-driven w
 ```
 
 ### What It Is
-> **Cubicore** turns a prompt into a plan, splits it into independent contracts, runs them in parallel with worktree isolation, gates every contract with mechanical checks, and iterates until the `try` block passes.
+> **Cubicore** turns a prompt into a plan, splits it into independent contracts, runs them in parallel with worktree isolation, gates every contract with mechanical checks, and iterates until the `preview` block passes, then debugs review/test/fix until the remaining issues disappear.
 >
 > You get: **parallel execution**, **mechanical verification**, **contract-driven scope**, **automatic fix loops**.
 
@@ -95,7 +95,7 @@ A virtual company that turns a prompt into verified, parallel, contract-driven w
 | **Parallel by Default** | Contracts with disjoint write scopes run simultaneously. No manual orchestration. |
 | **Mechanical Verification** | Every contract has blocking, convergent checks (tests, typecheck, lint). No "looks good" — only pass/fail. |
 | **Contract-Driven Scope** | Each worker gets its own write scope, read list, and checks. Collisions caught at plan time, not runtime. |
-| **Auto-Fix Loop** | Tests fail → `/cubicore:fix` reads `DEBUG.md` → plans fixes → re-dispatches → re-tests. |
+| **Auto-Debug Loop** | Checks fail → `/cubicore:debug` reviews/tests/fixes → re-tests → loops until the failures disappear. |
 
 ### Quick Start (3 Commands)
 ```bash
@@ -114,19 +114,17 @@ cubicore execute
 ```mermaid
 graph LR
   A[Plan] --> B[Execute]
-  B --> C[Test]
-  C -->|fail| D[Fix]
-  D --> B
-  C -->|pass| E[Try Block]
-  E -->|pass| F[Deploy]
-  E -->|fail| D
+  B --> C[Preview]
+  C --> D[Debug]
+  D -->|fail| D
+  D -->|pass| E[Deploy]
 ```
 
-1. **Plan** — `/cubicore:plan` researches the repo, asks clarifying questions, writes `CUBICORE_PLAN.json` with disjoint contracts, checks, and a `try` block.
+1. **Plan** — `/cubicore:plan-demo`/`plan-full` researches the repo, asks clarifying questions, writes `CUBICORE_PLAN.json` with disjoint contracts, checks, and a `preview` block.
 2. **Execute** — Spawns isolated worktrees per contract, runs them in parallel, gates each with Schema → Verify → Scope.
-3. **Test** — Runs all contract checks + `try` block. Failures → `CUBICORE_DEBUG.md`.
-3. **Fix** — Reads `DEBUG.md`, plans minimal fixes, re-dispatches only failed contracts. Loop until green.
-4. **Deploy** — `/cubicore:deploy` plans hosting, writes configs, explains manual steps.
+3. **Preview** — Starts/keeps the delivered thing running: a localhost server for web apps, or the built software.
+4. **Debug** — Reviews code and runs all contract checks. Failures → minimal fixes → re-run until green (un-fixable warnings/errors are reported).
+5. **Deploy** — `/cubicore:deploy` plans hosting, writes configs, explains manual steps.
 
 ### Commands Reference
 
@@ -134,15 +132,13 @@ graph LR
 |---------|---------|
 | `cubicore plan "..."` | Research → plan → `CUBICORE_PLAN.json` + `CUBICORE_PLAN.md` |
 | `cubicore execute` | Dispatch contracts in parallel, run gates, aggregate |
-| `cubicore test` | Run check matrix → `CUBICORE_DEBUG.md` |
-| `cubicore fix` | Read `DEBUG.md`, plan fixes, re-dispatch |
-| `cubicore try` | Run `try` block, verify it works |
+| `cubicore debug` | Review/test/fix the delivered work until issues disappear |
+| `cubicore preview` | Keep the delivered thing running; verify it answers |
 | `cubicore deploy` | Plan hosting, write configs, explain steps |
 | `cubicore refine "..."` | Modify plan, re-dispatch changed contracts |
 | `cubicore undo` | Revert last execution to baseline |
 | `cubicore status` | Poll run status |
 | `cubicore estimate` | Token/wall/time estimate before spend |
-| `cubicore cancel` | Stop in-flight run |
 | `cubicore undo` | Revert last execution to baseline |
 
 ### Source & License
