@@ -4,48 +4,21 @@
 
 </div>
 
-<div align="center">
-
-<!-- Here is where badges and embeds are. -->
-
-</div>
-
-What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you?
-
-Enter Cubicore, A Dynamic Multi-Agent Factory System that interacts with Sub-tasks and Sessions (if present). The system is designed as an MCP for enhanced portability across multiple AI agents - Opencode or Claude Code, to name a few.
-
+Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique.
 
 ---
 
-## What's the idea?
+What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you? Cubicore does that for you. It is an MCP having commands required to finish your project, quicker.
 
-Suppose you imagine a magic "cube", as an example. Act that this cube is a "mini" company that is under your control. Then, you ask the "magic cube" about what you want. It can be anything - even a multimillion SaaS product would be fine. After you reply to the "magic cube", the cube plans and determines the size of your project, and size of your project matters for how many "employees" that will be hired for this job.
+## Introduction
 
-Once its all set, the cube resizes and fills it with new "employees" to work on each task the "cube" has been told to provide. It also asks about what style or layout you really want, or maybe you can also ignore it to have the "cube" give the best style it can think of!
+Cubicore is originated as "Cores in a Cubicle", and informally, "A Fleet of Engineers in a Company". The "Cubicle" in this idea is Dynamic, which increases its size dynamically, depending on the plan on the **size of the project**.
 
-The project is done when all sub-tasks are done, but hey, you can even call the testers to test the product you made, just to make sure no bugs, broken interactions, fixable warnings are left behind. You can add any feature you wanted by asking the "magic cube" again, and it will do it for you. It doesn't matter how many decorations you add onto the "magic cube", it will always be better with its "add-ons".
+The Core philosphy it presents is simple: Suppose a user gives a prompt to the "Cubicle". The "Cubicle" changes its size according to what the user said about. The size stops increasing when the planning is done, and all is left is to wait for the user to "execute" the plan.
 
----
+This upon execution will summon sub-agents, where 1 task is recieved by 1 agent. This eventually fills up the "Cubicle" where all tasks are done simultaneously. The execution is done where all sub-agents have completed their tasks provided in the planning file.
 
-## How it actually works?
-
-Like the Idea, Cubicore is the definition of "Cores in a Cubicle", which are called "Cubicores". These "cubicores" represents Inline Sub-tasks or Sessions run by the agent at the same time (it is never one-by-one).
-
-```
-[User gives Prompt] --> [Agent Plans about the Prompt and generates file] --> [Summon Sub-agents to read generated file] --> [Submits Result]
-```
-
-When a user gives a prompt, assume it to be a simple, time-consuming prompt about a project; For example: "Build a football game in browser.". This prompt is about a game that requires physics and some frameworks, needing both the frontend and the backend to play the game smoothly.
-Using the prompt provided by the User, and Main agent will Plan and research about the project on what you are meaning to build... and will ask further questions about the type of product, the style, the layout, the tech stacks, anything... even the questions would be marked "Recommended" to be selected very easily.
-After when its done, it finally determines the Project Size, displays the tasks, where each task (they are no small tasks) is assigned to a particular "cubicore". It also gives out the N number of cubicores required to build your project from scratch. This is all mentioned in the PLAN.md file for every "cubicore", even the "founder" (The user) to see.
-
-Once done, Hit the "execute" command - The Main agents summon the N "cubicores" as if its constructing an urgent megaproject. These sub-tasks fill in the gaps by finishing its tasks, and avoid conflicts with other workers in the process.
-
-In the end, It finally gives the result you (the founder) wanted. You can run `preview` to leave the built app or server running, and `debug` to review, test, and fix the project in a loop until the remaining issues disappear. Again, anyone is free to see the DEBUG file, as it shows how many problems were encountered through the corners of your masterpiece.
-
-`preview` starts and keeps the delivered thing available — a localhost server for a web app, or the built software. `debug` then runs code review plus the mechanical checks, finds the issues, attempts fixes, and repeats until the failures disappear (un-fixable warnings/errors are marked unresolved after retries).
-
-About the "decorations", Cubicore is meant to have excellent support for plugins and MCPs that can assist the work with new and unique commands running, or possibly reducing tokens along the way. Regardless, it makes the Project even better, and doesnt waste anything.
+Cubicore can debug any broken layout, buttons, syntax errors, loose code, etc. and fix them automatically until issues disappear. Cubicore also allows the user to "preview" its project to see how it runs. Finally, if the user satisfies with the project, it then commands the "Cubicle" to deploy the application, making things ready while also giving instructions on how to deploy.
 
 ---
 

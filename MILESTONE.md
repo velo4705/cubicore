@@ -62,6 +62,393 @@ The four leading agents support both. They are complementary, not competing:
 Cubicore's contract layer, gates, budgets and refusal logic sit above both and
 are unaffected by the choice.
 
+## Dynamic Multi-Agent Factory — the missing product layer
+
+Cubicore should not be a fancier way to spawn agents. A factory is a system
+that first decides whether the work deserves a factory, then creates the
+smallest effective team, runs a real lifecycle, integrates the result, verifies
+it, and records enough evidence to prove the work was worth splitting.
+
+The important rule:
+
+> **Before dispatching anything, Cubicore must automatically decide whether
+> the task deserves a factory, how large the factory should be, and why.**
+
+It must not fan out because it can. It must refuse a factory when one agent is
+cheaper or safer, choose a small factory when parallel work is real, and say
+why it made that choice.
+
+### The pre-dispatch factory-fit decision
+
+Every plan gets a machine-readable `factoryFit` assessment before dispatch.
+The founder sees the conclusion and the evidence; the machine keeps the full
+record in `CUBICORE_PLAN.md` and `.cubicore-factory-fit.json`.
+
+The decision asks:
+
+- **Does this task contain genuinely independent slices?** If not, a factory
+  adds coordination cost without creating useful parallelism.
+- **How many slices are safe to run at once?** Worker count is derived from
+  write-scope disjointness and dependency shape, not from the size of the
+  prompt.
+- **What topology is forced by the coupling?** Fan-out, sequential pipeline,
+  shared-core/single-reader, or refusal are all valid outcomes.
+- **Is the acceptance criteria machine-checkable?** If not, the project needs
+  clarification or one agent, not a team guessing in parallel.
+- **Does the expected saving beat orchestration overhead?** If planning,
+  dispatch, gates and aggregation cost more than the split saves, Cubicore
+  must skip the factory.
+- **Can the host actually dispatch the team it wants?** Inline sub-agents,
+  sessions, worktrees, permissions and tool availability are checked, not
+  assumed.
+- **Is the task already 70% finished?** A large task is not automatically a
+  factory candidate; remaining work matters more than total ambition.
+
+The outcome is one of:
+
+| Decision | Meaning |
+|---|---|
+| `single-agent` | One agent is the best factory; do not split it |
+| `small-factory` | 2–3 workers, usually one dependency wave |
+| `standard-factory` | 4–8 workers, multiple disjoint contracts |
+| `pipeline` | Work must be staged; parallelism is limited by dependencies |
+| `single-reader` | One worker reads shared context, the rest consume its findings |
+| `refuse` | The task is too coupled or under-specified to split safely |
+
+Every decision includes:
+
+1. **Team size** — exact number of associates and why that number.
+2. **Topology** — fan-out, pipeline, single-reader, refuse, or single-agent.
+3. **Why** — the evidence: independent files, disjoint scopes, checkable
+   contracts, estimated wall/token cost, host capabilities.
+4. **Why not more workers** — the explicit reason the next worker would not
+   pay for itself.
+5. **Confidence** — high, medium or low. Low confidence means fewer workers,
+   not more.
+
+If the assessment is uncertain, Cubicore must choose the cheaper option. A
+wrong factory is not merely expensive; it makes the user wait for coordination
+to ruin a job one agent could have done.
+
+### The five outcomes
+
+These are the product outcomes, not implementation details.
+
+| Outcome | What it means |
+|---|---|
+| **Dynamic Decision-Making** | Team size, topology, refusal and escalation are decided from the task and the host before dispatch, and can change during the run |
+| **Real Agent-Factory Behaviour** | Cubicore has factory states, controlled handoffs, work queues, integration, retrospective and archive — not just parallel task calls |
+| **Host Portability** | The same factory contract maps onto OpenCode, Claude Code, Codex, Cursor, Windsurf and session-only hosts, with graceful degradation |
+| **User-Visible Value** | The founder can see what is happening, why it is happening, what each associate owns, what is blocked, and what to do next — without reading transcripts |
+| **Proof That It Works** | Reproducible benchmarks show time, cost, defects, collisions and completion rate versus a single agent and a naive fan-out |
+
+### The twelve concrete improvements
+
+#### 1. Make team creation genuinely dynamic
+
+Team size is computed from the task's dependency graph and host capability:
+
+- zero worker: the task is refused
+- one worker: one agent does the whole job
+- two or more: only if the slices are independent and checks exist
+- shared core: one reader produces a findings artifact; others consume it
+- coupled/unclear work: sequential pipeline or refusal
+
+The founder can override the number, but the default must be justified, never
+maximal. The plan records the factory budget: workers, waves, wall clock,
+tokens, check runs, and the cost of the orchestration itself.
+
+#### 2. Make roles more than labels
+
+`backend`, `frontend` and `test-writer` are not roles. A factory role is:
+
+- a bounded write scope
+- a capability set and tool policy
+- budget and retry limits
+- required handoff artifacts
+- checks that decide acceptance
+- exclusions and escalation rules
+
+Roles may be composed and restricted, but never given a name instead of a
+contract. The host receives the role's exact authority, not an honorific.
+
+#### 3. Add a real factory lifecycle
+
+The current dispatch is a one-shot fan-out. A factory needs an explicit state
+machine:
+
+`intent → factory fit → plan → team proposal → dispatch → observe → integrate
+→ verify → retrospect → archive`
+
+Each state has an entry condition, an exit condition, a responsible owner and
+a durable record. A worker that reports blocked moves to `escalated`, not into
+an unbounded retry. A failed gate moves the contract back to a narrower
+revision. A passing gate moves it to `ready-to-integrate`; it never means
+"merge whatever changed."
+
+#### 4. Improve automatic integration
+
+Parallel workers do not need to touch each other's files, but their work
+still has to become one product. Cubicore needs:
+
+- an explicit integration contract before dispatch;
+- a single integrator role or a post-dispatch integration wave;
+- mechanical interface checks between contract outputs;
+- collision detection against actual changed files, not just declared writes;
+- conflict reports that distinguish scope violations from real merge conflicts;
+- an integration smoke test before the project is declared runnable;
+- a rollback path when integration fails.
+
+The factory does not silently concatenate reports. It composes the result and
+proves the composition works.
+
+#### 5. Add adaptive execution
+
+A factory must change course when the facts change:
+
+- split a blocked contract into smaller contracts;
+- merge two workers that discovered they own the same file;
+- stop a worker whose check fails for an environmental reason;
+- skip or re-sequence work when an earlier gate disproves the plan;
+- replace an unavailable host capability with the strongest available one;
+- stop spending when the remaining work is cheaper as one agent.
+
+Adaptation is bounded by budgets and recorded as a decision. It is not licence
+to re-plan endlessly.
+
+#### 6. Build a proper host-adapter layer
+
+Cubicore needs one factory contract and many host adapters. The adapter
+answers the same questions everywhere:
+
+- Can this host dispatch inline sub-agents?
+- Can it create child sessions?
+- Does it isolate worktrees or containers?
+- Can it enforce tool and filesystem permissions?
+- Can it stream lifecycle events honestly?
+- Can it cancel a worker?
+- What does the host need written in its own config versus its plugin?
+
+OpenCode remains the reference host. Claude Code and Codex adapters should be
+next because their users already expect sub-agents. Cursor, Windsurf and
+session-only hosts degrade to the same contract through sessions. Unsupported
+capabilities are reported, not silently emulated.
+
+#### 7. Make MCP more automatic
+
+The MCP should be a factory operator, not a command manual:
+
+- discover the project and the host;
+- assess factory fit;
+- choose the factory;
+- write briefs;
+- dispatch what it is allowed to dispatch;
+- observe, gate, integrate and verify;
+- choose the next useful action from persisted state;
+- report only when done or blocked.
+
+If the host cannot perform an action itself, the MCP returns the exact next
+operation instead of pretending it happened.
+
+#### 8. Add a factory dashboard or readable status
+
+The founder does not want a wall of tool calls. They want an honest picture:
+
+- factory decision: why this many workers;
+- current phase: fit, planning, dispatch, integration, verification;
+- each worker: owner, scope, state, last check, blocker;
+- queue: waiting, running, blocked, done, failed;
+- integration status and the checks that failed;
+- next action and who can perform it;
+- a single `Done / Blocked` verdict at the end;
+- a link or path to the factory ledger and artifacts.
+
+The dashboard reads persisted state, so it survives a restart. It is a
+status surface, not a second plan.
+
+#### 9. Add a factory-fit assessment
+
+This is the gate before everything. It is both automatic and inspectable.
+
+It estimates independent slices, coupling, checkability, host support, worker
+count, expected wall/token cost, and risk. It returns a decision and the
+reason. It must be able to conclude:
+
+- "one agent is enough";
+- "three workers are enough and why";
+- "this is not decomposable without a shared-core reader";
+- "not enough acceptance criteria; clarify first";
+- "factory cost exceeds the expected benefit; single agent."
+
+A large prompt alone never qualifies.
+
+#### 10. Improve continuous-project support
+
+Cubicore is a factory for one-off projects and for projects that live through
+many change cycles. It needs:
+
+- an initial baseline and per-run delta;
+- preservation of previously-green contracts;
+- regression checks after every cycle;
+- incremental briefs for additions and removals;
+- a rolling ledger of decisions, findings and fixes;
+- stable IDs that survive plan rewrites;
+- a cycle budget that stops after unproductive loops;
+- an explicit answer to "what did this cycle improve?"
+
+The proof is a 20-feature project over repeated runs, not one heroic build.
+
+#### 11. Measure the claims
+
+Every claim in the README and the milestone must survive an identical task on
+the same host and model:
+
+- time-to-complete versus one agent;
+- token cost versus one agent and naive fan-out;
+- check pass rate and escaped defects;
+- write-scope collisions caught before dispatch;
+- factory-fit decision quality;
+- integration failures versus disjointness;
+- average time to first useful result;
+- founder interventions before done;
+- number of accepted versus refused factory recommendations.
+
+The 3D-world reference task remains valuable because it is real. The target
+is to beat, or at least not lose badly to, a strong one-agent run. Cubicore
+should say what actually happened, including when the factory is not worth it.
+
+#### 12. Prioritized implementation plan
+
+The order below removes the ambiguity: make the current system visibly a
+factory first, make it reliable second, portable third, continuous fourth, and
+proven fifth.
+
+### Phase 1 — Make the current system clearly a factory
+
+Scope:
+
+- Add the mandatory `factoryFit` pre-dispatch decision.
+- Implement `single-agent | small-factory | standard-factory | pipeline |
+  single-reader | refuse`.
+- Compute team size from dependency and write scopes.
+- Render "Why this factory?" in `CUBICORE_PLAN.md`.
+- Persist the assessment in `.cubicore-factory-fit.json`.
+- Add the factory ledger: fit, team, dispatch, gates, integration, verify.
+- Make the founder-facing output small: decision, blockers, done.
+
+Exit criteria:
+
+- a vague or strongly coupled task is not fanned out;
+- a genuinely independent task gets a justified team;
+- one-agent tasks use one agent;
+- every dispatch has a recorded size and reason;
+- the founder can read why without reading transcripts.
+
+### Phase 2 — Strengthen runtime behaviour
+
+Scope:
+
+- Explicit lifecycle states and legal transitions.
+- Roles with capabilities, tool restrictions and budgets.
+- Integration contract and integration wave.
+- Conflict and collision reporting from actual diffs.
+- Adaptive split/merge/skip/escalate decisions.
+- Real retry limits and `unfixable` outcomes.
+- Better cancellation and resume semantics.
+- Factory dashboard/status ledger with all worker states.
+
+Exit criteria:
+
+- a blocked contract changes the plan safely;
+- a bad check is distinguished from bad code;
+- an integration failure is caught before hand-off;
+- a run can be cancelled, resumed and audited;
+- the founder never sees six agents all editing the same file.
+
+### Phase 3 — Improve portability
+
+Scope:
+
+- Host adapter interface and capability negotiation.
+- OpenCode reference adapter.
+- Claude Code and Codex adapters.
+- Session fallback for hosts without inline sub-agents.
+- Config-first agent registration and host-specific doctor checks.
+- Cross-host smoke suite: plan → dispatch → gate → integrate → verify.
+
+Exit criteria:
+
+- one factory plan can run on at least three hosts;
+- missing host features are reported accurately;
+- no silent fallback to a different execution model;
+- adapters declare limits instead of faking capabilities.
+
+### Phase 4 — Support continuous projects
+
+Scope:
+
+- Incremental plans over existing projects.
+- Delta briefs and stable contract IDs.
+- Preserve green work; re-run only affected contracts.
+- Regression ledger and change-impact report.
+- Repeated-cycle benchmark on a living codebase.
+
+Exit criteria:
+
+- a twenty-change project can run repeated cycles without resetting;
+- previously-green work survives unrelated changes;
+- regression failures are localised and attributable;
+- every cycle leaves the project more verified than before.
+
+### Phase 5 — Prove the value
+
+Scope:
+
+- Define the public benchmark set: 3D world, API, CLI, migration, bugfix.
+- Compare one agent, naive fan-out and Cubicore on identical inputs.
+- Publish time, tokens, defects and founder interventions.
+- Hold out tasks so tuning does not overfit benchmarks.
+- Turn results into advertised claims; delete claims that fail.
+
+Exit criteria:
+
+- the reference task beats or approaches the one-agent result;
+- Cubicore's token saving is reproduced, not anecdotal;
+- the factory-fit decision predicts when fan-out pays;
+- the user gets a finished result with less supervision, or the benchmark
+  says so honestly.
+
+### Priority rationale
+
+Phase 1 comes first because the missing decision is the one thing no amount of
+deferred execution can recover. Phase 2 follows because a factory that
+decides correctly but integrates badly is still not a factory. Phase 3 makes
+the decision portable. Phase 4 makes it useful after the first run. Phase 5 is
+mandatory before anyone is allowed to call the system proven.
+
+### Definition of factory done
+
+A Cubicore run is factory-complete only when all of this is true:
+
+- factory fit was evaluated and recorded;
+- the team was the smallest effective team;
+- each worker's scope did not overlap;
+- integration passed its own checks;
+- the delivered result was actually run or verified;
+- the founder received a concise done/blocked verdict;
+- the ledger records why the factory was or was not worth it;
+- the benchmark or project ledger can show the value claimed.
+
+### What not to build yet
+
+- dozens of agents for every task;
+- silent automatic merges;
+- a dashboard before the ledger is correct;
+- cross-host support based on guessed capability names;
+- adding workers to compensate for an unclear plan;
+- claims of speed or quality before measurement;
+- "smart" re-planning that spends more than the project.
+
 ## What this does not change
 
 The enforcement layer is portable either way: validation, the check matrix,
@@ -300,8 +687,10 @@ after.
 
 ## Known state
 
-- Plugin and MCP front-ends both dispatch, gate and report a verdict
-- `execute` returns a run handle; `status` polls — timeouts no longer lose a verdict
+- Plugin and MCP front-ends dispatch, gate and report a verdict
+- `execute` returns the final verdict rather than a run handle; `continue` behaves likewise
+- Debug combines review, checks and fixing in a bounded loop; `preview` leaves the delivered thing running
 - Disjoint writes verified by digest on a real four-associate run
 - Executable checks caught two defective planner fixtures
-- Corpus plans for the benchmark do not exist yet; X and Y are unmeasured
+- Factory-fit assessment, lifecycle, dashboard and host adapters are product work, not shipped behaviour
+- Corpus plans for the benchmark do not exist yet; the 3D-world reference is unmeasured

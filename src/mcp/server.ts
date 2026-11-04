@@ -451,10 +451,8 @@ async function runToCompletion(
 
   return {
     summary: [
-      `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} flagged, ` +
-        `${outcome.deferred.length} deferred`,
-      `tokens: ${totalTokens} (in ${usage.input}, out ${usage.output}, cache ${usage.cacheRead})`,
-      "",
+      `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ` +
+        `${outcome.deferred.length} deferred · tokens ${totalTokens.toLocaleString()}`,
       ...aggregated.artifacts.map(
         (a) => `- ${a.contractId}: ${a.status}${a.unresolved.length ? ` — ${a.unresolved.join("; ")}` : ""}`,
       ),
@@ -518,30 +516,27 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   }
 
   const run = startRun(parsed, dir);
-  // Nest under the Main agent's session so each associate appears in the host's
-  // sub-agent view. A caller may pass one explicitly; otherwise the newest
-  // session in this directory is almost always the caller.
-  void resolveParent(parentSessionID)
-    .then((parent) => runToCompletion(raw, run.id, parent, dir))
-    .then(({ summary, halted }) => {
-      if (halted === "cancelled") {
-        cancelRun(run.id, dir, "cancelled by the founder");
-      } else if (halted === "paused") {
-        pauseRun(run.id, dir);
-      } else {
-        finishRun(run.id, dir, summary);
-      }
-    })
-    .catch((error) => failRun(run.id, dir, error instanceof Error ? error.message : String(error)));
+  // Return the verdict in this one call. A Cubicore run is expected to be
+  // started and allowed to finish; polling is an extra step the founder
+  // should never have to think about.
+  try {
+    const parent = await resolveParent(parentSessionID);
+    const { summary, halted } = await runToCompletion(raw, run.id, parent, dir);
 
-  return reply(
-    [
-      `Started ${run.id} — ${parsed.contracts.length} associates, topology ${parsed.topology}.`,
-      `Progress streams to the server log; the verdict does not arrive here.`,
-      `Poll with the status tool using run id ${run.id}.`,
-    ].join("\n"),
-    dir,
-  );
+    if (halted === "cancelled") {
+      cancelRun(run.id, dir, "cancelled by the founder");
+    } else if (halted === "paused") {
+      pauseRun(run.id, dir);
+    } else {
+      finishRun(run.id, dir, summary);
+    }
+
+    return reply(summary, dir);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failRun(run.id, dir, message);
+    return text(`Dispatch failed: ${message}`, true);
+  }
 }
 
 /**
@@ -827,49 +822,50 @@ async function continueRun(directory: string, parentSessionID?: string, planNumb
   const run = startRun(parsed, directory);
   writeCycleState(statePath, state);
 
-  void resolveParent(parentSessionID)
-    .then((parent) => runToCompletion(raw, run.id, parent, directory, satisfied, runningContractIds, stepsProgressRecord))
-    .then(({ summary, halted }) => {
-      if (halted === "cancelled") {
-        cancelRun(run.id, directory, "cancelled by the founder");
-      } else if (halted === "paused") {
-        pauseRun(run.id, directory);
-      } else {
-        finishRun(run.id, directory, summary);
-      }
+  try {
+    const parent = await resolveParent(parentSessionID);
+    const { summary, halted } = await runToCompletion(raw, run.id, parent, directory, satisfied, runningContractIds, stepsProgressRecord);
 
-      // Re-render CUBICORE_PLAN.md with fresh progress from the latest run
-      // so the founder sees up-to-date step markers after continue completes.
-      try {
-        const updatedRuns = loadRuns(directory);
-        const latest = updatedRuns[0];
-        const finalContractProgress = new Map<string, ContractState>();
-        const finalStepProgress = new Map<string, Map<string, ContractState>>();
-        if (latest) {
-          for (const p of latest.progress) {
-            finalContractProgress.set(p.contractId, p.state);
-            if (p.steps) {
-              const stepMap = new Map<string, ContractState>();
-              for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
-              finalStepProgress.set(p.contractId, stepMap);
-            }
+    if (halted === "cancelled") {
+      cancelRun(run.id, directory, "cancelled by the founder");
+    } else if (halted === "paused") {
+      pauseRun(run.id, directory);
+    } else {
+      finishRun(run.id, directory, summary);
+    }
+
+    try {
+      const updatedRuns = loadRuns(directory);
+      const latest = updatedRuns[0];
+      const finalContractProgress = new Map<string, ContractState>();
+      const finalStepProgress = new Map<string, Map<string, ContractState>>();
+      if (latest) {
+        for (const p of latest.progress) {
+          finalContractProgress.set(p.contractId, p.state);
+          if (p.steps) {
+            const stepMap = new Map<string, ContractState>();
+            for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+            finalStepProgress.set(p.contractId, stepMap);
           }
         }
-        writeFileSync(
-          resolved.mdPath,
-          renderPlanMd(parsed, { ok: true, findings: [] }, { contracts: finalContractProgress, steps: finalStepProgress }),
-        );
-      } catch {
-        // Best-effort refresh; the run result is still valid even if MD refresh fails.
       }
-    })
-    .catch((error) => failRun(run.id, directory, error instanceof Error ? error.message : String(error)));
+      writeFileSync(
+        resolved.mdPath,
+        renderPlanMd(parsed, { ok: true, findings: [] }, { contracts: finalContractProgress, steps: finalStepProgress }),
+      );
+    } catch {
+      // Best-effort refresh; the run result is still valid even if MD refresh fails.
+    }
 
-  return reply(
-    [`${doneCount} done, ${failedCount} failed, ${remaining} to run.`,
-     `Started ${run.id}. Poll with status using ${run.id}.`].join("\n"),
-    directory,
-  );
+    return reply(
+      [`${doneCount} done, ${failedCount} failed, ${remaining} to run.`, summary].join("\n"),
+      directory,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    failRun(run.id, directory, message);
+    return text(`Dispatch failed: ${message}`, true);
+  }
 }
 
 /**
@@ -941,15 +937,15 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
   const cycleGate = canExecute(readCycleState(`${directory}/.cubicore-cycle.json`));
   if (!cycleGate.allowed) return text(cycleGate.reason, true);
 
-  // The briefs are useless without the agent to dispatch them to. The host's
-  // task tool rejects an unknown agent name, and the run silently falls back
-  // to sessions -- so the check happens here, before six failed calls.
+  // The briefs are useless without somewhere to dispatch them to. The check
+  // is advisory only: a browser proxy or an HTML fallback must not turn a
+  // host with inline sub-agents into a host that silently uses sessions.
   const runtime = runtimeFromEnv();
   const agent = await agentAvailable(runtime.baseUrl, directory);
   const inlineReady = agent.present;
   if (!inlineReady) {
     process.stderr.write(
-      `[cubicore] ${ASSOCIATE_AGENT_ID} not dispatchable: ` +
+      `[cubicore] ${ASSOCIATE_AGENT_ID} dispatch unverified: ` +
         `${agent.checked ? `host agents are ${agent.agents.join(", ") || "none"}` : agent.reason}.\n`,
     );
   }
@@ -970,9 +966,10 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
       `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
       "",
       inlineReady
-        ? `Dispatch ALL ${loaded.plan.contracts.length} associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, at the same time. Give each its own brief's path. Do not dispatch them one at a time.`
-        : `NOTE: the host has no \`${ASSOCIATE_AGENT_ID}\` agent. Dispatch to whichever sub-agent it does have ` +
-          `(\`general\` works), keeping one brief each -- or call execute so Cubicore dispatches sessions itself.`,
+        ? `Dispatch ALL ${loaded.plan.contracts.length} associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in the SAME tool block, in parallel, at the same time. Give each its own brief's path. Do not wait for one before dispatching the next. Do not dispatch them one at a time.`
+        : `NOTE: the host's agent list could not be verified${agent.reason ? `: ${agent.reason}` : ""}. ` +
+          `That does not prove inline sub-agents are unavailable. If you have the host's task/sub-agent tool, dispatch ALL ${loaded.plan.contracts.length} associates NOW, in the SAME tool block, in parallel, using \`${ASSOCIATE_AGENT_ID}\` if the host knows it or \`general\` otherwise. ` +
+          `Do not wait for one before dispatching the next. One brief each, and do not dispatch them one at a time. Only if the host tool cannot launch them concurrently, call execute and let Cubicore dispatch sessions in parallel instead.`,
       "",
       "Associates to dispatch:",
       "",
@@ -1035,14 +1032,16 @@ async function research(directory: string): Promise<ToolResult> {
 /**
  * How the agent ends a turn.
  *
- * The founder reads the agent's reply, not the tool output, so the next
- * command has to be stated in the reply. The tools also carry it -- derived
- * from the state on disk -- and the agent is told to repeat what they say.
+ * Cubicore optimises for finishing, not for narrating. The founder wants the
+ * result, not a play-by-play, so the agent works quietly and speaks when done
+ * or genuinely blocked. The ending stays small and concrete.
  */
-const ENDING = "End your reply by explicitly offering the next steps as /cubicore: commands -- " +
-  "the recommended one first, then the alternatives. Say the command name and what it does. " +
-  "Do not invent steps: the tool reads state on disk and knows what is true. " +
-  "If the tool reported none, say the work is done. Let the founder choose; do not run the next step for them. ";
+const ENDING = "Work without narrating. Do not report intermediate steps. " +
+  "Ask only when blocked; otherwise decide and proceed. End your reply with the result, " +
+  "the next commands as /cubicore: commands -- the recommended one first, then the " +
+  "alternatives -- and one line of what each is for. Keep it terse. Do not invent " +
+  "steps: the tool reads state on disk and knows what is true. If there is nothing " +
+  "left, say so plainly. ";
 
 
 const WHEN = "Call this when the founder asks to use Cubicore, " +
@@ -1072,13 +1071,9 @@ export const TOOLS = [
     name: "execute",
     description:
       WHEN +
-      "Dispatches a validated plan across parallel associates, gates each result, " +
-      "and aggregates the artifacts. Pass `plan` (inline JSON) or `planNumber` " +
-      "(reads CUBICORE_PLAN_N.json from disk). `planNumber` is optional: omit it " +
-      "to run the inline plan, or pass a number to dispatch a member plan file. " +
-      "Returns a run id immediately. Then call status with that id and a generous " +
-      "waitMs so one call returns the verdict -- polling in a loop spends the agent's " +
-      "step budget, and a run can outlive it.",
+      "Execute the plan and run its associates now. Pass `plan` (inline JSON) or " +
+      "`planNumber` (reads CUBICORE_PLAN_N.json from disk); omit both to read " +
+      "CUBICORE_PLAN.json. Returns when done — no polling, no progress chatter.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1452,8 +1447,9 @@ export const TOOLS = [
     name: "status",
     description:
       WHEN +
-      "Polls a run started by execute. Returns its current state, and the full verdict " +
-      "once it finishes. Event-fed progress is not available here; the server log has it.",
+      "Returns a run's current state, and the full verdict once it finishes. " +
+      "Usually unnecessary: execute returns the verdict itself. Use only to inspect an " +
+      "already-running run.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1537,8 +1533,8 @@ export const PROMPTS = [
   {
     name: "execute",
     description:
-      "Dispatch a plan. Prefers the host's inline sub-agents so each associate renders as a " +
-      "visible step; falls back to Cubicore's own sessions when the host has none. " +
+      "Execute a plan. Prefers inline sub-agents so associates run in parallel; " +
+      "falls back to Cubicore sessions when the host has none. " +
       "Reads CUBICORE_PLAN.json by default, falls back to CUBICORE_PLAN_1.json, " +
       "or CUBICORE_PLAN_N.json when planNumber is given.",
     arguments: [
@@ -1622,7 +1618,13 @@ function wordsFrom(args: Record<string, string>, name: string): string {
  * plan-full. Only the title and the "decide scope" section differ; the steps,
  * the contract rules, and the schema are identical.
  */
-function renderPlanPrompt(title: string, decideScope: string, request: string, extraNote?: string): string {
+function renderPlanPrompt(
+  title: string,
+  decideScope: string,
+  request: string,
+  extraNote?: string,
+  includeContext = true,
+): string {
   if (request.length === 0) {
     return `
 ${title}
@@ -1659,14 +1661,20 @@ produce the plan JSON and pass it to the plan tool, which writes
 CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
 CUBICORE_CONTEXT.md for team members who need to present the project in person.
 
+Prefer \`fan-out\` whenever write scopes are disjoint. A \`reads\` entry usually
+means the checks depend on the files, not that the worker must wait to write its
+own files. Use \`pipeline\` only when the second contract cannot produce any
+usable deliverable until the first returns; otherwise create shared interfaces,
+placeholders, or loose contracts and dispatch them simultaneously.
+
 The plan needs:
 - A \`summary\` field — one or two sentences describing what this project is,
   shown at the top of CUBICORE_PLAN.md so the founder understands the product
-  at a glance.
-- A \`context\` field — narrative context for human readers: problem, users,
-  use cases, benefits, demo flow, and future work. Rendered at the top of
-  CUBICORE_CONTEXT.md so team members can present the project in person.
-  Never affects what gets built.
+  at a glance.${includeContext ? `
+- A \`context\` field only if the founder asked for a pitch, business case, or
+  team-handoff document. Never invent market sizing, GTM, TAM, competition,
+  risks or fundraising detail. If included, keep every required field to one
+  short line; otherwise omit it entirely.` : ""}
 - \`graphBudget.nodes\` at least the number of contracts.
 - \`graphBudget.edges\` at least the read/write dependencies between contracts.
 - If the result can be started or served, a top-level \`preview\` object with the command,
@@ -1691,19 +1699,31 @@ function planDemoScope(): string {
     "founder explicitly asks. One contract per file or feature; prefer fewer, larger " +
     "contracts over many small ones. The goal is a single deployable artifact, not a " +
     "production system. If the request names a framework or tool, include an installation " +
-    "contract that installs its dependencies (npm, pip, cargo, apt, brew, etc.).";
+    "contract that installs its dependencies (npm, pip, cargo, apt, brew, etc.). " +
+    "Keep the plan compact: omit the `context` field; use a one-sentence summary and " +
+    "only the checks needed to catch real defects. DO NOT make scaffold output a " +
+    "dependency just because the app uses it: app contracts may rely on the scaffold spec " +
+    "in the plan and should be written in the same wave. Use `pipeline` only for a real " +
+    "serial handoff. If the app needs a package file or entry point for its final checks, " +
+    "add an integration contract that runs after both contracts and gates the build.";
 }
 
 /** Builds the enterprise decide-scope section. */
 function planFullScope(): string {
-  return "This is an enterprise product, built from scratch. Build exactly what the " +
+  return "This is a full product from scratch. Build exactly what the " +
     "founder requested. Do not choose your own project idea and do not substitute a " +
-    "different product. Stack with health endpoints, config, observability, CI/CD, and " +
-    "proper error handling. Split into one contract per bounded context or service; " +
-    "prefer more, smaller contracts with clear boundaries. Every contract needs a check " +
-    "that can fail against a real system. If the request names a framework or tool, " +
-    "include an installation contract that installs its dependencies (npm, pip, cargo, " +
-    "apt, brew, etc.).";
+    "different product. Include only the endpoints, config, observability, CI/CD and " +
+    "error handling the requested product actually needs; do not invent enterprise " +
+    "features the founder did not ask for. Split the build into disjoint contracts and " +
+    "prefer `fan-out`: workers should be dispatched at the same time whenever their " +
+    "writes are disjoint. Do NOT put scaffold output in `reads` just to implement against " +
+    "it — write the application against the agreed interface, and add an integration " +
+    "contract or integration wave for the final build. Use `pipeline` only when a worker " +
+    "cannot produce anything useful until an earlier contract returns. If the request " +
+    "names a framework or tool, include an installation contract that installs its " +
+    "dependencies (npm, pip, cargo, apt, brew, etc.) in the same wave wherever safe. " +
+    "Aim for at most two dependency waves; long pipelines are a symptom of bad splitting, not a virtue. " +
+    "Do not create narrative market content by default. Either omit `context`, or keep every required field to a short line if context is genuinely required.";
 }
 
 export function promptFor(name: string, args: Record<string, string>) {
@@ -1720,7 +1740,8 @@ export function promptFor(name: string, args: Record<string, string>) {
               "Plan a demo or MVP of this project.",
               planDemoScope(),
               wordsFrom(args, "request"),
-              existingPlan ? "\n\nNOTE: A plan already exists at CUBICORE_PLAN.json. If the founder wants to change or add a feature to the existing project, use `/cubicore:refine` instead of `/cubicore:plan-demo`. Only proceed with a new plan here if the founder explicitly confirms they want to start over." : ""
+              existingPlan ? "\n\nNOTE: A plan already exists at CUBICORE_PLAN.json. If the founder wants to change or add a feature to the existing project, use `/cubicore:refine` instead of `/cubicore:plan-demo`. Only proceed with a new plan here if the founder explicitly confirms they want to start over." : "",
+              false
             ),
           },
         },
@@ -1751,54 +1772,24 @@ export function promptFor(name: string, args: Record<string, string>) {
 
   if (name === "execute") {
     return {
-      description: "Summon the associates and dispatch them.",
+      description: "Execute the plan and speak when done.",
       messages: [
         {
           role: "user",
           content: {
             type: "text",
             text:
-`Execute CUBICORE_PLAN.md.
+`${ENDING}Execute CUBICORE_PLAN.json now. Do not explain the plan to the founder; dispatch it.
 
+Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Pass planNumber for CUBICORE_PLAN_N.json.
 
-${ENDING}
-**What kind of project is this?** A web app, a CLI, a library, a plugin, a service — the
-categories are whatever this project actually is, and you already know. Pass that to
-\`dispatch_blueprint\` as projectKind so each associate knows what it is building toward.
-There is no fixed taxonomy, and forcing one onto a project that does not fit it is how a
-plan turns into guesswork.
+1. Call \`dispatch_blueprint\` with the project kind.
+2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.
+3. Wait for every report separately. Never merge them.
+4. Run every blocking check and fix failures in a tight loop. Record results with the debug tool.
+5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.
 
-**Size the team yourself**, from the project size in CUBICORE_PLAN.md. There is no maximum.
-A small project might be one associate. A normal one might be three. A large one might be
-eight. More associates is right when the work genuinely divides.
-
-**Each associate gets its own brief.** That is what \`dispatch_blueprint\` writes — one
-standalone document per associate into \`CUBICORE_ASSOCIATES/\`, each carrying only that
-associate's write scope, what is off-limits, and its checks. Do not merge them into a
-single brief and do not hand an associate another associate's brief. They are working at the
-same time and must not read each other's scopes.
-
-**Plan files.** Cubicore reads CUBICORE_PLAN.json by default. If that file is not present,
-it falls back to CUBICORE_PLAN_1.json. Pass planNumber to dispatch CUBICORE_PLAN_N.json
-instead (for multi-member flows where each member has their own plan file).
-
-**Dispatch:**
-
-1. Call \`dispatch_blueprint\` with the project kind. It reads CUBICORE_PLAN.json and writes
-   one brief per associate plus an index.
-2. Read the index to see who exists and what each owns.
-3. Dispatch ALL associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel, at the same time.
-   Give each its own brief's path. Do not dispatch them one at a time -- launch every
-   associate simultaneously so they work concurrently. Each reads one file and starts
-   building.
-4. Collect every report separately. Never merge them — each contract is judged on its own
-   checks alone, and a merged report hides which one failed.
-
-**If the host has no sub-agent tool**, call \`execute\` instead and Cubicore dispatches the
-sessions itself.
-
-**When they return**, run every blocking check from CUBICORE_PLAN.json yourself and record
-the results with the debug tool.`,
+If this host truly has no sub-agent tool, call \`execute\` instead and let Cubicore dispatch sessions itself.`,
           },
         },
       ],
@@ -1967,15 +1958,9 @@ Do not deploy anything. Write the files and explain the steps.`,
           content: {
             type: "text",
             text:
-`${ENDING}Call the status tool with the run id, and wait for it.
+`${ENDING}Call the status tool with the run id, and use one generous waitMs if you must wait.
 
-Give it a generous waitMs -- long enough that one call returns the verdict rather than a
-partial state. A run outlives the tool call that started it, so the founder may be back
-days later and the run may still be going. Polling in a loop spends the founder's steps
-instead of the run's.
-
-Report what the run did: how many associates finished, how many failed, and what each
-failure was. If it is still running, say so and say how long it has been going.`,
+Execute normally returns the verdict itself, so do not poll in a loop. If it is still running, say so and report the elapsed time. If it is done, report the pass/fail counts and any blockers.`,
           },
         },
       ],

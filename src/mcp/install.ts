@@ -182,7 +182,23 @@ export async function agentAvailable(
       { headers: { Authorization: auth } },
     );
     if (!response.ok) {
-      return { present: false, agents: [], checked: false, reason: `agent list returned ${response.status}` };
+      const proxy = response.headers.get("Proxy-Authenticate");
+      return {
+        present: false,
+        agents: [],
+        checked: false,
+        reason: `agent list returned ${response.status}${proxy ? ` (${proxy})` : ""}`,
+      };
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      const preview = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 120);
+      return {
+        present: false,
+        agents: [],
+        checked: false,
+        reason: `host agent endpoint returned non-JSON (${contentType || "unknown content type"})${preview ? `: ${preview}` : ""}`,
+      };
     }
     const list = (await response.json()) as Array<{ name?: string }>;
     const agents = list.map((a) => a.name ?? "").filter(Boolean);
