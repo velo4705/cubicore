@@ -60,7 +60,7 @@ const DEFAULT_READY_TIMEOUT = 20_000;
  * the founder hand-edit PATH, detect where node lives and prepend its
  * directory so npm -- which ships alongside node -- can be found.
  */
-function nodePathEnv(): Record<string, string> {
+export function nodePathEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;

@@ -15,7 +15,7 @@ import {
 import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
-import { previewIt } from "../plan/preview";
+import { nodePathEnv, previewIt } from "../plan/preview";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
@@ -36,7 +36,7 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import { cleanOrphanedWorktrees } from "../dispatch/worktree";
@@ -449,13 +449,28 @@ async function runToCompletion(
 
   controller.abort();
 
+  const verified = await verifyAndSyncPlan(parsed, dir, validation);
+  syncRunRecord(runId, dir, parsed, verified);
+
+  const passedCount = [...verified.progress.values()].filter((state) => state === "done").length;
+  const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
+
   return {
     summary: [
       `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ` +
-        `${outcome.deferred.length} deferred · tokens ${totalTokens.toLocaleString()}`,
+        `${outcome.deferred.length} deferred · verified ${passedCount}/${parsed.contracts.length} on disk`,
       ...aggregated.artifacts.map(
         (a) => `- ${a.contractId}: ${a.status}${a.unresolved.length ? ` — ${a.unresolved.join("; ")}` : ""}`,
       ),
+      ...(verified.failures.length
+        ? [
+            "",
+            "Disk verification failures:",
+            ...verified.failures.slice(0, 2).map(
+              (failure) => `- ${failure.checkId}: ${failure.output}`,
+            ),
+          ]
+        : []),
     ].join("\n"),
     halted: outcome.halted,
   };
@@ -654,6 +669,18 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     }
     break; // newest completed run wins
   }
+  const persisted = readPersistedProgression(directory);
+  for (const contract of parsed.contracts) {
+    const state = persisted[contract.id];
+    if (state) {
+      contractProgress.set(contract.id, state);
+      if (contract.steps?.length) {
+        const stepMap = new Map<string, ContractState>();
+        for (const step of contract.steps) stepMap.set(step.id, state);
+        stepProgress.set(contract.id, stepMap);
+      }
+    }
+  }
   writeFileSync(
     resolved.mdPath,
     renderPlanMd(parsed, validation, { contracts: contractProgress, steps: stepProgress }),
@@ -734,6 +761,248 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
  * Unlike execute, continue is exempt from the cycle budget -- it is
  * resuming interrupted work, not starting a new fix cycle.
  */
+/** Shared shell-runner for checks; one contract should not get a second dependency setup at the same time. */
+async function runCheckedShell(
+  command: string,
+  directory: string,
+  timeoutMs = 180_000,
+): Promise<{ exitCode: number; output: string }> {
+  const proc = Bun.spawn(["sh", "-c", command], {
+    cwd: directory,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: nodePathEnv(),
+  });
+  const timer = setTimeout(() => proc.kill(), timeoutMs);
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  clearTimeout(timer);
+  const exitCode = await proc.exited;
+  return { exitCode, output: `${stdout}\n${stderr}`.trim() };
+}
+
+const PROGRESS_JSON = ".cubicore-progress.json";
+
+let progressionLock: Promise<void> = Promise.resolve();
+
+/** Serialise the short read-modify-write phase so parallel associates cannot clobber each other. */
+async function withProgressionLock<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = progressionLock;
+  let release = () => {};
+  progressionLock = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+function readPersistedProgression(directory: string): Record<string, ContractState> {
+  try {
+    const parsed = JSON.parse(readFileSync(`${directory}/${PROGRESS_JSON}`, "utf8")) as Record<string, unknown>;
+    const out: Record<string, ContractState> = {};
+    for (const [contractId, state] of Object.entries(parsed)) {
+      if (state === "pending" || state === "running" || state === "done" || state === "failed" || state === "skipped") {
+        out[contractId] = state;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writePersistedProgression(
+  directory: string,
+  progress: Map<string, ContractState>,
+): void {
+  const next = Object.fromEntries(progress);
+  const temp = `${directory}/${PROGRESS_JSON}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`);
+  renameSync(temp, `${directory}/${PROGRESS_JSON}`);
+}
+
+function renderProgressionPlan(
+  parsed: Plan,
+  directory: string,
+  persisted: Record<string, ContractState>,
+): void {
+  const contracts = new Map<string, ContractState>();
+  for (const contract of parsed.contracts) {
+    contracts.set(contract.id, persisted[contract.id] ?? "pending");
+  }
+  const steps = new Map<string, Map<string, ContractState>>();
+  for (const contract of parsed.contracts) {
+    if (!contract.steps?.length) continue;
+    const map = new Map<string, ContractState>();
+    for (const step of contract.steps) map.set(step.id, contracts.get(contract.id) ?? "pending");
+    steps.set(contract.id, map);
+  }
+  writeFileSync(
+    `${directory}/${PLAN_MD}`,
+    renderPlanMd(parsed, { ok: true, findings: [] }, { contracts, steps }),
+  );
+}
+
+/**
+ * Re-check a plan against the files that actually exist.
+ *
+ * Inline dispatch happens in the host's own task tool, outside Cubicore's run
+ * recorder. Checking again from disk gives the plan a factual status instead of
+ * leaving every brief stuck at "not started" after the work is done.
+ */
+async function refreshPlanProgress(
+  parsed: Plan,
+  directory: string,
+): Promise<{
+  progress: Map<string, ContractState>;
+  failures: Array<{ contractId: string; checkId: string; output: string }>;
+}> {
+  const progress = new Map<string, ContractState>();
+  const failures: Array<{ contractId: string; checkId: string; output: string }> = [];
+
+  for (const contract of parsed.contracts) {
+    const checks = contract.checks.filter((check) =>
+      check.gating === "blocking" && check.kind !== "judgment"
+    );
+    if (checks.length === 0) {
+      progress.set(contract.id, "done");
+      continue;
+    }
+
+    let ok = true;
+    for (const check of checks) {
+      try {
+        const result = await runCheckedShell(check.command, directory);
+        if (result.exitCode !== 0) {
+          ok = false;
+          failures.push({ contractId: contract.id, checkId: check.id, output: result.output.slice(0, 600) });
+          break;
+        }
+      } catch (error) {
+        ok = false;
+        failures.push({
+          contractId: contract.id,
+          checkId: check.id,
+          output: error instanceof Error ? error.message : String(error),
+        });
+        break;
+      }
+    }
+    progress.set(contract.id, ok ? "done" : "failed");
+  }
+
+  return { progress, failures };
+}
+
+/** Prove what is present on disk and sync the plan document with that evidence. */
+async function verifyAndSyncPlan(
+  parsed: Plan,
+  directory: string,
+  validation: { ok: boolean; findings: { code: string; message: string }[] },
+): Promise<ReturnType<typeof refreshPlanProgress>> {
+  const verified = await refreshPlanProgress(parsed, directory);
+  const steps = new Map<string, Map<string, ContractState>>();
+  for (const contract of parsed.contracts) {
+    if (!contract.steps?.length) continue;
+    const state = verified.progress.get(contract.id);
+    const map = new Map<string, ContractState>();
+    for (const step of contract.steps) map.set(step.id, state ?? "pending");
+    steps.set(contract.id, map);
+  }
+  writePersistedProgression(directory, verified.progress);
+  writeFileSync(
+    `${directory}/${PLAN_MD}`,
+    renderPlanMd(parsed, validation, { contracts: verified.progress, steps }),
+  );
+  return verified;
+}
+
+/**
+ * Mark one associate's work in the plan. Associates call this when they think
+ * their piece is complete; done is accepted only after the contract's blocking
+ * checks pass on the current tree.
+ */
+async function markPlanContract(
+  args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string },
+): Promise<ToolResult> {
+  const dir = args.directory ?? process.cwd();
+  const state = args.state ?? "done";
+  if (!["done", "failed", "skipped"].includes(state)) {
+    return text(`Unknown state ${JSON.stringify(state)}. Use done, failed, or skipped.`, true);
+  }
+
+  let raw: string;
+  try {
+    raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+  } catch {
+    return text(`No ${PLAN_JSON} in ${dir}.`, true);
+  }
+
+  const loaded = loadPlan(raw);
+  if (!loaded.ok) return text(`Refusing to mark: ${loaded.reason}`, true);
+  const parsed = loaded.plan;
+  const contract = parsed.contracts.find((candidate) => candidate.id === args.contractId);
+  if (!contract) return text(`No contract named ${JSON.stringify(args.contractId)} in ${PLAN_JSON}.`, true);
+
+  let detail = args.detail?.trim() || (state === "done" ? "associate verified its own work" : "associate reported failure");
+  if (state === "done") {
+    const checks = contract.checks.filter((check) => check.gating === "blocking" && check.kind !== "judgment");
+    for (const check of checks) {
+      let result: { exitCode: number; output: string };
+      try {
+        result = await runCheckedShell(check.command, dir);
+      } catch (error) {
+        result = { exitCode: 1, output: error instanceof Error ? error.message : String(error) };
+      }
+      if (result.exitCode !== 0) {
+        const output = result.output.slice(0, 800);
+        await withProgressionLock(async () => {
+          const persisted = readPersistedProgression(dir);
+          persisted[contract.id] = "failed";
+          writePersistedProgression(dir, new Map(Object.entries(persisted)));
+          renderProgressionPlan(parsed, dir, persisted);
+        });
+        return text(
+          `Refusing to mark ${contract.id} done: blocking check ${check.id} failed.\n${output}`,
+          true,
+        );
+      }
+    }
+    detail = `associate marks ${contract.id} done; all ${checks.length} blocking check(s) passed`;
+  }
+
+  await withProgressionLock(async () => {
+    const persisted = readPersistedProgression(dir);
+    persisted[contract.id] = state;
+    writePersistedProgression(dir, new Map(Object.entries(persisted)));
+    renderProgressionPlan(parsed, dir, persisted);
+  });
+  return text(`${state === "done" ? "Marked" : state === "failed" ? "Marked failed:" : "Marked skipped:"} ${contract.id} in ${PLAN_MD}. ${detail}`);
+}
+
+/** Sync persisted run records and plan progress after the verifier has run. */
+function syncRunRecord(
+  runId: string,
+  directory: string,
+  parsed: Plan,
+  verified: Awaited<ReturnType<typeof refreshPlanProgress>>,
+): void {
+  for (const contract of parsed.contracts) {
+    const state = verified.progress.get(contract.id) ?? "failed";
+    const detail = state === "done"
+      ? "verified against blocking checks on disk"
+      : verified.failures.find((failure) => failure.contractId === contract.id)?.checkId ?? "verification failed";
+    recordProgress(runId, directory, contract.id, state, detail);
+    for (const step of contract.steps ?? []) {
+      recordProgress(runId, directory, contract.id, state, detail, step.id);
+    }
+  }
+}
+
 async function continueRun(directory: string, parentSessionID?: string, planNumber?: number): Promise<ToolResult> {
   const resolved = resolvePlanFile(directory, planNumber);
   let raw: string;
@@ -766,51 +1035,59 @@ async function continueRun(directory: string, parentSessionID?: string, planNumb
     );
   }
 
-  const runs = loadRuns(directory);
-  const last = runs[0]; // newest first
-
-  // Build contract-level and step-level progress from the most recent run.
-  const contractProgress = new Map<string, ContractState>();
-  const stepProgress = new Map<string, Map<string, ContractState>>();
-  const satisfied: string[] = [];
-
-  if (last) {
-    for (const p of last.progress) {
-      contractProgress.set(p.contractId, p.state);
-      if (p.steps) {
-        const stepMap = new Map<string, ContractState>();
-        for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
-        stepProgress.set(p.contractId, stepMap);
-      }
-
-      // A contract is satisfied (skipped) when all its steps are done, or
-      // when it has no steps and its state is "done".
-      const allStepsDone = p.steps && Object.values(p.steps).length > 0 && Object.values(p.steps).every((s) => s === "done");
-      if ((!p.steps && p.state === "done") || allStepsDone) {
-        satisfied.push(p.contractId);
-      }
-    }
+  const validation = validatePlan(parsed, deriveBaseline(directory));
+  if (!validation.ok) {
+    return text(
+      [`Refusing to continue: the plan no longer validates.`, ...validation.findings.map((finding) => `- [${finding.code}] ${finding.message}`)].join("\n"),
+      true,
+    );
   }
+
+  // First establish ground truth from the files and blocking checks. The run
+  // ledger is useful history, but it may be empty when inline dispatch happened
+  // through the host rather than Cubicore's own runner.
+  const verified = await verifyAndSyncPlan(parsed, directory, validation);
+
+  const contractProgress = new Map<string, ContractState>(verified.progress);
+  const stepProgress = new Map<string, Map<string, ContractState>>();
+  for (const contract of parsed.contracts) {
+    if (!contract.steps?.length) continue;
+    const state = contractProgress.get(contract.id) ?? "failed";
+    const map = new Map<string, ContractState>();
+    for (const step of contract.steps) map.set(step.id, state);
+    stepProgress.set(contract.id, map);
+  }
+  const satisfied = parsed.contracts
+    .filter((contract) => contractProgress.get(contract.id) === "done")
+    .map((contract) => contract.id);
 
   // Contracts that were in-flight ("running") when the run was interrupted
   // should have their worktrees preserved so they resume from where they
-  // stopped instead of starting over.
+  // stopped instead of starting over. Since the verifier works from disk, use
+  // its "failed" state as evidence that a contract is not already satisfied;
+  // exact session history is not required for correctness.
+  const last = loadRuns(directory)[0]; // newest first
   const runningContractIds = last
     ? new Set(last.progress.filter((p) => p.state === "running").map((p) => p.contractId))
     : new Set<string>();
 
-  // Convert step progress from Map to Record for dispatch options.
   const stepsProgressRecord = new Map<string, Record<string, ContractState>>();
   for (const [cid, smap] of stepProgress) {
     stepsProgressRecord.set(cid, Object.fromEntries(smap));
   }
 
   const doneCount = satisfied.length;
-  const failedCount = last?.progress.filter((p) => p.state === "failed").length ?? 0;
+  const failedCount = verified.failures.length;
   const remaining = parsed.contracts.length - doneCount;
 
   if (remaining === 0) {
-    return text(`All ${parsed.contracts.length} contract(s) already done. Nothing to continue.`);
+    return reply(
+      [
+        `All ${parsed.contracts.length} contract(s) verified against their blocking checks. Nothing to continue.`,
+        `Tests pass on disk; the plan document has been synced.`,
+      ].join("\n"),
+      directory,
+    );
   }
 
   // Continue is exempt from the cycle budget: it resumes interrupted work
@@ -837,16 +1114,16 @@ async function continueRun(directory: string, parentSessionID?: string, planNumb
     try {
       const updatedRuns = loadRuns(directory);
       const latest = updatedRuns[0];
-      const finalContractProgress = new Map<string, ContractState>();
+      const finalContractProgress = latest
+        ? new Map(latest.progress.map((p) => [p.contractId, p.state]))
+        : new Map<string, ContractState>();
       const finalStepProgress = new Map<string, Map<string, ContractState>>();
       if (latest) {
         for (const p of latest.progress) {
-          finalContractProgress.set(p.contractId, p.state);
-          if (p.steps) {
-            const stepMap = new Map<string, ContractState>();
-            for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
-            finalStepProgress.set(p.contractId, stepMap);
-          }
+          if (!p.steps) continue;
+          const stepMap = new Map<string, ContractState>();
+          for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+          finalStepProgress.set(p.contractId, stepMap);
         }
       }
       writeFileSync(
@@ -1280,6 +1557,25 @@ export const TOOLS = [
           : `Initialised a git repository in ${dir}. Nothing to commit yet.`,
       );
     },
+  },
+  {
+    name: "plan_mark",
+    description:
+      WHEN +
+      "Marks one associate's contract in CUBICORE_PLAN.md. Used by associates when they finish their own work: " +
+      "`done` is accepted only if every blocking check passes on disk; otherwise the contract is marked failed with the failing check's output.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contractId: { type: "string", description: "Contract id from the plan." },
+        state: { type: "string", enum: ["done", "failed", "skipped"], description: "Status to mark. Defaults to done." },
+        detail: { type: "string", description: "Short reason or handoff note." },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+      },
+      required: ["contractId"],
+    },
+    handler: async (args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string }) =>
+      markPlanContract(args),
   },
   {
     name: "install",
