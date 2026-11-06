@@ -197,6 +197,7 @@ export const planSchema = {
           properties: {
             status: { type: "integer", description: "The status the URL should answer with." },
             bodyContains: { type: "string", description: "A string the body must contain." },
+            outputContains: { type: "string", description: "A string somewhere in the command's output that means it works (CLI/TUI/GUI)." },
           },
         },
       },

@@ -120,7 +120,7 @@ with `planNumber` to resume after interruptions.
 | `/cubicore:estimate` | What the plan will cost before anything is spent: how many associates, the token and wall ceilings, and who owns what. It is the plan's own budget, not a forecast. |
 | `/cubicore:undo` | Undo the last execution — discard its changes and return the tree to the baseline commit Cubicore recorded. Destroys work, so it says what it will destroy first. |
 | `/cubicore:deploy` | Plan the deployment. Asks about the tier, offers stacks with a recommendation, writes the deploy files, and explains the manual steps. Deploys nothing. |
-| `/cubicore:preview` | Keep the delivered thing running: start/keep a localhost server for web apps, or run the built software. A contract can be correct and still not run. Uses the plan's own `preview` block. |
+| `/cubicore:preview` | Run the delivered thing the way the founder would use it — web app on localhost, CLI verified by its output, TUI/GUI verified by its interface. A contract can be correct and still not run. Uses the plan's own `preview` block. |
 | `/cubicore:status` | Report what the run in flight is doing, and wait for it if it is not finished. |
 
 **Quick command guide:** `plan-demo`/`plan-full` = fresh plan (always writes from scratch; note warns if plan exists); `refine` = edit existing plan (adds/changes without destroying); `execute` = dispatch; `preview` = keep it running; `debug` = review/test/fix; `undo` = discard; `continue` = resume; `estimate` = budget; `deploy` = deploy plan; `refine` = add/change features. Use the right one — `refine` is the mandatory iterative-editing command; it does jobs no other command can do.

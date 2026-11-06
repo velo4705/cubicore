@@ -22,19 +22,19 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Hero: Name + Tagline + CTA (GitHub / Try It)              │
+│  Hero: Name + Tagline + CTA (GitHub / Watch Tutorial)              │
 ├─────────────────────────────────────────────────────────────┤
 │  What It Is (2-3 sentences + diagram)                       │
 ├─────────────────────────────────────────────────────────────┤
 │  Features (3-4 cards: Parallel, Verified, Contract-Driven)  │
 ├─────────────────────────────────────────────────────────────┤
-│  Live Demo / Example (animated terminal or screenshot)      │
+│  Live Demo → tutorial.html (live scripted Cubicore session)      │
 ├─────────────────────────────────────────────────────────────┤
 │  Quick Start (3 commands)                                   │
 ├─────────────────────────────────────────────────────────────┤
-│  How It Works (4 steps: Plan → Execute → Test → Fix)        │
+│  How It Works (5 steps: Plan → Design → Execute → Debug → Deploy)        │
 ├─────────────────────────────────────────────────────────────┤
-│  Architecture (diagram: Plan → Execute → Test → Fix)        │
+│  Architecture (diagram: Plan → Execute → Debug → Deploy)        │
 ├─────────────────────────────────────────────────────────────┤
 │  Commands Reference (table)                                 │
 ├─────────────────────────────────────────────────────────────┤
@@ -55,8 +55,9 @@
 | **Border** | `#2a2a2a` |
 | **Text Primary** | `#e8e8e8` |
 | **Text Muted** | `#888888` |
-| **Accent** | `#00d4aa` (teal) |
-| **Accent Hover** | `#00e8bb` |
+| **Accent** | `#60a5fa` (baby blue) |
+| **Accent Hover** | `#93c5fd` (sky blue) |
+| **Palette Family** | Sky (`#7dd3fc`) → Baby (`#60a5fa`) → Blue (`#3b82f6`) → Dark royal (`#1e3a8a`) |
 | **Border Radius** | `8px` (cards), `4px` (buttons) |
 | **Spacing Scale** | `4px` base (`4, 8, 16, 24, 32, 48, 64`) |
 | **Max Width** | `800px` (content), `1000px` (code blocks) |
@@ -65,7 +66,7 @@
 **Code Blocks**: Dark background (`#0d0d0d`), syntax highlighting (Prism or Shiki), copy button.
 
 **Buttons**:
-- Primary: `background: #00d4aa; color: #0a0a0a; font-weight: 600;`
+- Primary: `background: #60a5fa; color: #0a0a0a; font-weight: 600;`
 - Secondary: `background: transparent; border: 1px solid #2a2a2a; color: #e8e8e8;`
 - Ghost: `background: transparent; color: #888;`
 
@@ -80,8 +81,10 @@
 Cubicore
 A virtual company that turns a prompt into verified, parallel, contract-driven work.
 
-[GitHub] [Try It Live] [Quick Start]
+[GitHub] [Watch the Live Tutorial] [Quick Start]
 ```
+
+The **"Watch the Live Tutorial"** button links to `tutorial.html` — a fully static, scripted demonstration of the full lifecycle (Plan → Design → Execute → Debug → Deploy) that needs no agent and no build step. See the **Live Demo** section below.
 
 ### What It Is
 > **Cubicore** turns a prompt into a plan, splits it into independent contracts, runs them in parallel with worktree isolation, gates every contract with mechanical checks, and iterates until the `preview` block passes, then debugs review/test/fix until the remaining issues disappear.
@@ -97,6 +100,31 @@ A virtual company that turns a prompt into verified, parallel, contract-driven w
 | **Contract-Driven Scope** | Each worker gets its own write scope, read list, and checks. Collisions caught at plan time, not runtime. |
 | **Auto-Debug Loop** | Checks fail → `/cubicore:debug` reviews/tests/fixes → re-tests → loops until the failures disappear. |
 
+### Live Demo (`tutorial.html`)
+
+The tutorial is the strongest answer to "what does Cubicore actually do all session?". It is a **self-contained, scripted live demonstration** in the same style as this landing page — no AI agent, no network calls, no build step.
+
+It shows, with realistic terminal playback and artifact inspection:
+
+1. **Planning** — the planner splits a request into disjoint contracts
+2. **Designing** — one brief per associate, written to `CUBICORE_ASSOCIATES/`
+3. **Executing** — the associates run in parallel and report separately
+4. **Debugging** — a check fails, the repair is applied, the re-check passes
+5. **Deployment** — the app serves HTTP 200 and a deploy handoff is written
+
+**The tutorial must match this page visually and behaviorally:**
+
+- **Same palette** — `#0a0a0a` background, `#111111`/`#1a1a1a` surfaces, `#60a5fa` accent, `#e8e8e8` text, `#2a2a2a` borders
+- **Same motion language** — fade/slide on scroll, `cubic-bezier(.23,1,.32,1)` easing, ~`150–250ms` micro-interactions, `prefers-reduced-motion` respected
+- **Same flat, near-black look** — no gradients, no heavy shadows, system UI + monospace
+- **Linked, not copied** — the landing page links to `tutorial.html`; the tutorial links back to `index.html` (top-left "← Landing")
+
+**Implementation notes for `index.html`:**
+
+- Add a "Live Demo" card between Features and Quick Start: a small faux terminal preview (3–4 lines of scripted output, e.g. `$ cubicore plan-demo "build a habit tracker"` → `kind: 2 associates, fan-out`), with a primary CTA button **Watch the tutorial →** opening `tutorial.html` in the same tab.
+- Hero's **[Watch the Live Tutorial]** button also opens `tutorial.html`.
+- Neither page carries build tooling — `tutorial.html` stands alone and must work when opened directly from `file://`.
+
 ### Quick Start (3 Commands)
 ```bash
 # 1. Install
@@ -109,20 +137,20 @@ cubicore plan "Build a personal expense tracker API with SQLite"
 cubicore execute
 ```
 
-### How It Works (4 Steps)
+### How It Works (5 Steps)
 
 ```mermaid
 graph LR
-  A[Plan] --> B[Execute]
-  B --> C[Preview]
+  A[Plan] --> B[Design]
+  B --> C[Execute]
   C --> D[Debug]
   D -->|fail| D
   D -->|pass| E[Deploy]
 ```
 
 1. **Plan** — `/cubicore:plan-demo`/`plan-full` researches the repo, asks clarifying questions, writes `CUBICORE_PLAN.json` with disjoint contracts, checks, and a `preview` block.
-2. **Execute** — Spawns isolated worktrees per contract, runs them in parallel, gates each with Schema → Verify → Scope.
-3. **Preview** — Starts/keeps the delivered thing running: a localhost server for web apps, or the built software.
+2. **Design** — Cubicore writes one brief per associate into `CUBICORE_ASSOCIATES/`, with own scope, checks and no cross-reads.
+3. **Execute** — Spawns isolated associates in parallel, gates each with Schema → Verify → Scope.
 4. **Debug** — Reviews code and runs all contract checks. Failures → minimal fixes → re-run until green (un-fixable warnings/errors are reported).
 5. **Deploy** — `/cubicore:deploy` plans hosting, writes configs, explains manual steps.
 
@@ -133,7 +161,7 @@ graph LR
 | `cubicore plan "..."` | Research → plan → `CUBICORE_PLAN.json` + `CUBICORE_PLAN.md` |
 | `cubicore execute` | Dispatch contracts in parallel, run gates, aggregate |
 | `cubicore debug` | Review/test/fix the delivered work until issues disappear |
-| `cubicore preview` | Keep the delivered thing running; verify it answers |
+| `cubicore preview` | Run the delivered thing the way the founder would (web/CLI/TUI/GUI); leave it running |
 | `cubicore deploy` | Plan hosting, write configs, explain steps |
 | `cubicore refine "..."` | Modify plan, re-dispatch changed contracts |
 | `cubicore undo` | Revert last execution to baseline |
@@ -152,15 +180,16 @@ License: MIT
 ## Technical Requirements
 
 ### Stack
-- **Framework**: Vanilla HTML/CSS/JS (no framework) — single `index.html`, `style.css`, `app.js`
+- **Framework**: Vanilla HTML/CSS/JS (no framework) — `index.html` (landing) + `tutorial.html` (live demo), sharing `style.css`
 - **Syntax Highlighting**: Prism.js (lightweight) or Shiki via CDN
 - **Icons**: Inline SVG (Lucide or custom)
-- **No build step** — open `index.html` directly
+- **No build step** — open either page directly
 
 ### Files to Create
 ```
 docs/
-├── index.html          # Main page
+├── index.html          # Landing page
+├── tutorial.html       # Live scripted Cubicore demo (already exists)
 ├── style.css           # All styles
 ├── app.js              # Interactions (scroll spy, copy buttons, theme toggle)
 ├── favicon.svg         # Cubicore logo
@@ -177,6 +206,9 @@ docs/
 
 ## Acceptance Criteria
 
+- [ ] Landing page links to `tutorial.html` (hero CTA + Live Demo card) and back, in both pages
+- [ ] `tutorial.html` uses the same palette (`#0a0a0a`, `#60a5fa`), easing, and typography as the landing page
+- [ ] `tutorial.html` runs fully standalone from `file://` with no build step or network
 - [ ] Loads in < 1s on 3G (Lighthouse Performance > 90)
 - [ ] Lighthouse Accessibility > 95
 - [ ] Works without JS (content readable, links work)
@@ -193,11 +225,12 @@ docs/
 ## Deliverables Checklist
 
 - [ ] `docs/index.html` — semantic HTML5, ARIA labels
+- [ ] `docs/tutorial.html` — live scripted demo (already exists; keep it, do not rebuild) — must share palette/typography/easing and link back to `index.html`
 - [ ] `docs/style.css` — all styles, no framework
 - [ ] `docs/app.js` — scroll spy, copy buttons, smooth scroll, theme respect
 - [ ] `docs/assets/diagram.svg` — architecture diagram (inline SVG)
 - [ ] `docs/favicon.svg` — Cubicore logo
-- [ ] `README.md` in repo root links to live site
+- [ ] `README.md` in repo root links to live site and to the tutorial
 
 ---
 
@@ -206,7 +239,9 @@ docs/
 Run this to verify:
 ```bash
 cd docs && npx serve .
-# Open http://localhost:3000 — verify all sections render, no console errors
+# Open http://localhost:3000 — verify landing renders with no console errors
+# Open http://localhost:3000/tutorial.html — verify the scripted demo plays end to end
+# Click "Watch the Live Tutorial" on the landing page, then "← Landing" on the demo, and confirm both links work
 ```
 
 ---

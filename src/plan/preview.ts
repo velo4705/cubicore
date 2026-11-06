@@ -12,18 +12,22 @@
  * assertion on the code can find.
  */
 
-/** How to run the delivered thing, and what "working" looks like. */
+import { existsSync } from "node:fs";
+
+/** How to run the delivered thing, and what "working" looks like — for any platform. */
 export interface PreviewSpec {
   /** The command that starts it. */
   command: string;
-  /** A URL to poll until the thing answers, if it serves anything. */
+  /** A URL to poll until the thing answers, if it serves anything (web apps). */
   url?: string;
   /** How long to wait for readiness before giving up. */
   readyTimeoutMs?: number;
-  /** What the response should look like once it is up. */
+  /** What the response or output should look like once it is up. */
   expect?: {
     status?: number;
     bodyContains?: string;
+    /** A string somewhere in the command's output that means it actually works. */
+    outputContains?: string;
   };
   /** A line in the command's output that means it is ready. */
   readyLine?: string;
@@ -204,6 +208,16 @@ export async function previewCheckOnce(spec: PreviewSpec, cwd: string): Promise<
       };
     }
 
+    if (spec.expect?.outputContains && !output.includes(spec.expect.outputContains)) {
+      return {
+        ok: false,
+        detail: `The command started but its output did not contain ${JSON.stringify(spec.expect.outputContains)}.`,
+        output: output.trim(),
+        elapsedMs: Date.now() - started,
+        reason: "output-mismatch",
+      };
+    }
+
     return {
       ok: true,
       detail: "The command started and reported ready.",
@@ -242,7 +256,10 @@ async function waitForReady(
     if (spec.readyLine && readOutput().includes(spec.readyLine)) {
       return { ok: true };
     }
-    if (!spec.readyLine && !spec.url) {
+    if (spec.expect?.outputContains && readOutput().includes(spec.expect.outputContains)) {
+      return { ok: true };
+    }
+    if (!spec.readyLine && !spec.url && !spec.expect?.outputContains) {
       // Nothing to wait for: a command that starts and stays up is ready.
       await Bun.sleep(250);
       return { ok: true };
@@ -252,7 +269,7 @@ async function waitForReady(
 
   return {
     ok: false,
-    reason: spec.readyLine ? "no-ready-line" : "never-answered",
+    reason: spec.readyLine ? "no-ready-line" : spec.expect?.outputContains ? "no-matching-output" : "never-answered",
   };
 }
 
@@ -285,23 +302,14 @@ export interface PreviewStartOutcome extends PreviewOutcome {
   pid?: number;
 }
 
-/**
- * Start the delivered thing and keep it running.
- *
- * Preview is deliberately one-way for a good reason: the founder opens the app
- * (or runs the built tool) and checks it while it is actually available. A
- * contract can be correct and still not start, and a short-lived check cannot
- * help somebody using the result. On success the process is left running and
- * its pid is recorded in `.cubicore-preview.json`; on failure it is killed.
- */
-export async function previewIt(spec: PreviewSpec, cwd: string): Promise<PreviewStartOutcome> {
+async function runAndVerify(spec: PreviewSpec, cwd: string, command: string): Promise<PreviewStartOutcome> {
   const started = Date.now();
   const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
   let output = "";
   let child: ReturnType<typeof Bun.spawn> | undefined;
 
   try {
-    child = Bun.spawn(["sh", "-c", spec.command], {
+    child = Bun.spawn(["sh", "-c", command], {
       cwd,
       stdout: "pipe",
       stderr: "pipe",
@@ -309,8 +317,7 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
-
-    const pid = child.pid;
+const pid = child.pid;
     if (!pid) {
       return {
         ok: false,
@@ -338,8 +345,29 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
     drain.catch(() => {});
 
     const ready = await waitForReady(spec, timeout, () => output);
+
+    // A command that was "ready" only because there was nothing to wait for may
+    // have already crashed (missing native module, missing display). Do not
+    // report success for a dead process.
+    const strongReady = Boolean(spec.url || spec.readyLine || spec.expect?.outputContains);
+    if (!strongReady) {
+      const early = await Promise.race([
+        child.exited.then((exitCode) => ({ exited: true, exitCode })),
+        Bun.sleep(50).then(() => ({ exited: false, exitCode: null as number | null })),
+      ]);
+      if (early.exited) {
+        return {
+          ok: false,
+          detail: `The command exited during startup (exit code ${early.exitCode}).`,
+          output: output.trim(),
+          elapsedMs: Date.now() - started,
+          reason: "exited-early",
+        };
+      }
+    }
+
     if (!ready.ok) {
-      killProcessGroup(pid);
+      if (child?.exitCode === null) killProcessGroup(pid);
       return {
         ok: false,
         detail: `The command did not become ready within ${timeout}ms.`,
@@ -402,6 +430,17 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
       };
     }
 
+    if (spec.expect?.outputContains && !output.includes(spec.expect.outputContains)) {
+      killProcessGroup(pid);
+      return {
+        ok: false,
+        detail: `The command started but its output did not contain ${JSON.stringify(spec.expect.outputContains)}.`,
+        output: output.trim(),
+        elapsedMs: Date.now() - started,
+        reason: "output-mismatch",
+      };
+    }
+
     await writePreviewState(cwd, { pid, url: "", startedAt: Date.now() });
     return {
       ok: true,
@@ -423,6 +462,89 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
   }
 }
 
+
+/** True when the output tells us this is an environment problem, not an app defect. */
+function isEnvironmentBlocker(output: string): boolean {
+  return /ModuleNotFoundError|_tkinter|TclError|cannot open display|Could not open display|$DISPLAY|DISPLAY is not set|No protocol specified|xhost:|unable to initialize GTK/i.test(output);
+}
+
+/** True when DISPLAY points at an X socket this process can reach. */
+function displayReachable(display?: string): boolean {
+  if (!display) return false;
+  const m = /^:(\d+)$/.exec(display.trim());
+  if (!m) return false;
+  try {
+    return existsSync(`/tmp/.X11-unix/X${m[1]}`);
+  } catch {
+    return false;
+  }
+}
+
+function commandExistsSync(name: string): boolean {
+  try {
+    const { stdout, exitCode } = Bun.spawnSync(["sh", "-c", `command -v ${name} >/dev/null 2>&1; printf %s "$?"`], { stdout: "pipe", stderr: "pipe", env: nodePathEnv() });
+    return stdout.toString().trim() === "0";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Start the delivered thing and keep it running.
+ *
+ * Preview goes through the founder's own way to run the app first. When the
+ * host cannot deliver it that way, it tries environment fallbacks before
+ * giving up: if a real X display is reachable, retry under a Nix python that
+ * includes tkinter (so the window appears on the founder's desktop); else
+ * retry under xvfb-run (and, for Python-with-missing-tkinter hosts, under a
+ * Nix expression with python3+tkinter and xvfb-run). so a headless box can
+ * verify a GUI and a desktop box lands it on screen.
+ */
+export async function previewIt(spec: PreviewSpec, cwd: string): Promise<PreviewStartOutcome> {
+  const primary = await runAndVerify(spec, cwd, spec.command);
+  if (primary.ok) return primary;
+  if (!isEnvironmentBlocker(primary.output)) return primary;
+
+  // The desktop works and the app needs a tk that the system python lacks:
+  // prefer the real display over a private Xvfb when one is reachable.
+  if (displayReachable(process.env.DISPLAY) && commandExistsSync("nix") && /_tkinter|No module named/i.test(primary.output)) {
+    const retry = await runAndVerify(
+      spec,
+      cwd,
+      `nix --extra-experimental-features 'nix-command flakes' shell --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; (python3.withPackages (ps: [ ps.tkinter ]))' -c ${spec.command}`,
+    );
+    if (retry.ok) {
+      retry.detail = `Started via Nix (python3+tkinter) on the real display ${process.env.DISPLAY}: ${retry.detail}`;
+      return retry;
+    }
+    return retry;
+  }
+
+  if (!displayReachable(process.env.DISPLAY) && commandExistsSync("xvfb-run")) {
+    const retry = await runAndVerify(spec, cwd, `xvfb-run -a ${spec.command}`);
+    if (retry.ok) {
+      retry.detail = `Started under xvfb-run (host has no display): ${retry.detail}`;
+      return retry;
+    }
+  }
+
+  if (/^(python3?|python)\b/.test(spec.command) && commandExistsSync("nix") && /_tkinter|No module named/i.test(primary.output)) {
+    const retry = await runAndVerify(
+      spec,
+      cwd,
+      `nix --extra-experimental-features 'nix-command flakes' shell --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; [ (python3.withPackages (ps: [ ps.tkinter ])) xorgserver xvfb-run ]' -c xvfb-run -a ${spec.command}`,
+    );
+    if (retry.ok) {
+      retry.detail = `Started via Nix with python3+tkinter under xvfb-run: ${retry.detail}`;
+      return retry;
+    }
+    retry.detail = retry.detail + `\nHost is missing tkinter for its system Python. Install it (e.g. python3-tk) or keep using the Nix expression shown in the output.`;
+    return retry;
+  }
+
+  primary.detail = `${primary.detail}\nThis host is missing what the command needs (missing native module or display server). Install it, or run the command under an environment that provides it.`;
+  return primary;
+}
 async function writePreviewState(
   cwd: string,
   state: { pid: number; url: string; startedAt: number },

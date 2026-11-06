@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Type commands in a scripted Cubicore session and watch the factory — plan, design, execute, debug and deploy — happen behind the scenes.">
+<title>Cubicore — Interactive Factory Tutorial</title>
+<style>
+:root{
+  --bg:#0a0a0a;
+  --panel:#111111;
+  --panel-2:#161616;
+  --panel-3:#1a1a1a;
+  --line:#2a2a2a;
+  --line-strong:#333333;
+  --text:#e8e8e8;
+  --muted:#888888;
+  --dim:#5c5c5c;
+  --accent:#60a5fa;
+  --accent-soft:#16233c;
+  --green:#34d399;
+  --red:#fb7185;
+  --yellow:#f4d47a;
+  --blue:#7dd3fc;
+  --ease:cubic-bezier(.23,1,.32,1);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-family:var(--sans)
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-width:320px;height:100%;overflow:hidden;background:var(--bg);color:var(--text)}
+button,input{font:inherit}
+button{cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+input:focus-visible{outline:none}
+::selection{background:var(--accent);color:#06110e}
+.app{height:100%;display:flex;flex-direction:column}
+.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 18px;border-bottom:1px solid var(--line);background:#0d0d0d;flex:none}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brandMark{width:30px;height:30px;display:grid;place-items:center;background:var(--accent);border-radius:7px;color:#06110e;font-weight:900;font-size:17px}
+.brandName{font-size:15px;font-weight:750;letter-spacing:-.02em;white-space:nowrap}.brandName span{color:var(--accent)}
+.badge{display:flex;align-items:center;gap:7px;border:1px solid var(--line-strong);background:var(--panel-2);border-radius:999px;padding:4px 11px;color:var(--muted);font-size:12px;white-space:nowrap}
+.badge i{width:6px;height:6px;border-radius:50%;background:var(--yellow)}
+.toplinks{display:flex;gap:18px;align-items:center;color:var(--muted);font-size:13px;white-space:nowrap}
+.toplinks a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
+.toplinks a:hover{color:var(--text);border-color:var(--accent)}
+.workspace{flex:1;min-height:0;display:grid;grid-template-columns:270px minmax(430px,1fr) 390px}
+.rail{padding:22px 16px 14px;border-right:1px solid var(--line);background:#0d0d0d;display:flex;flex-direction:column;gap:5px;overflow:auto}
+.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:10px;color:var(--muted);font-weight:800}
+.rail h1{margin:7px 0 6px;font-size:22px;line-height:1.14;letter-spacing:-.04em}
+.railLead{margin:0 0 14px;color:var(--muted);font-size:12px;line-height:1.5}
+.steps{display:flex;flex-direction:column;gap:4px;margin:0 -8px}
+.step{padding:8px 9px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:center;text-align:left;transition:background .18s var(--ease),border-color .18s var(--ease),color .18s var(--ease)}
+.step:hover{background:var(--panel-2);color:var(--text)}
+.stepNum{width:28px;height:28px;border-radius:7px;border:1px solid var(--line-strong);display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.step strong{display:block;font-size:12px;color:inherit;letter-spacing:-.01em}
+.step small{display:block;margin-top:2px;font-size:10px;color:var(--dim)}
+.stepState{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.step.active{background:var(--accent-soft);border-color:#1e3a5f;color:var(--text)}
+.step.active .stepNum{background:var(--accent);border-color:var(--accent);color:#06110e;font-weight:900}
+.step.active .stepState{color:var(--accent)}
+.step.done .stepNum{border-color:#1e3a5f;color:var(--accent)}
+.step.done .stepState{color:var(--accent)}
+.step.locked{cursor:default}
+.railFoot{margin-top:auto;padding-top:15px;border-top:1px solid var(--line);color:var(--dim);font-size:11px;line-height:1.5}
+.railFoot b{color:var(--text)}
+.stage{min-width:0;padding:15px 15px 11px;display:flex;flex-direction:column;background:#0d0d0d;overflow:hidden}
+.hint{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--accent-soft);border-radius:9px;padding:9px 12px;color:#c9f5e6;font-size:12px;font-weight:600}
+.hint b{color:var(--accent)}
+.terminal{flex:1;min-height:220px;margin-top:10px;border:1px solid var(--line);background:#050807;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 18px 55px rgba(0,0,0,.28)}
+.termBar{height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#111111;border-bottom:1px solid #222222;color:var(--muted);font-size:11px;flex:none}
+.windowDots{display:flex;gap:6px}.windowDots span{width:10px;height:10px;border-radius:50%}.windowDots .red{background:#fb7185}.windowDots .yellow{background:#f4d47a}.windowDots .green{background:#34d399}
+.termTitle{font-family:var(--mono);display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.termTitle i{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.output{flex:1;min-height:0;overflow:auto;padding:14px 15px 12px;font-family:var(--mono);font-size:12px;line-height:1.62;white-space:pre-wrap;word-break:break-word;color:#b7c7bd;scroll-behavior:smooth;user-select:text}
+.output::-webkit-scrollbar{width:10px}.output::-webkit-scrollbar-thumb{background:#24332d;border-radius:8px}
+.line{display:block;opacity:0;transform:translateY(6px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.line.show{opacity:1;transform:none}
+.command{color:#eaf6ee}.command::before{content:'$ ';color:var(--accent)}
+.muted{color:#71837a}.good{color:var(--green)}.warn{color:var(--yellow)}.bad{color:var(--red)}.agent{color:var(--blue)}.file{color:var(--accent)}.bold{color:#effaf2;font-weight:700}
+.diffDel{color:#fecdd3;background:#3a1820;display:inline-block}.diffAdd{color:#bbf7d0;background:#123a28;display:inline-block}
+.gate{display:inline-block;border:1px solid #1e3a5f;background:#121f36;color:#93c5fd;border-radius:5px;padding:0 4px}
+.ctxwall{display:block;margin:8px 0;border:1px solid var(--line-strong);border-radius:10px;background:#080d0b;overflow:hidden}
+.ctxwall-head{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#101713;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10px;color:var(--yellow);letter-spacing:.06em}
+.ctxwall-head b{color:var(--yellow);font-weight:800}
+.ctxwall-head span{margin-left:auto;color:var(--dim);letter-spacing:0;text-transform:none}
+.ctxwall-body{padding:8px 12px 10px;font-family:var(--mono);font-size:10.5px;line-height:1.62;color:#8fa8a0;white-space:pre-wrap}
+.ctxwall-body .k{color:var(--accent)}
+.ctxwall-body .b{color:#e8e8e8;font-weight:700}
+.ctxwall-body .c{color:#6f8177}
+.arrow{color:var(--accent);font-weight:700}
+.arrow-dim{color:var(--dim)}
+.promptRow{flex:none;display:flex;align-items:center;gap:8px;border-top:1px solid #1d2823;background:#0b100f;padding:8px 12px;overflow:hidden}
+.promptRow small{font-family:var(--mono);color:var(--accent);font-size:11px;white-space:nowrap}
+.typedLine{flex:1;min-width:0;font-family:var(--mono);font-size:12px;color:#effaf2;padding:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.caret{display:inline-block;width:8px;height:13px;background:#effaf2;vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.controls{display:flex;align-items:center;gap:9px;margin-top:10px;flex:none}
+.primaryBtn,.ghostBtn,.iconBtn{border:0;border-radius:7px;font-weight:700;font-size:12px;transition:background .14s var(--ease),color .14s var(--ease),border-color .14s var(--ease),transform .14s var(--ease)}
+.primaryBtn{background:var(--accent);color:#06110e;padding:10px 15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.17)}
+.primaryBtn:hover{background:#27e2b1}.primaryBtn:active{transform:translateY(1px)}
+.ghostBtn{padding:9px 13px;color:var(--text);background:var(--panel-2);border:1px solid var(--line-strong)}.ghostBtn:hover{border-color:#3a4a42;background:var(--panel-3)}
+.iconBtn{width:36px;height:36px;color:var(--muted);background:var(--panel-2);border:1px solid var(--line)}.iconBtn:hover{color:var(--text);border-color:var(--line-strong)}
+.controlNote{margin-left:auto;color:var(--dim);font-size:11px;white-space:nowrap}
+.inspector{min-width:0;border-left:1px solid var(--line);background:#0d0d0d;display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;gap:3px;padding:13px 14px 0;border-bottom:1px solid var(--line);flex:none}
+.tab{border:0;background:transparent;color:var(--dim);border-radius:7px 7px 0 0;padding:9px 10px;font-size:11px;font-weight:700;border-bottom:2px solid transparent}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);background:#101b17}
+.tab:hover{color:var(--text)}
+.panel{display:none;flex:1;min-height:0;overflow:auto;padding:15px}.panel.active{display:block}
+.artifactTitle{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;color:var(--muted);font-size:11px}.artifactTitle b{color:var(--text)}
+.artifactTitle span{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.codeBox{font-family:var(--mono);font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-word;background:#050807;border:1px solid var(--line);border-radius:9px;padding:12px;color:#a8bcae;margin:0}
+.codeBox .k{color:#f4d47a}.codeBox .s{color:#93c5fd}.codeBox .n{color:#7dd3fc}.codeBox .c{color:#71837a}.codeBox .ok{color:#93c5fd}
+.agentGrid{display:flex;flex-direction:column;gap:7px;margin-top:10px}.agentCard{border:1px solid var(--line);background:var(--panel-2);border-radius:8px;padding:9px 10px}
+.agentCard b{font-size:11px;color:#e0eaff;font-family:var(--mono)}
+.agentCard header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pill{border-radius:999px;padding:3px 7px;font-size:9px;font-weight:800;letter-spacing:.04em;background:#16233c;color:#93c5fd;border:1px solid #274060}
+.agentCard p{font-size:10.5px;line-height:1.4;margin:6px 0;color:var(--muted)}
+.scopeTags{display:flex;gap:5px;flex-wrap:wrap}.scope{font-size:9px;color:#b5c9bd;background:#1f2d27;border-radius:4px;padding:3px 5px;font-family:var(--mono)}
+.whyCards{display:flex;flex-direction:column;gap:9px}.whyCard{display:grid;grid-template-columns:38px 1fr;gap:10px;align-items:start;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}.whyIcon{width:38px;height:38px;border-radius:8px;background:var(--accent-soft);display:grid;place-items:center;color:var(--accent);font-family:var(--mono);font-size:13px}.whyCard h3{font-size:12px;margin:0 0 3px}.whyCard p{font-size:11px;line-height:1.5;margin:0;color:var(--muted)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}.metric{border:1px solid var(--line);border-radius:8px;padding:9px 8px;text-align:center;background:var(--panel-2)}.metric strong{display:block;font-family:var(--mono);font-size:18px;color:var(--accent);letter-spacing:-.05em}.metric small{display:block;font-size:9px;color:var(--muted);margin-top:3px}
+.commands{display:flex;flex-direction:column;gap:8px}.cmd{display:grid;grid-template-columns:140px 1fr;gap:8px;border-bottom:1px solid var(--line);padding:0 2px 8px}.cmd:last-child{border-bottom:0}.cmd code{font-family:var(--mono);color:var(--accent);font-size:11px}.cmd p{margin:0;font-size:10.5px;color:var(--muted);line-height:1.45}.guideNote{font-size:11px;color:#c5d2c9;background:#121f36;border:1px solid #1e3a5f;border-radius:8px;padding:9px;line-height:1.5;margin:10px 0}.guideNote b{color:#dffcec}
+.statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 18px;border-top:1px solid var(--line);background:#0d0d0d;color:var(--dim);font-family:var(--mono);font-size:10px}
+.statusbar div{display:flex;gap:14px;align-items:center;white-space:nowrap}.statusDot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+@media (max-width:1100px){.workspace{grid-template-columns:225px minmax(420px,1fr) 330px}.toplinks{display:none}.rail{padding:16px 12px}.step{grid-template-columns:25px 1fr}.stepState{display:none}.rail h1{font-size:20px}}
+@media (max-width:850px){html,body{height:auto;overflow:auto}.app{height:auto}.workspace{display:flex;flex-direction:column}.rail{order:0;max-height:none;border-right:0;border-bottom:1px solid var(--line)}.railLead,.railFoot{display:none}.steps{flex-direction:row;overflow:auto}.step{min-width:130px;grid-template-columns:24px 1fr;margin:0}.step small,.stepNum{display:none}.stage{min-height:520px}.inspector{min-height:420px;border-left:0;border-top:1px solid var(--line)}.statusbar{display:none}.badge{display:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}.line{transform:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brandMark" aria-hidden="true">C</div><div class="brandName">Cubicore<span>.</span></div><span class="badge"><i></i>Scripted session — point &amp; click playback</span></div>
+    <nav class="toplinks" aria-label="Cubicore navigation"><a href="index.html">← Landing</a><a href="#panel-why">Why Cubicore</a><a href="#panel-commands">Commands</a></nav>
+  </header>
+
+  <main class="workspace">
+    <aside class="rail" aria-labelledby="tutorial-title">
+      <span class="eyebrow">The Cubicore tutorial</span>
+      <h1 id="tutorial-title">Click. Then watch it build.</h1>
+      <p class="railLead">Each slash command inflates into a huge injected context wall, then the tools fire — <b>prepare</b> · <b>research</b> · <b>plan</b> · <b>dispatch_blueprint</b> · <b>task</b> · <b>debug</b> · <b>preview</b>. Click and watch it work.</p>
+      <div id="steps" class="steps" aria-label="Tutorial phases"></div>
+      <div class="railFoot"><b>Not an AI model.</b><br>You are driving a canned recording so you can see every moving part without waiting for a build.</div>
+    </aside>
+
+    <section class="stage" aria-label="Interactive simulated Cubicore session">
+      <div class="hint"><span aria-hidden="true">🧱</span><span><b id="hintStep">Step 1 · Planning</b> — every slash command opens with a giant injected context wall, then the tools fire in order.</span></div>
+      <div class="terminal" aria-label="Simulated terminal">
+        <div class="termBar"><div class="windowDots" aria-hidden="true"><span class="red"></span><span class="yellow"></span><span class="green"></span></div><div class="termTitle"><i></i>placeholder-agent · tutorial-session</div><div class="termClock" id="termClock">AWAITING INPUT</div></div>
+        <div id="output" class="output" aria-live="polite" aria-label="Scripted terminal output"></div>
+        <div class="promptRow" aria-live="polite" aria-label="Auto-typed Cubicore prompt"><small>founder@cubicore:~$</small><span class="typedLine" id="typedText"></span><span class="caret" aria-hidden="true"></span></div>
+      </div>
+      <div class="controls"><button id="runAllBtn" class="ghostBtn">Run everything →</button><button id="nextBtn" class="primaryBtn">Run step 1 · Planning →</button><button id="replayBtn" class="iconBtn" aria-label="Restart tutorial" title="Restart">↺</button><span class="controlNote">Point &amp; click · commands auto-type</span></div>
+    </section>
+
+    <aside class="inspector" aria-label="Artifact inspector">
+      <div class="tabs" role="tablist" aria-label="Tutorial details" id="tabRow"></div>
+      <div class="panel active" id="panel-artifact" role="tabpanel" aria-labelledby="tab-artifact"><div class="artifactTitle"><b id="artifactLabel">CUBICORE_PLAN.md</b><span id="artifactHint">step 1 of 5</span></div><pre id="artifact" class="codeBox"></pre><div id="agents" class="agentGrid"></div></div>
+      <div class="panel" id="panel-why" role="tabpanel" aria-labelledby="tab-why"><div class="artifactTitle"><b>What this is showing</b><span>Zero model calls</span></div><div class="metrics"><div class="metric"><strong>5</strong><small>phases, same shape</small></div><div class="metric"><strong>2</strong><small>associates dispatched</small></div><div class="metric"><strong>14</strong><small>blocking checks</small></div></div><div class="whyCards"><div class="whyCard"><div class="whyIcon">01</div><div><h3>Behind the scenes, visible</h3><p>Locks, worktrees, checks and gate verdicts are printed, not hidden. Real Cubicore logs this too — you are seeing the equivalent, playable.</p></div></div><div class="whyCard"><div class="whyIcon">02</div><div><h3>Factories must earn parallel</h3><p>Cubicore decides how many associates to spawn and why. A coupled task would fall back to one worker — this demo shows the fan-out case.</p></div></div><div class="whyCard"><div class="whyIcon">03</div><div><h3>Checks are the contract</h3><p>Each associate only finishes when its blocking checks pass. You can watch a check fail and the repair land, exactly as a real run behaves.</p></div></div><div class="whyCard"><div class="whyIcon">04</div><div><h3>The plan survives interruption</h3><p>Progress is written to <code>.cubicore-progress.json</code>, so <code>/cubicore:continue</code> never re-does finished work.</p></div></div></div></div>
+      <div class="panel" id="panel-commands" role="tabpanel" aria-labelledby="tab-commands"><div class="artifactTitle"><b>The real commands</b><span>Not fiction</span></div><div class="guideNote"><b>This runs inside your coding agent.</b><br>Cubicore is an MCP — it plans, briefs, gates and records. The host dispatches the sub-agents; this tutorial shows what the host sees and what actually happens.</div><div class="commands"><div class="cmd"><code>/cubicore:plan-demo</code><p>Decompose the request into disjoint contracts with checks, before any money is spent.</p></div><div class="cmd"><code>/cubicore:execute</code><p>Dispatch all associates in parallel; collect artifacts; run an integration pass.</p></div><div class="cmd"><code>/cubicore:debug</code><p>Find broken code, loose imports, dead state; fix and re-check until green.</p></div><div class="cmd"><code>/cubicore:preview</code><p>Serve the delivered app on localhost and leave it running to be opened.</p></div><div class="cmd"><code>/cubicore:continue</code><p>After any interruption: reconcile disk checks, resume only unfinished contracts.</p></div><div class="cmd"><code>/cubicore:refine</code><p>Add or change one feature; re-run only the affected contracts.</p></div></div></div>
+    </aside>
+  </main>
+
+  <footer class="statusbar"><div><span class="statusDot"></span><span id="statusText">READY — CLICK TO RUN THE PIPELINE</span></div><div><span>5 STEPS</span><span id="elapsed">00:00</span><span>NO NETWORK CALLS</span></div></footer>
+</div>
+
+<script>
+const phases = [
+  { id:'plan', number:'01', name:'Planning', artifact:'CUBICORE_PLAN.json', hint:'step 1 of 5 · /cubicore:plan-full — the founder types only this', title:'Planning', artifactHint:'step 1 of 5 · plan-full / plan-demo',
+    content:`<span class="k">"topology"</span>: <span class="s">"fan-out"</span>,\n<span class="k">"contracts"</span>: [\n  {\n    <span class="k">"id"</span>: <span class="s">"scaffold"</span>,\n    <span class="k">"writes"</span>: [<span class="s">"package.json"</span>, <span class="s">"vite.config.ts"</span>]\n  },\n  {\n    <span class="k">"id"</span>: <span class="s">"habit-tracker-app"</span>,\n    <span class="k">"writes"</span>: [<span class="s">"src/App.tsx"</span>, <span class="s">"src/lib/*"</span>, <span class="s">"src/components/*"</span>]\n  }\n]\n\n<span class="c">// nothing dispatched until the founder approves · or use /cubicore:plan-demo for an MVP</span>` },
+  { id:'execute', number:'02', name:'Execute', artifact:'Live agent reports', hint:'step 2 of 5 · /cubicore:execute', title:'Execute', artifactHint:'step 2 of 5',
+    content:`<span class="k">scaffold</span>       → <span class="ok">DONE</span>\n<span class="k">habit-tracker-app</span> → <span class="ok">DONE</span>\n\nscope gate  <span class="ok">pass</span>  (no overlapping writes)\nchecks    <span class="ok">14/14</span>\nintegration npm run build  <span class="ok">exit 0</span>\nprogress → <span class="s">.cubicore-progress.json</span>` },
+  { id:'debug', number:'03', name:'Debugging', artifact:'CUBICORE_DEBUG.md', hint:'step 3 of 5 · /cubicore:debug', title:'Debugging', artifactHint:'step 3 of 5',
+    content:`<span class="bad">tsc failed</span>  src/App.tsx:84\nTS6133: <span class="bad">selectedMonth</span> is declared but never used.\n\n<span class="c">// repair</span>\n<span class="diffDel">- const [selectedMonth, setSelectedMonth] = useState(…)</span>\n\n<span class="good">tsc --noEmit</span>     <span class="ok">pass</span>\n<span class="good">npm run build</span>  <span class="ok">exit 0</span>\n<span class="ok">0 blocking</span> · 1 advisory judgement` },
+  { id:'preview', number:'04', name:'Preview', artifact:'Live app on :4173', hint:'step 4 of 5 · /cubicore:preview', title:'Preview', artifactHint:'step 4 of 5',
+    content:`<span class="k">preview</span>  http://127.0.0.1:4173  <span class="ok">200</span>\n<span class="k">body</span>     Habit Tracker\n<span class="k">process</span>  started · still running · PID 4271\n\n<span class="c">// left running, founder can open the browser and click around</span>` },
+  { id:'deploy', number:'05', name:'Deployment', artifact:'DEPLOY.md', hint:'step 5 of 5 · /cubicore:deploy', title:'Deployment', artifactHint:'step 5 of 5',
+    content:`<span class="k">tier</span>    free\n<span class="k">stack</span>   static host · npx serve dist\n<span class="k">build</span>   npm run build → dist/\n<span class="k">deploy</span>  DEPLOY.md · commands + manual steps\n\nno server, no secrets, no runtime env` }
+];
+
+const scripts = {
+  plan: [
+    ['command','/cubicore:plan-full "build a habit tracker"'],
+    ['ctxwall', '<div class="ctxwall-head"><b>▊ CONTEXT WALL</b> /cubicore:plan-full · injected by Cubicore MCP <span>94 lines — read once, used for every tool call</span></div><div class="ctxwall-body">You are asked to plan a project with Cubicore. Work in this order:\n\n<b>0. Prepare.</b> Call the <span class="k">prepare</span> tool. If the project is not a git repository it initialises one and records a baseline. If it already is one, the tool leaves it alone.\n\n<b>1. Decide scope.</b> This is a full product from scratch. Build exactly what the founder requested… prefer fan-out…\n\n<b>2. Write the plan.</b> Produce the plan JSON and pass it to the <span class="k">plan</span> tool.\n\nEvery contract must have exactly: <span class="k">id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget</span>.\n\n<b>User request:</b> build a habit tracker — React, localStorage, streaks, heatmap.</div>'],
+    ['arrow-dim','→ Shell: git init · first commit pending'],
+    ['arrow-dim','→ tool: prepare()'],
+    ['arrow-dim','   initialised git repository · baseline 51f9a2c'],
+    ['arrow-dim','→ tool: research(directory)'],
+    ['arrow-dim','   0 modules · empty repository · skipping deep survey'],
+    ['arrow-dim','→ tool: plan(json #1)'],
+    ['arrow-dim','   accepted · 2 contracts · fan-out · 14 checks · topology valid'],
+    ['file','→ CUBICORE_PLAN.json · CUBICORE_PLAN.md · CUBICORE_CONTEXT.md written'],
+    ['muted','nothing dispatched · waiting for approval · or try /cubicore:plan-demo for an MVP'],
+  ],
+  execute: [
+    ['command','/cubicore:execute'],
+    ['ctxwall', '<div class="ctxwall-head"><b>▊ CONTEXT WALL</b> /cubicore:execute · injected by Cubicore MCP <span>61 lines — read once, used for every tool call</span></div><div class="ctxwall-body">Read CUBICORE_PLAN.json, then dispatch it.\n\n<b>1.</b> Call <span class="k">dispatch_blueprint</span> with the project kind.\n\n<b>2.</b> Dispatch <b>ALL</b> associates to the <span class="k">cubicore-associate</span> sub-agent, in parallel, at the same time. One brief each. Do not dispatch them one at a time.\n\n<b>3.</b> Collect every report separately. Never merge them.\n\nWhen they return, run every blocking check from CUBICORE_PLAN.json yourself and record the results with the <span class="k">debug</span> tool.</div>'],
+    ['arrow-dim','→ tool: dispatch_blueprint(projectKind = "web app")'],
+    ['arrow-dim','→ Shell: ls CUBICORE_ASSOCIATES/'],
+    ['file','   README.md  00-scaffold.md  01-habit-tracker-app.md'],
+    ['arrow-dim','→ Shell: cat CUBICORE_ASSOCIATES/00-scaffold.md'],
+    ['agent','owner: scaffold · writes package.json, vite.config.ts, index.html, src/main.tsx'],
+    ['arrow-dim','→ Shell: cd wt-a && npm install'],
+    ['arrow-dim','→ Shell: cd wt-a && npm run check --scaffold'],
+    ['agent','scaffold    → 5/5 blocking checks pass → plan_mark done'],
+    ['arrow-dim','→ Shell: cd wt-b && npm run check --app'],
+    ['agent','app         → 9/9 blocking checks pass → plan_mark done'],
+    ['gate','scope gate  → no file owned by two contracts'],
+    ['arrow-dim','→ Shell: npm run build  → exit 0 · dist/ produced'],
+    ['arrow-dim','→ host: task(cubicore-associate, brief=00-scaffold.md) done'],
+    ['arrow-dim','→ host: task(cubicore-associate, brief=01-habit-tracker-app.md) done'],
+    ['good','run verdict: 2 passed · 0 failed · 0 deferred · 1 gate passed'],
+  ],
+  debug: [
+    ['command','/cubicore:debug'],
+    ['ctxwall', '<div class="ctxwall-head"><b>▊ CONTEXT WALL</b> /cubicore:debug · injected by Cubicore MCP <span>27 lines — read once, used for every tool call</span></div><div class="ctxwall-body">Run the <span class="k">debug</span> tool over the work that was just delivered.\n\nFirst, execute the blocking checks from every contract yourself, then open the app in a real browser and click every interactive element once each.\n\nRead the browser\u2019s console. Any console error or failed network request is a blocking “error” finding.\n\nRepeat until the console is clean.</div>'],
+    ['arrow-dim','→ Shell: npx tsc --noEmit  → pass'],
+    ['arrow-dim','→ Shell: npm run build     → exit 0 · dist/'],
+    ['arrow-dim','→ Playwright: http://127.0.0.1:4173 — clicking “+” · “✓” · “Filter” · “Delete”'],
+    ['bad','   white screen · nothing clicked · page visible but dead'],
+    ['bad','   console error: “Cannot read properties of undefined (reading \u0027map\u0027)” at src/App.tsx:84'],
+    ['file','   repair applied — state initialised before first render'],
+    ['arrow-dim','→ Playwright: reload → clicking every element again'],
+    ['good','   + works · ✓ toggles · Filter filters · Delete removes · console clean'],
+    ['arrow-dim','→ tool: debug(error · src/App.tsx:84 · state undefined on first paint)'],
+    ['good','CUBICORE_DEBUG.md · 1 blocking · 1 advisory'],
+  ],
+  deploy: [
+    ['command','/cubicore:deploy'],
+    ['ctxwall', '<div class="ctxwall-head"><b>▊ CONTEXT WALL</b> /cubicore:deploy · injected by Cubicore MCP <span>23 lines — read once, used for every tool call</span></div><div class="ctxwall-body">Plan how to deploy this project. You ask; the founder answers. Do not answer your own questions.\n\n<b>1. What tier?</b> A deployment tier question has been sent to the founder as a form. Wait for them to answer it.\n\n<b>2.</b> Once the founder picks a tier, call <span class="k">deploy_stack</span> with the tier — a second MCQ will appear with real stacks: cost, tradeoffs, one marked as my recommendation. Wait for the answer.</div>'],
+    ['arrow-dim','→ form: deployment tier → free (founder picks)'],
+    ['arrow-dim','→ tool: deploy_stack(tier="free")'],
+    ['arrow-dim','→ form: deployment stack → Static host (recommended) · $0 · zero-config'],
+    ['arrow-dim','→ Shell: npm run build  → exit 0 · dist/ produced'],
+    ['arrow-dim','→ Shell: npm run preview → 200 · <title>Habit Tracker</title>'],
+    ['file','→ DEPLOY.md · build → dist · static host · npx serve dist · manual steps'],
+    ['good','tutorial complete · plan-full → execute → debug → preview → deploy'],
+  ],
+};
+
+const tabs = [{id:'artifact', label:'Artifacts'},{id:'why', label:'Why it wins'},{id:'commands', label:'Real commands'}];
+const stepsEl = document.getElementById('steps');
+const output = document.getElementById('output');
+const artifact = document.getElementById('artifact');
+const agentsEl = document.getElementById('agents');
+const artifactLabel = document.getElementById('artifactLabel');
+const artifactHint = document.getElementById('artifactHint');
+const hintStep = document.getElementById('hintStep');
+const typedEl = document.getElementById('typedText');
+const runAllBtn = document.getElementById('runAllBtn');
+const nextBtn = document.getElementById('nextBtn');
+const replayBtn = document.getElementById('replayBtn');
+const elapsedEl = document.getElementById('elapsed');
+const statusText = document.getElementById('statusText');
+const termClock = document.getElementById('termClock');
+const tabRow = document.getElementById('tabRow');
+let phaseIndex = 0, playing = false, lockInput = true, elapsedTimer = null, elapsed = 0, started = false;
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BASE_DELAY = 780; // 3× the previous 260ms
+
+phases.forEach((p,i) => {
+  const button = document.createElement('button');
+  button.className = 'step';
+  button.dataset.step = p.id;
+  button.innerHTML = `<span class="stepNum">${p.number}</span><span><strong>${p.name}</strong><small>${i === 0 ? 'Shell · prepare · research · plan' : i === 1 ? 'dispatch_blueprint · task × 2' : i === 2 ? 'browse · repair · tool: debug' : i === 3 ? 'tool: preview · curl' : i === 4 ? 'tool: deploy · dist/' : ''}</small></span><span class="stepState">${i === 0 ? 'NOW' : 'QUEUED'}</span>`;
+  button.addEventListener('click', () => { if (!playing) jumpTo(i); });
+  stepsEl.appendChild(button);
+});
+
+tabs.forEach((tab,i) => {
+  const btn = document.createElement('button');
+  btn.className = `tab${i === 0 ? ' active' : ''}`;
+  btn.id = `tab-${tab.id}`;
+  btn.setAttribute('role','tab');
+  btn.setAttribute('aria-controls',`panel-${tab.id}`);
+  btn.textContent = tab.label;
+  btn.addEventListener('click', () => activateTab(tab.id));
+  tabRow.appendChild(btn);
+});
+
+document.querySelectorAll('.toplinks a[href^="#panel-"]').forEach(a => {
+  a.addEventListener('click', () => activateTab(a.getAttribute('href').replace('#panel-','')));
+});
+
+function activateTab(id){
+  document.querySelectorAll('.tab').forEach(t => { const active = t.id === `tab-${id}`; t.classList.toggle('active', active); t.setAttribute('aria-selected', String(active)); });
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${id}`));
+}
+
+function escapeHtml(text){ return text.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function writeLine(kind, text, delay = 0){
+  const div = document.createElement(kind === 'ctxwall' ? 'div' : 'span');
+  if (kind === 'ctxwall') { div.className = 'line show ctxwall'; div.innerHTML = text; output.appendChild(div); output.scrollTop = output.scrollHeight; return; }
+  div.className = `line ${kind === 'command' ? 'command' : kind}`;
+  div.innerHTML = escapeHtml(text);
+  output.appendChild(div);
+  requestAnimationFrame(() => requestAnimationFrame(() => div.classList.add('show')));
+  output.scrollTop = output.scrollHeight;
+}
+function sleep(ms){ return new Promise(r => window.setTimeout(r, ms)); }
+async function autoType(text){
+  if (reduceMotion) { typedEl.textContent = text; return; }
+  typedEl.textContent = '';
+  for (const ch of text) { typedEl.textContent += ch; await sleep(16 + Math.random() * 26); }
+  await sleep(240);
+}
+function writeLines(list){
+  return new Promise((resolve) => {
+    lockInput = true;
+    let i = 0;
+    const step = () => {
+      if (i >= list.length) { lockInput = false; resolve(); return; }
+      const [kind, text] = list[i]; writeLine(kind, text); i += 1;
+      window.setTimeout(step, reduceMotion ? 0 : BASE_DELAY + (kind === 'command' ? 300 : 0));
+    };
+    step();
+  });
+}
+
+function setPhase(index, state){
+  phaseIndex = index;
+  const p = phases[index];
+  hintStep.textContent = `Step ${index + 1} · ${p.name}`;
+  artifactLabel.textContent = p.artifact;
+  artifactHint.textContent = p.artifactHint;
+  artifact.innerHTML = p.content;
+  agentsEl.innerHTML = index === 2
+    ? `<article class="agentCard"><header><b>scaffold</b><span class="pill">DONE</span></header><p>npm install · 5 blocking checks pass · plan_mark done</p><div class="scopeTags"><code class="scope">package.json</code><code class="scope">vite.config.ts</code></div></article><article class="agentCard"><header><b>habit-tracker-app</b><span class="pill">DONE</span></header><p>12 files · 9 blocking checks pass · plan_mark done</p><div class="scopeTags"><code class="scope">src/App.tsx</code><code class="scope">src/lib/*</code></div></article>`
+    : index === 4
+      ? `<article class="agentCard"><header><b>preview</b><span class="pill">HTTP 200</span></header><p>dist/ served on 127.0.0.1:4173</p></article><article class="agentCard"><header><b>deploy</b><span class="pill">READY</span></header><p>Static host · build → dist/ · no secrets</p></article>`
+      : index === 3
+        ? `<article class="agentCard"><header><b>debug</b><span class="pill">0 BLOCKING</span></header><p>Repair: dead state removed. 1 advisory.</p></article>`
+        : `<article class="agentCard"><header><b>${index === 0 ? 'planning' : 'designing'}</b><span class="pill">RUNNING</span></header><p>${index === 0 ? 'Sizing the team · validating scopes' : 'Writing CUBICORE_ASSOCIATES/ briefs'}</p></article>`;
+  document.querySelectorAll('.step').forEach((step, i) => {
+    step.classList.toggle('active', i === index);
+    step.classList.toggle('done', i < index || state === 'done');
+    step.classList.toggle('locked', lockInput && i !== index);
+    step.querySelector('.stepState').textContent = i < index ? 'DONE' : i === index ? 'NOW' : 'QUEUED';
+  });
+  termClock.textContent = index < phases.length - 1 ? 'AWAITING INPUT' : 'ALMOST DONE';
+  statusText.textContent = index < phases.length - 1 ? `STEP ${index + 1} · ${p.name.toUpperCase()} — POINT & CLICK` : `STEP ${index + 1} · ${p.name.toUpperCase()} — CLICK DEPLOY TO FINISH`;
+  nextBtn.textContent = index < phases.length - 1 ? `Run step ${index + 1} · ${p.name} →` : 'Run step 5 · Deploy →';
+  nextBtn.disabled = false;
+  runAllBtn.disabled = false;
+}
+
+function jumpTo(index){
+  phaseIndex = index;
+  setPhase(index);
+  statusText.textContent = `STEP ${index + 1} · ${phases[index].name.toUpperCase()} — POINT & CLICK`;
+}
+
+async function runPhase(index){
+  if (playing) return;
+  playing = true;
+  lockInput = true;
+  nextBtn.disabled = true;
+  runAllBtn.disabled = true;
+  if (!started) { started = true; elapsedTimer = window.setInterval(() => { elapsed += 1; const m = Math.floor(elapsed / 60), s = elapsed % 60; elapsedEl.textContent = `0${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`; }, 1000); }
+  setPhase(index);
+  const phase = phases[index];
+  const lines = scripts[phase.id];
+
+  // The command line auto-types itself in the prompt row, then the scripted detail streams.
+  typedEl.textContent = '';
+  await autoType(lines[0][1]);
+
+  await writeLines(lines);
+
+  playing = false;
+  phaseIndex = index + 1;
+  if (phaseIndex >= phases.length) {
+    finish();
+  } else {
+    setPhase(phaseIndex);
+    hintStep.textContent = `Step ${phaseIndex + 1} · ${phases[phaseIndex].name}`;
+    termClock.textContent = 'AWAITING INPUT';
+  }
+}
+
+async function runAll(){
+  if (playing) return;
+  while (phaseIndex < phases.length) {
+    await runPhase(phaseIndex);
+    if (phaseIndex < phases.length) await sleep(reduceMotion ? 0 : 700);
+  }
+}
+
+function finish(){
+  playing = false; lockInput = true;
+  window.clearInterval(elapsedTimer);
+  statusText.textContent = 'COMPLETE · ZERO MODEL CALLS MADE';
+  termClock.textContent = 'COMPLETE';
+  output.innerHTML += `<span class="line good show">tutorial complete — plan → design → execute → debug → deploy</span>`;
+  output.scrollTop = output.scrollHeight;
+  nextBtn.textContent = 'Replay tutorial ↺';
+  nextBtn.disabled = false;
+  runAllBtn.disabled = false;
+  document.querySelectorAll('.step').forEach(s => { s.classList.remove('active'); s.classList.add('done'); s.classList.remove('locked'); s.querySelector('.stepState').textContent = 'DONE'; });
+}
+
+function reset(){
+  phaseIndex = 0; playing = false; lockInput = false; started = false; elapsed = 0;
+  window.clearInterval(elapsedTimer);
+  nextBtn.disabled = false;
+  runAllBtn.disabled = false;
+  output.innerHTML = `<span class="line muted show">Cubicore tutorial — point &amp; click placeholder agent session.</span>\n<span class="line muted show">Click <b>Run everything →</b> for a hands-free playthrough, or advance one step at a time.</span>`;
+  elapsedEl.textContent = '00:00';
+  typedEl.textContent = '';
+  setPhase(0);
+}
+
+nextBtn.addEventListener('click', () => {
+  if (playing) return;
+  if (phaseIndex >= phases.length) { reset(); return; }
+  runPhase(phaseIndex);
+});
+runAllBtn.addEventListener('click', runAll);
+replayBtn.addEventListener('click', reset);
+
+// Keyboard: Space advances one step, R restarts.
+document.addEventListener('keydown', (event) => {
+  if (event.target.closest('button, a, input, [contenteditable]')) return;
+  if (event.key === ' ') { event.preventDefault(); nextBtn.click(); }
+  else if (event.key.toLowerCase() === 'r') reset();
+});
+
+reset();
+</script>
+</body>
+</html>

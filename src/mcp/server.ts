@@ -132,6 +132,97 @@ async function createDeployTierForm(runtime: Runtime, sessionID: string): Promis
   }
 }
 
+/**
+ * Creates the stack question as an opencode form (native MCQ dialog).
+ *
+ * Asked one question per form, one after the other: tier first, then this
+ * stack question — so the agent answers the first before it has to think
+ * about the second. Best effort: if the form can't be created (no session,
+ * no credentials, network error), the text prompt still works as a fallback.
+ */
+async function createDeployStackForm(runtime: Runtime, sessionID: string, tier: string): Promise<void> {
+  const formId = `deploy-stack-${Date.now()}`;
+  const isFree = tier !== "paid" && tier !== "other";
+  const recommended = isFree ? "static-host" : "railway";
+  const body = {
+    id: formId,
+    title: "Choose your deployment stack",
+    metadata: {},
+    fields: [
+      {
+        key: "stack",
+        title: "Deployment stack",
+        description: `Tier: ${tier}. Pick a stack — each includes cost, tradeoffs, and what is annoying about it.`,
+        required: true,
+        type: "string",
+        options: isFree
+          ? [
+              {
+                value: "static-host",
+                label: "Static host (recommended)",
+                description: "$0 · zero-config · you serve dist/ with npx serve yourself · annoying: no CI — you rebuild by hand on every deploy",
+              },
+              {
+                value: "cloudflare-pages",
+                label: "Cloudflare Pages",
+                description: "$0 · git-push CI · custom domain + HTTPS free · annoying: requires pushing to a GitHub repo and configuring a build command",
+              },
+              {
+                value: "github-pages",
+                label: "GitHub Pages",
+                description: "$0 · git-push CI · annoying: needs a public repo (or GitHub Pro for private), slower CDN propagation than Cloudflare",
+              },
+              {
+                value: "other",
+                label: "Other",
+                description: "Specify your own stack, constraint, or platform",
+              },
+            ]
+          : [
+              {
+                value: "railway",
+                label: "Railway (recommended)",
+                description: "~$5/mo baseline · one buildpack · managed Postgres + custom domains built in · weakest: you ride their pricing changes",
+              },
+              {
+                value: "fly",
+                label: "Fly.io",
+                description: "$0–few $/mo for tiny apps · Docker-native · annoying: registry auth + fly.toml config by hand",
+              },
+              {
+                value: "render",
+                label: "Render",
+                description: "$0 trial · $7/mo static · $19+/mo services · git deploy · slower cold start than Railway",
+              },
+              {
+                value: "other",
+                label: "Other",
+                description: "Specify your own stack, constraint, or platform",
+              },
+            ],
+      },
+    ],
+  };
+
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
+  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+  try {
+    await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        "x-opencode-directory": encodeURIComponent(runtime.directory),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    process.stderr.write(
+      `[cubicore deploy] failed to create stack form: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
 async function pumpEvents(
   runtime: Runtime,
   workers: { onEvent(event: unknown): void },
@@ -1449,7 +1540,9 @@ export const TOOLS = [
       WHEN +
       "Reviews, tests, and fixes the delivered work until the issues disappear. Runs the " +
       "mechanical check matrix over every contract, finds broken syntax, layout, buttons, " +
-      "loose code, and 0-day style defects, and keeps fixing and re-checking until clean " +
+      "loose code, 0-day style defects — including dead buttons, dead links, hidden console " +
+      "errors, dead flags and broken keys — and keeps fixing and re-checking until clean, " +
+      "exercising the delivered thing the way a founder would (web, CLI, TUI, GUI). " +
       "(except un-fixable warnings/errors, which are reported after repeated attempts). " +
       "Writes CUBICORE_DEBUG.md.",
     inputSchema: {
@@ -1476,13 +1569,43 @@ export const TOOLS = [
       debugRun(args, args.directory ?? process.cwd()),
   },
   {
+    name: "deploy_stack",
+    description:
+      WHEN +
+      "Creates the second deployment MCQ (after the tier form is answered): asks the founder " +
+      "to pick a stack with cost, tradeoffs, and what is annoying about it. Marks one option " +
+      "as the recommendation. Call this after the founder picks the tier — one question at a " +
+      "time, not both at once.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tier: { type: "string", enum: ["free", "paid", "other"], description: "Tier the founder picked (free or paid; use other only when they truly typed it)." },
+      },
+      required: ["tier"],
+    },
+    handler: async (args: { tier?: string }) => {
+      const runtime = runtimeFromEnv();
+      const sessionID = await findCallerSession(runtime);
+      const tier = args.tier ?? "free";
+      if (sessionID) {
+        await createDeployStackForm(runtime, sessionID, tier);
+      }
+      return text(
+        "Stack question sent as a form. Wait for the founder's answer — do not re-ask, and do " +
+          "not proceed until they pick one.",
+      );
+    },
+  },
+  {
     name: "preview",
     description:
       WHEN +
-      "Actually runs the delivered thing and keeps it available. Reads the plan's " +
-      "`preview` block -- the command, and what a working response looks like -- starts it, " +
-      "checks it, and leaves it running for web apps, or runs the built software. Use to " +
-      "inspect the real result before declaring a project ready.",
+      "Runs the delivered thing and keeps it available, the way the founder would use it. " +
+      "Works for web apps (starts the localhost server and verifies it), CLI tools (launches " +
+      "and verifies output), TUIs (launches and checks the rendered interface), and GUIs " +
+      "(launches and confirms readiness — on a real display it opens on screen; on headless " +
+      "hosts it retries under xvfb-run or Nix python3+tkinter and says which). Reads the plan's " +
+      "`preview` block and reports exactly what it saw.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1872,22 +1995,31 @@ export const PROMPTS = [
   {
     name: "deploy",
     description:
-      "Plans how to deploy the project. Asks about the tier, offers deployment stacks with a " +
-      "recommendation, writes the deploy files, and explains the manual steps.",
+      "Plans how to deploy the project. Asks two questions, one after the other — the tier " +
+      "(MCQ) and then the stack with a recommendation (MCQ). Writes the deploy files, and " +
+      "explains the manual steps.",
     arguments: [],
   },
   {
     name: "debug",
     description:
-      "Review, test, and fix the delivered work until the issues disappear. Writes " +
-      "CUBICORE_DEBUG.md. Repeats automatically (outside a running preview) until the same " +
-      "failure no longer reproduces; un-fixable warnings/errors are reported after retries.",
+      "Review, test, and fix the delivered work until the issues disappear — including " +
+      "exercising every interactive surface the founder would use: web click-through with " +
+      "console-error capture, CLI invocations, TUI keys, GUI controls. Console errors, dead " +
+      "commands, and dead UI are blocking findings. Writes CUBICORE_DEBUG.md. Repeats until " +
+      "the same failure no longer reproduces; un-fixable warnings/errors are reported after " +
+      "retries.",
     arguments: [],
   },
   {
     name: "preview",
     description:
-      "Run the delivered thing and keep it available. Starts/keeps the localhost server for web apps, or runs the built software. Leaves it running for the founder to inspect. Uses the plan's own preview block.",
+      "Run the delivered thing and keep it available, the way the founder would use it. " +
+      "Works for web apps (localhost server, HTTP verified), CLIs (launched and verified via " +
+      "output), TUIs (launched and verified by its rendered interface), and GUIs (launched " +
+      "and verified ready, landing on the real display when one is reachable; xvfb-run or Nix " +
+      "python3+tkinter otherwise). Leaves it running for the founder to inspect. " +
+      "Uses the plan's own preview block.",
     arguments: [],
   },
   {
@@ -1973,9 +2105,14 @@ The plan needs:
   short line; otherwise omit it entirely.` : ""}
 - \`graphBudget.nodes\` at least the number of contracts.
 - \`graphBudget.edges\` at least the read/write dependencies between contracts.
-- If the result can be started or served, a top-level \`preview\` object with the command,
-  and any URL/readyLine/expectation needed to know it came up. If the result is a
-  library or a report with nothing to run, omit it.
+- If the result can be started, served, or launched — a web app's localhost server, a CLI tool,
+  a TUI, or a GUI — include a top-level \`preview\` object with the command, and any
+  URL/readyLine/outputContains/expectation needed to know it came up. Omit it only for a
+  library or report with nothing to interactively run.
+- For a GUI on a headless host, prefer a preview command that can survive it: e.g., a Nix
+  expression providing the GUI toolkit and an X server (xvfb-run), or a ready line/expectation
+  the command can satisfy — the preview tool will retry bare commands under xvfb-run or a
+  matching Nix environment when the first attempt is a native-module or display failure.
 
 Every contract needs:
 - A \`schema\` field describing its output
@@ -2225,10 +2362,11 @@ answer your own questions — stop after asking and wait for the reply.
 form. Wait for them to answer it. Do not pick a tier yourself, and do not offer
 stacks until the founder has answered.
 
-**2. Once the founder picks a tier, I will offer three or four real deployment
-stacks** — each with what it costs, what it gives up, and what is annoying about
-it. One will be marked as my recommendation, but the founder can pick
-differently.
+**2. Once the founder picks a tier, call the deploy_stack tool with the tier
+they chose.** A second MCQ form will appear with 3–4 real deployment stacks —
+each with what it costs, what it gives up, and what is annoying about it, and one
+marked as my recommendation. Wait for the answer. Do not list the stacks yourself,
+do not offer other options, and do not proceed until they pick one.
 
 **3. Then I write the deploy files** — container definition, platform
 configuration, environment example, health check, CI workflow. Concrete paths,
@@ -2272,18 +2410,27 @@ Execute normally returns the verdict itself, so do not poll in a loop. If it is 
           content: {
             type: "text",
             text:
-`${ENDING}Run the preview tool. It starts what the plan says to start and checks that it came up
-the way the plan said it would, and it leaves the result running.
+`${ENDING}Run the preview tool. It launches what the plan says to launch, exactly the way the
+founder will use it, and keeps it available.
 
-The plan's preview block is the founder's own statement of what working looks like -- the command,
-the ready line, and how long to wait for it. For a web app this is a localhost server the founder
-can open. For built software it is the built artifact, running.
+The plan's preview block is the founder's own statement of what working looks like — the command,
+the ready line, how long to wait, and what it can verify:
 
-If there is no preview block, say so plainly. A library or a report has nothing to run, and that
-is a correct plan, not a failure. Do not invent something to start.
+- Web app — starts the localhost server the founder opens, and verifies it with an HTTP request:
+  status, and a body substring when given.
+- CLI tool — launches the tool and verifies what it prints (or that it stays up, for daemons):
+  exit output matched against outputContains, or the ready line from the plan.
+- TUI — launches it in a terminal and confirms it rendered and is waiting for input.
+- GUI — launches it and confirms it reached readiness. On a display-reachable host it lands on
+  that display (a Nix python with tkinter is used when the system one lacks it); otherwise it
+  retries under xvfb-run or a Nix environment providing the GUI toolkit, and says which one used.
+
+If there is no preview block, say so plainly. A library or a report has nothing to launch, and that
+is a correct plan, not a failure. Do not invent something to run.
 
 If it fails, report the actual output rather than a summary of it. The founder is finding out
-whether this works, and "it did not start" is only useful with the reason attached.`,
+whether this works, and "it did not start" is only useful with the reason attached — and when the
+blocker is the environment (missing tkinter, headless), name that plainly and say what would fix it.`,
           },
         },
       ],
@@ -2308,10 +2455,37 @@ Debug is a loop, not a report:
 
 1. Review the code and configuration for layout, buttons, loose code, broken syntax,
    dead imports/exports, and 0-day style defects. Tests are not a substitute for reading.
-2. Run the mechanical check matrix and the baseline checks.
-3. For each real failure, turn it into a narrowly-scoped fix contract, dispatch it, and
-   re-run the check that caught it.
-4. Repeat until the same failure no longer reproduces.
+
+2. Interact with the delivered thing — the step agents forget. Use it the way the
+   founder would, per platform:
+   - Web app: open it in a real browser (use the opencode browser tool if this
+     environment has it, otherwise Playwright). Click through EVERY interactive
+     element, once each, in order — every button, link, tab, form, and input,
+     plus the initial page load. Read the browser's console. Any console error,
+     uncaught exception, or failed network request (4xx/5xx) is a blocking
+     "error" finding, not a warning — do not claim the app is fixed until the
+     console is clean. A button that renders but does nothing is one of these.
+   - CLI tool: run every documented subcommand, flag, and positional argument at
+     least once (and --help and the no-argument case). Check each invocation
+     exits with the documented code and that stderr is clean. A flag that does
+     nothing is the same fault as a dead button.
+   - TUI: launch it, verify the interface renders, and exercise its keys
+     (arrows, Enter, Tab, q or Ctrl-C to quit). Check the terminal output for
+     errors — garbage rendering counts as an error finding.
+   - GUI: launch it and click through every menu, button, checkbox, and input
+     once. Check stderr and any logs it writes on exit.
+   - Library or report with no interactive surface: say so plainly — coverage
+     here rests on the mechanical checks, not this step.
+   "Does not crash" is not a pass — every interactive element must actually work.
+
+3. Run the mechanical check matrix and the baseline checks.
+
+4. For each real failure, turn it into a narrowly-scoped fix contract, dispatch it, and
+   re-run the check that caught it. After every fix, exercise the surface again the
+   same way it was tested above — a fix that breaks a different button, flag, or key
+   is a new error.
+
+5. Repeat until the same failure no longer reproduces and no errors are found in another pass through the delivered thing.
 
 For each finding call debug with:
   - severity "error"   -- the code is broken: it does not compile, a check exits non-zero
