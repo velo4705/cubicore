@@ -1,8 +1,8 @@
 {
   "name": "cubicore",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
-  "description": "Cubicore \u2014 build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
+  "description": "Cubicore — build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
   "main": "dist/mcp-main.js",
   "bin": {
     "cubicore": "dist/cli.js"
