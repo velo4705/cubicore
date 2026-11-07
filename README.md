@@ -40,27 +40,28 @@ More agents are coming soon!
 
 ## Architecture
 
+<p align="center">
+  <img src="docs/assets/workflow.svg" alt="Cubicore workflow: plan → execute → preview → debug → deploy" width="640">
+</p>
+
+The five core commands, one loop: **plan → execute → preview → debug → deploy**. `refine` is the companion for changing the plan without re-running everything.
+
+The fuller shape — execute forks the run into preview and debug, and both converge on the deploy step:
+
+<details>
+<summary>The fuller shape</summary>
+
 ```mermaid
-flowchart TD
-    A[User asks in plain words] --> B{plan-demo / plan-full}
-    B --> C[Writes CUBICORE_PLAN.md / .json / .context]
-    C --> D{You review the plan}
-    D -->|refine it| E[/cubicore:refine/]
-    E --> D
-    D -->|approve| F[execute — associates in isolated worktrees]
-    F --> G{Gates: schema ∧ verify ∧ scope}
-    G -->|pass| H[preview — see it run]
-    G -->|fail| I[bounded fix loop: debug → re-check → re-integrate]
-    I --> F
-    H --> J[debug — review, test, fix]
-    J --> G
-    H --> K[deploy — plan it, you ship it]
+flowchart LR
+    Y[You] --> P[plan]
+    P --> X[execute]
+    X --> PV[preview]
+    PV --> DB[debug]
+    DB -.->|fix & redo| X
+    DB --> D[deploy]
 ```
 
-- **Nothing dispatches before you approve the plan.** That review gate is the difference between Cubicore and a fast-reply agent.
-- Associates work in their **own git worktrees**; their writes are copied back only after the **gate** passes (checks + declared write scopes).
-- The loop is **bounded** — `plan → execute → debug → execute` stops after a fixed number of cycles rather than never.
-- `CUBICORE_CONTEXT.md` carries the narrative (problem, users, use cases, demo flow) for people; `CUBICORE_PLAN.json` is the machine-readable one that the associates actually contract against.
+</details>
 
 ---
 
