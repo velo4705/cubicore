@@ -4,11 +4,13 @@
 
 # Cubicore
 
+**Just an MCP that follows the classic engineering process, simultaneously like humans do.**
+
 Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique to split a large prompt into multiple tasks, where one task is given to each sub-agent.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/v/cubicore?color=blue" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/dm/cubicore?color=blue" alt="npm downloads"></a>
+  <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/last-update/cubicore?color=blue" alt="npm last published"></a>
   <a href="https://img.shields.io/badge/node-%3E%3D18-brightgreen"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node.js 18+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
@@ -19,7 +21,7 @@ Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a proje
 
 ---
 
-What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you? Cubicore does that for you. It is an MCP having commands required to finish your project, quicker.
+What if you wished to make a "company" right at home, where you are the founder of the project, and your fellow sub-agents do the work for you? Cubicore does that for you.
 
 ## Introduction
 
@@ -64,8 +66,7 @@ The brief process of the Cubicore workflow is shown below.
 
 ```mermaid
 flowchart LR
-    Y[You] --> P[plan]
-    P --> X[execute]
+    P[plan] --> X[execute]
     X --> PV[preview]
     PV --> DB[debug]
     DB -.->|fix & redo| X
