@@ -79,8 +79,84 @@ const PLAN_SCHEMA = PLAN_SCHEMA_JSON;
  * form can't be created (no session, no credentials, network error), the text
  * prompt still works as a fallback.
  */
-async function createDeployTierForm(runtime: Runtime, sessionID: string): Promise<void> {
-  const formId = `deploy-tier-${Date.now()}`;
+type FormResult = { ok: boolean; status: number; body: string };
+
+function frmId(prefix: string): string {
+  return "frm_" + prefix + "_" + Date.now();
+}
+
+async function postForm(runtime: Runtime, sessionID: string, body: unknown): Promise<FormResult> {
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
+  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+  try {
+    const res = await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        "x-opencode-directory": encodeURIComponent(runtime.directory),
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text().catch(() => "");
+    return { ok: res.ok, status: res.status, body: text.slice(0, 400) };
+  } catch (error) {
+    return { ok: false, status: 0, body: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+type ProjectKind = "desktop" | "web" | "other";
+
+/** Read the plan in the current directory and decide what kind of thing it builds. */
+async function detectProjectKind(directory: string): Promise<ProjectKind> {
+  for (const name of ["CUBICORE_PLAN.json", "CUBICORE_PLAN_1.json"]) {
+    try {
+      const raw = await Bun.file(`${directory}/${name}`).text();
+      const plan = JSON.parse(raw) as { summary?: string; context?: { problem?: string; useCases?: string[] }; contracts?: Array<{ objective?: string; writes?: string[] }>; preview?: { command?: string; url?: string } };
+      const hay = [
+        plan.summary ?? "",
+        plan.context?.problem ?? "",
+        ...(plan.context?.useCases ?? []),
+        ...(plan.contracts ?? []).flatMap((c) => [c.objective ?? "", ...(c.writes ?? [])]),
+        plan.preview?.command ?? "",
+      ].join(" ").toLowerCase();
+      if (/tkinter|desktop|gui|tkinterapp|window|canvas/.test(hay)) return "desktop";
+      if (/browser|web app|react|vite|html|http|localhost|express|three\.js/.test(hay)) return "web";
+    } catch {
+      // Ignore missing/unparseable plan; fall through to the next candidate.
+    }
+  }
+  return "other";
+}
+
+function stackOptions(kind: ProjectKind, tier: string): Array<{ value: string; label: string; description: string }> {
+  if (kind === "desktop") {
+    return [
+      { value: "github-releases", label: "GitHub Releases (recommended)", description: "$0 · signed assets + install notes per OS · auto-update is manual · annoying: churn at release time" },
+      { value: "source-zip", label: "Source zip + install script", description: "$0 · anyone with Python runs it · annoying: users must install Python and tkinter themselves" },
+      { value: "pyinstaller", label: "PyInstaller bundled binary", description: "~$0 · works without a Python install · ~40MB downloads · annoying: OS-specific builds, slower startup" },
+      { value: "flatpak", label: "Flatpak (Linux)", description: "$0 · sandboxed Linux install · annoying: needs Flatpak setup, and the app's filesystem access needs explicit permissions" },
+      { value: "other", label: "Other", description: "Specify your own distribution, constraint, or platform" },
+    ];
+  }
+  const isFree = tier !== "paid" && tier !== "other";
+  return isFree
+    ? [
+        { value: "static-host", label: "Static host (recommended)", description: "$0 · zero-config · you serve dist/ with npx serve yourself · annoying: no CI — you rebuild by hand on every deploy" },
+        { value: "cloudflare-pages", label: "Cloudflare Pages", description: "$0 · git-push CI · custom domain + HTTPS free · annoying: requires pushing to a GitHub repo and configuring a build command" },
+        { value: "github-pages", label: "GitHub Pages", description: "$0 · git-push CI · annoying: needs a public repo (or GitHub Pro for private), slower CDN propagation than Cloudflare" },
+        { value: "other", label: "Other", description: "Specify your own stack, constraint, or platform" },
+      ]
+    : [
+        { value: "railway", label: "Railway (recommended)", description: "~$5/mo baseline · one buildpack · managed Postgres + custom domains built in · weakest: you ride their pricing changes" },
+        { value: "fly", label: "Fly.io", description: "$0–few $/mo for tiny apps · Docker-native · annoying: registry auth + fly.toml config by hand" },
+        { value: "render", label: "Render", description: "$0 trial · $7/mo static · $19+/mo services · git deploy · slower cold start than Railway" },
+        { value: "other", label: "Other", description: "Specify your own stack, constraint, or platform" },
+      ];
+}
+
+async function createDeployTierForm(runtime: Runtime, sessionID: string): Promise<FormResult> {
+  const formId = frmId("deploy-tier");
   const body = {
     id: formId,
     title: "Choose your deployment tier",
@@ -113,23 +189,11 @@ async function createDeployTierForm(runtime: Runtime, sessionID: string): Promis
     ],
   };
 
-  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
-  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
-  try {
-    await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-        "x-opencode-directory": encodeURIComponent(runtime.directory),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (error) {
-    process.stderr.write(
-      `[cubicore deploy] failed to create tier form: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
+  const result = await postForm(runtime, sessionID, body);
+  if (!result.ok) {
+    process.stderr.write(`[cubicore deploy] failed to create tier form: HTTP ${result.status} ${result.body}\n`);
   }
+  return result;
 }
 
 /**
@@ -140,10 +204,13 @@ async function createDeployTierForm(runtime: Runtime, sessionID: string): Promis
  * about the second. Best effort: if the form can't be created (no session,
  * no credentials, network error), the text prompt still works as a fallback.
  */
-async function createDeployStackForm(runtime: Runtime, sessionID: string, tier: string): Promise<void> {
-  const formId = `deploy-stack-${Date.now()}`;
-  const isFree = tier !== "paid" && tier !== "other";
-  const recommended = isFree ? "static-host" : "railway";
+async function createDeployStackForm(
+  runtime: Runtime,
+  sessionID: string,
+  tier: string,
+  kind: ProjectKind = "web",
+): Promise<FormResult> {
+  const formId = frmId("deploy-stack");
   const body = {
     id: formId,
     title: "Choose your deployment stack",
@@ -155,72 +222,16 @@ async function createDeployStackForm(runtime: Runtime, sessionID: string, tier: 
         description: `Tier: ${tier}. Pick a stack — each includes cost, tradeoffs, and what is annoying about it.`,
         required: true,
         type: "string",
-        options: isFree
-          ? [
-              {
-                value: "static-host",
-                label: "Static host (recommended)",
-                description: "$0 · zero-config · you serve dist/ with npx serve yourself · annoying: no CI — you rebuild by hand on every deploy",
-              },
-              {
-                value: "cloudflare-pages",
-                label: "Cloudflare Pages",
-                description: "$0 · git-push CI · custom domain + HTTPS free · annoying: requires pushing to a GitHub repo and configuring a build command",
-              },
-              {
-                value: "github-pages",
-                label: "GitHub Pages",
-                description: "$0 · git-push CI · annoying: needs a public repo (or GitHub Pro for private), slower CDN propagation than Cloudflare",
-              },
-              {
-                value: "other",
-                label: "Other",
-                description: "Specify your own stack, constraint, or platform",
-              },
-            ]
-          : [
-              {
-                value: "railway",
-                label: "Railway (recommended)",
-                description: "~$5/mo baseline · one buildpack · managed Postgres + custom domains built in · weakest: you ride their pricing changes",
-              },
-              {
-                value: "fly",
-                label: "Fly.io",
-                description: "$0–few $/mo for tiny apps · Docker-native · annoying: registry auth + fly.toml config by hand",
-              },
-              {
-                value: "render",
-                label: "Render",
-                description: "$0 trial · $7/mo static · $19+/mo services · git deploy · slower cold start than Railway",
-              },
-              {
-                value: "other",
-                label: "Other",
-                description: "Specify your own stack, constraint, or platform",
-              },
-            ],
+        options: stackOptions(kind, tier),
       },
     ],
   };
 
-  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
-  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
-  try {
-    await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-        "x-opencode-directory": encodeURIComponent(runtime.directory),
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (error) {
-    process.stderr.write(
-      `[cubicore deploy] failed to create stack form: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
+  const result = await postForm(runtime, sessionID, body);
+  if (!result.ok) {
+    process.stderr.write(`[cubicore deploy] failed to create stack form: HTTP ${result.status} ${result.body}\n`);
   }
+  return result;
 }
 
 async function pumpEvents(
@@ -1574,8 +1585,9 @@ export const TOOLS = [
       WHEN +
       "Creates the second deployment MCQ (after the tier form is answered): asks the founder " +
       "to pick a stack with cost, tradeoffs, and what is annoying about it. Marks one option " +
-      "as the recommendation. Call this after the founder picks the tier — one question at a " +
-      "time, not both at once.",
+      "as the recommendation. The form goes to the caller's own session. Call this after the " +
+      "founder picks the tier — one question at a time, not both at once. Returns an error " +
+      "if the form could not be delivered, so the agent falls back to its question tool.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1587,8 +1599,15 @@ export const TOOLS = [
       const runtime = runtimeFromEnv();
       const sessionID = await findCallerSession(runtime);
       const tier = args.tier ?? "free";
-      if (sessionID) {
-        await createDeployStackForm(runtime, sessionID, tier);
+      if (!sessionID) return text("Cannot create the stack form: no caller session was found.", true);
+      const kind = await detectProjectKind(runtime.directory);
+      const result = await createDeployStackForm(runtime, sessionID, tier, kind);
+      if (!result.ok) {
+        return text(
+          "Stack form delivery FAILED (HTTP " + result.status + ": " + result.body + "). " +
+            "Do not claim a form was sent. Ask the same stack question now with your question tool " +
+            "using the stack options for " + tier + ", grade " + kind + " — never as plain text.",
+        );
       }
       return text(
         "Stack question sent as a form. Wait for the founder's answer — do not re-ask, and do " +
@@ -2358,15 +2377,42 @@ ${ENDING}
 Work in this order, and do not skip a step. You ask; the founder answers. Do not
 answer your own questions — stop after asking and wait for the reply.
 
-**1. What tier?** A deployment tier question has been sent to the founder as a
-form. Wait for them to answer it. Do not pick a tier yourself, and do not offer
-stacks until the founder has answered.
+**1. What tier?** Ask the founder with your question tool (MCQ, never plain text).
+Options, exactly:
+- "Free tier ($0)" — No hosting cost; distribution via free channels (e.g. GitHub releases, source or bundled binary).
+- "Paid tier" — Budget for hosting/signing/distribution tooling (certificates, cloud storage/CDN, CI minutes, etc.).
+- "Other" — Something else — type it.
+Wait for the answer. Do not pick a tier yourself, and do not ask about stacks until they have answered.
 
-**2. Once the founder picks a tier, call the deploy_stack tool with the tier
-they chose.** A second MCQ form will appear with 3–4 real deployment stacks —
-each with what it costs, what it gives up, and what is annoying about it, and one
-marked as my recommendation. Wait for the answer. Do not list the stacks yourself,
-do not offer other options, and do not proceed until they pick one.
+**2. Once the founder picks a tier, call the deploy_stack tool with that tier.** A second
+MCQ form will appear with 3–4 real stacks for that tier, each with what it costs, what it gives
+up, and what is annoying about it, and one marked as my recommendation. Wait for the answer.
+Do not list the stacks yourself, do not offer other options, and do not proceed until they pick one.
+
+If the deploy_stack tool returned an error, or the form did not appear, or you did not call the
+tool at all: ask the stack question yourself with your question tool (MCQ, never plain text),
+using the exact options for the tier and project kind below:
+
+Desktop GUI / CLI / TUI app (e.g. Python + Tkinter, no backend):
+- "GitHub Releases (recommended)" — $0 · signed assets + install notes per OS · auto-update is manual · annoying: churn at release time
+- "Source zip + install script" — $0 · anyone with Python runs it · annoying: users must install Python and tkinter themselves
+- "PyInstaller bundled binary" — ~$0 · works without a Python install · ~40MB downloads · annoying: OS-specific builds, slower startup
+- "Flatpak (Linux)" — $0 · sandboxed Linux install · annoying: needs Flatpak setup, and the app's filesystem access needs explicit permissions
+- "Other" — specify your own distribution, constraint, or platform
+
+Web app, free tier:
+- "Static host (recommended)" — $0 · zero-config · you serve dist/ with npx serve yourself · annoying: no CI — you rebuild by hand on every deploy
+- "Cloudflare Pages" — $0 · git-push CI · custom domain + HTTPS free · annoying: requires a GitHub repo and a build command
+- "GitHub Pages" — $0 · git-push CI · annoying: needs a public repo (or GitHub Pro), slower CDN than Cloudflare
+- "Other" — specify your own stack, constraint, or platform
+
+Web app, paid tier:
+- "Railway (recommended)" — ~$5/mo baseline · one buildpack · managed Postgres + custom domains · weakest: you ride their pricing changes
+- "Fly.io" — $0–few $/mo for tiny apps · Docker-native · annoying: registry auth + fly.toml by hand
+- "Render" — $0 trial · $7/mo static · $19+/mo services · git deploy · slower cold start than Railway
+- "Other" — specify your own stack, constraint, or platform
+
+Tailor the question text to the actual project (include its name and stack, e.g. "How should this desktop GUI app (Python + Tkinter, no backend) be deployed — what stack?"). That is one question. No double questions in one turn. No plain-text MCQ lists — the founder must see picks, not paragraphs.
 
 **3. Then I write the deploy files** — container definition, platform
 configuration, environment example, health check, CI workflow. Concrete paths,
@@ -2580,7 +2626,10 @@ export async function serve(): Promise<void> {
             const runtime = runtimeFromEnv();
             const sessionID = await findCallerSession(runtime);
             if (sessionID) {
-              await createDeployTierForm(runtime, sessionID);
+              const result = await createDeployTierForm(runtime, sessionID);
+              if (!result.ok) {
+                process.stderr.write(`[cubicore deploy] tier form delivery failed: HTTP ${result.status} ${result.body}\n`);
+              }
             } else {
               process.stderr.write(
                 "[cubicore deploy] no caller session found; tier form not created\n",
