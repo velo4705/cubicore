@@ -17,14 +17,18 @@ loop at three cycles.
 Run this command on the founder's machine:
 
 ```
-npx cubicore
+npx cubicore@latest setup
 ```
 
 This:
 - Downloads Cubicore from npm
-- Registers the MCP server in `~/.config/opencode/opencode.json`
+- Asks which OpenCode to install into — Native (CLI / Desktop, default) or Flatpak (Linux only), or pass `--native` / `--flatpak`
+- Copies the MCP runtime into a user-global directory
+- Registers `mcp.cubicore` in the chosen variant's global config (never a project config)
 - Installs associate agents (`cubicore-associate`, `cubicore-research`)
 - Bounds the primary agent to 120 steps
+- If the chosen OpenCode's config directory is missing, writes nothing and says so
+- On Windows: `%USERPROFILE%\.config\opencode\opencode.json`; on macOS/Linux: `~/.config/opencode/opencode.json`; Flatpak: `~/.var/app/ai.opencode.opencode/config/opencode/opencode.json`
 
 ### Step 2: Restart OpenCode
 

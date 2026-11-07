@@ -142,7 +142,23 @@ everything passes  /cubicore:deploy    · refine · undo
 
 ## Installation
 
-Copy the installation instructions from this README (see the **Installation** section above) to set up Cubicore manually. The `install` prompt has been removed; LLM agents assisting a founder can simply copy these instructions directly.
+```bash
+npx cubicore@latest setup
+```
+
+Works anywhere npm/npx works — Windows, macOS, Linux, NixOS. Installs Cubicore **globally for your user account** (never into a project):
+
+1. Prints a banner and asks which OpenCode you run — **Native (CLI / Desktop)** (default) or **Flatpak** (Linux only).
+2. Copies the MCP runtime into a user-global directory.
+3. Registers `mcp.cubicore` in the chosen variant's global config and installs the associate agents (primary agent bounded to 120 steps).
+
+If the chosen OpenCode's config directory is missing, nothing is written and the script says so. Re-run the same command to update. **Restart OpenCode afterwards.**
+
+Then in any project directory, type:
+
+```
+/cubicore:plan-demo
+```
 
 See [OpenCode Installation](opencode/opencode.md) for full installation instructions,
 troubleshooting, FAQs, and AI agent installation.

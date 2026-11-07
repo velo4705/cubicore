@@ -1,14 +1,16 @@
 {
   "name": "cubicore",
   "version": "1.0.0",
+  "type": "module",
   "description": "Cubicore — build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
   "main": "dist/mcp-main.js",
   "bin": {
-    "cubicore": "dist/mcp-main.js"
+    "cubicore": "dist/cli.js"
   },
   "scripts": {
-    "setup": "node setup.js",
-    "build": "bun build src/mcp/main.ts --target=bun --outfile=dist/mcp-main.js",
+    "setup": "node dist/cli.js setup",
+    "build": "bun build src/mcp/main.ts --target=bun --outfile=dist/mcp-main.js && bun build src/cli.ts --target=node --outfile=dist/cli.js",
+    "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["mcp", "plan", "dispatch", "build", "sub-agent", "cubicore"],
