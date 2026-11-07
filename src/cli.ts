@@ -39,7 +39,7 @@ import {
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
-const AMBER = "\x1b[38;5;214m";
+const AMBER = "\x1b[38;5;117m";  // baby blue / light sky
 const WHITE = "\x1b[97m";
 const GREEN = "\x1b[32m";
 const RED = "\x1b[31m";
