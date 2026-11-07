@@ -4,6 +4,8 @@
 
 # Cubicore
 
+Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique to split a large prompt into multiple tasks, where one task is given to each sub-agent.
+
 <p align="center">
   <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/v/cubicore?color=blue" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/dm/cubicore?color=blue" alt="npm downloads"></a>
@@ -11,9 +13,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
 
-</div>
+`npx cubicore@latest setup`
 
-Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique to split a large prompt into multiple tasks, where one task is given to each sub-agent.
+</div>
 
 ---
 
