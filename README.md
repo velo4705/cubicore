@@ -38,6 +38,32 @@ More agents are coming soon!
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart TD
+    A[User asks in plain words] --> B{plan-demo / plan-full}
+    B --> C[Writes CUBICORE_PLAN.md / .json / .context]
+    C --> D{You review the plan}
+    D -->|refine it| E[/cubicore:refine/]
+    E --> D
+    D -->|approve| F[execute — associates in isolated worktrees]
+    F --> G{Gates: schema ∧ verify ∧ scope}
+    G -->|pass| H[preview — see it run]
+    G -->|fail| I[bounded fix loop: debug → re-check → re-integrate]
+    I --> F
+    H --> J[debug — review, test, fix]
+    J --> G
+    H --> K[deploy — plan it, you ship it]
+```
+
+- **Nothing dispatches before you approve the plan.** That review gate is the difference between Cubicore and a fast-reply agent.
+- Associates work in their **own git worktrees**; their writes are copied back only after the **gate** passes (checks + declared write scopes).
+- The loop is **bounded** — `plan → execute → debug → execute` stops after a fixed number of cycles rather than never.
+- `CUBICORE_CONTEXT.md` carries the narrative (problem, users, use cases, demo flow) for people; `CUBICORE_PLAN.json` is the machine-readable one that the associates actually contract against.
+
+---
+
 ## Using Cubicore
 
 Ask in plain words. No spec, no schema. The planner reads the repo, asks you what it can't answer, writes `CUBICORE_PLAN.md` / `CUBICORE_PLAN.json` / `CUBICORE_CONTEXT.md`, and stops — nothing dispatches until you approve.
