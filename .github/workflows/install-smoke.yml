@@ -1,0 +1,82 @@
+# install-smoke — checks the global installer across OSes.
+#
+# Policy (founder decision): GitHub Actions are optional infrastructure. This
+# workflow does NOT run on normal PRs or pushes. It exists for one reason:
+# when a *major* change to the installation path lands (bin layout, target
+# detection, config-writing, publish flow), it must be proven against real
+# runners before that change merges. Trigger it two ways:
+#
+#   1. Manually:  Actions → install-smoke → Run workflow
+#   2. On a PR labelled `install-major`
+#
+# Same checks on Linux, macOS and Windows — the platform that actually breaks
+# installs is usually the one we cannot test from a Linux desktop.
+
+name: install-smoke
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.label.name, 'install-major')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build
+        run: bun run build
+
+      - name: Pack
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          TGZ="$(npm pack --pack-destination "$RUNNER_TEMP" 2>/dev/null | tail -n1)"
+          echo "tgz=$TGZ" >> "$GITHUB_OUTPUT"
+
+      - name: Install into sandboxed HOME (native target)
+        shell: bash
+        env:
+          HOME: ${{ github.workspace }}/.ci-native-home
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-native-home/.config/opencode   # opencode "installed"
+          npx --yes --package="$RUNNER_TEMP/${{ steps.pack.outputs.tgz }}" cubicore setup --native --yes
+          test -f .ci-native-home/.config/opencode/opencode.json
+          node -e "const j=require('./.ci-native-home/.config/opencode/opencode.json'); const m=j.mcp&&j.mcp.cubicore; if(!m) throw new Error('cubicore mcp entry missing'); if(m.type!=='local') throw new Error('not local'); if(m.enabled!==true) throw new Error('not enabled'); if(!Array.isArray(m.command)) throw new Error('command not array'); if(!j.agent['cubicore-associate']) throw new Error('associate agent missing'); if(j.agent['cubicore-research']) {} else { throw new Error('research agent missing'); } if(j.agent.build.maxSteps!==120) throw new Error('build maxSteps not 120'); console.log('native install OK');"
+
+      - name: Empty HOME bails out cleanly (writes nothing)
+        shell: bash
+        env:
+          HOME: ${{ github.workspace }}/.ci-empty-home
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-empty-home
+          npx --yes --package="$RUNNER_TEMP/${{ steps.pack.outputs.tgz }}" cubicore setup --native --yes
+          test ! -e .ci-empty-home/.config/opencode/opencode.json || (echo 'installer wrote into an empty HOME' && exit 1)
+          echo 'empty HOME clean abort OK'
+
+      - name: Flatpak target (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          HOME: ${{ github.workspace }}/.ci-flatpak-home
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-flatpak-home/.var/app/ai.opencode.opencode/config/opencode
+          npx --yes --package="$RUNNER_TEMP/${{ steps.pack.outputs.tgz }}" cubicore setup --flatpak --yes
+          test -f .ci-flatpak-home/.var/app/ai.opencode.opencode/config/opencode/opencode.json
+          node -e "const j=require('./.ci-flatpak-home/.var/app/ai.opencode.opencode/config/opencode/opencode.json'); const m=j.mcp&&j.mcp.cubicore; if(!m) throw new Error('cubicore mcp entry missing'); console.log('flatpak install OK');"
