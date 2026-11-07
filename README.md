@@ -1,10 +1,12 @@
 <div align="center">
 
+<!-- Linguistic Languages for README are placed here. Must be redirected to that Lingual README. -->
+
 # Cubicore
 
 </div>
 
-Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique.
+Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a project, utilizing the Decrease-and-Conquer Technique to split a large prompt into multiple tasks, where one task is given to each sub-agent.
 
 ---
 
@@ -20,8 +22,6 @@ This upon execution will summon sub-agents, where 1 task is recieved by 1 agent.
 
 Cubicore can debug any broken layout, buttons, syntax errors, loose code, etc. and fix them automatically until issues disappear. Cubicore also allows the user to "preview" its project to see how it runs. Finally, if the user satisfies with the project, it then commands the "Cubicle" to deploy the application, making things ready while also giving instructions on how to deploy.
 
----
-
 ## Supported AI Agents
 
 Currently, we only support Opencode for now.
@@ -34,9 +34,7 @@ Currently, we only support Opencode for now.
 | Cursor          | ⏰     | Uses Sessions; Tedious to implement as first Session-only integration. |
 | Windsurf        | ⏰     | May use Inline Sub-tasks or Sessions. Not Started.                     |
 
-More agents are coming soon!
-
----
+Want to add host support, a command, or translations of this README into other languages? See [CONTRIBUTING.md](CONTRIBUTING.md) — it covers what each kind of contribution needs to look like before it merges.
 
 ## Architecture
 
@@ -44,12 +42,18 @@ More agents are coming soon!
   <img src="docs/assets/workflow.svg" alt="Cubicore workflow: plan → execute → preview → debug → deploy" width="640">
 </p>
 
-The five core commands, one loop: **plan → execute → preview → debug → deploy**. `refine` is the companion for changing the plan without re-running everything.
+The five core commands, one loop: **plan → execute → preview → debug → deploy**. `refine` is the companion for changing the plan without re-running everything (basically editing a project).
 
-The fuller shape — execute forks the run into preview and debug, and both converge on the deploy step:
+The plan stage lets the agent to plan what would be the recommended styles, frameworks or software to fit this project. 
+
+Execute unleashes sub-tasks according to CUBICORE_PLAN.md file. Preview lets you see the changes the agent has made on the web application (by localhost), or on software/CLI/TUI tools (by local binary). 
+
+Debug fixes your code wherever if the position is incorrect, or the button cannot be interacted, as it can utilize the agent's built-in skills. Finally, Deploy marks the final state to publish your project either from a Free or a paid tier service.
+
+The brief process of the Cubicore workflow is shown below.
 
 <details>
-<summary>The fuller shape</summary>
+<summary>The brief process</summary>
 
 ```mermaid
 flowchart LR
@@ -73,19 +77,15 @@ Examples: [`docs/examples.md`](docs/examples.md) · Full reference: [`docs/comma
 
 ---
 
-## Installation
+### Installation
 
 ```bash
 npx cubicore@latest setup
 ```
 
-Works anywhere npm/npx works — Windows, macOS, Linux, NixOS. Installs Cubicore **globally for your user account** (never into a project):
+> [!IMPORTANT]
+> Currently, the only source of installation is on the README, or as an npm package.
 
-1. Prints a banner and asks which OpenCode you run — **Native (CLI / Desktop)** (default) or **Flatpak** (Linux only).
-2. Copies the MCP runtime into a user-global directory.
-3. Registers `mcp.cubicore` in the chosen variant's global config and installs the associate agents (primary agent bounded to 120 steps).
-
-If the chosen OpenCode's config directory is missing, nothing is written and the script says so. Re-run the same command to update. **Restart OpenCode afterwards.**
 
 Then in any project directory, type:
 
@@ -108,8 +108,6 @@ Three layers, and only the first was ever airtight.
 
 opencode 1.18.x cannot restrict an agent to a path — its permissions are per-action, not per-resource — so the filesystem is the only boundary available.
 
----
-
 ## What Cubicore is for
 
 Cubicore splits a real project into **contracts** — independent, checkable pieces of work — and dispatches them so they can run without colliding. It's for:
@@ -119,8 +117,6 @@ Cubicore splits a real project into **contracts** — independent, checkable pie
 - **Verification that means something** — scope gates, check matrix, worktree isolation, and a bounded fix loop. Not a model saying "done".
 
 It is **not** a faster lane. There is no published efficiency number. It is not obviously cheaper than one agent on small tasks, and on some host/model combinations it isn't. What the contract layer does reliably is make parallel agents safe and auditable — the speedup, if any, is what the disjoint split buys on a specific host with a specific model.
-
----
 
 ## What exists
 
@@ -132,8 +128,6 @@ It is **not** a faster lane. There is no published efficiency number. It is not 
 - **A bounded loop.** `plan → execute → debug → execute`, capped at three cycles. Not "until the debug file is empty" — that's an unbounded loop with a terminal case of an agent that never stops finding things to fix.
 - **Judgement never blocks.** Errors and warnings block. "Is this useful?" and "is this production ready?" are advisory and left to the founder.
 
----
-
 ## Known limits
 
 - **The gate is mechanical, not judgemental.** It checks commands, statuses, and scopes. It cannot tell you the build is bad; it can tell you the check failed.
@@ -141,3 +135,7 @@ It is **not** a faster lane. There is no published efficiency number. It is not 
 - **The inline path's shell is still unrestricted.** A worker can run anything. The worktree contains the damage — a stray file stays in the worker's checkout and is not copied back — but the command still ran.
 - **v1 catches mechanical failures only.** No `judgment` checks are admitted; the validator rejects them. Whether a feature is *useful* is not something the matrix can decide.
 - **Works on whatever base image the host supports.** Your base system stays yours; Cubicore doesn't touch it.
+
+## Contributing
+
+Hello there, incoming contributors! Do support us in adding or improving a feature or command, or support Cubicore into an AI agent, or provide another language for the README, or potentially unseen bug fixes or optimizations. More info under [contributing guidelines](CONTRIBUTING.md).
