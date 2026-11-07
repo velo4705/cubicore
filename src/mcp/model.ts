@@ -13,7 +13,11 @@
  * one.
  */
 
-export const DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free";
+// `opencode/minimax-m3.1-flash-free` was withdrawn from the provider without
+// ceremony, as was space-bunny-free before it. `crouton-alpha-free` is the
+// model the founder's own sessions run today, verified present in
+// `opencode models` (opencode/crouton-alpha-free).
+export const DEFAULT_MODEL = "opencode/crouton-alpha-free";
 
 export interface ModelCheck {
   ok: boolean;

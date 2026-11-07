@@ -58,7 +58,7 @@ function toolsForContract(contract: Contract): Record<string, boolean> {
  */
 
 export interface SessionSpawner {
-  create(input?: { title?: string }): Promise<{ sessionId: string }>;
+  create(input?: { title?: string; directory?: string }): Promise<{ sessionId: string }>;
   /**
    * `agent` is deliberately optional and defaults to the host's default agent.
    *

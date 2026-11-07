@@ -59,7 +59,15 @@ export class RunObserver {
 
     // session-scoped events must match, otherwise a sibling worker's activity
     // lands in this worker's totals.
-    const properties = isRecord(event.properties) ? event.properties : {};
+    //
+    // opencode 2.x pushes `{ type, data: {...} }` (directory on `location`),
+    // the legacy 1.x host pushed `{ type, properties: {...} }`. Support both.
+    const raw = isRecord(event.properties)
+      ? event.properties
+      : isRecord(event.data)
+        ? event.data
+        : {};
+    const properties = raw;
 
     switch (event.type) {
       case "message.updated":
@@ -74,10 +82,14 @@ export class RunObserver {
       case "message.part.updated":
         this.onTextPart(properties);
         return;
+      // opencode 1.x terminal event; 2.x splits it into succeeded/failed/interrupted.
       case "session.idle":
+      case "session.execution.succeeded":
+      case "session.execution.interrupted":
         if (this.matches(properties.sessionID)) this.idle = true;
         return;
       case "session.error":
+      case "session.execution.failed":
         if (this.matches(properties.sessionID)) {
           this.error = stringifyError(properties);
           this.idle = true;
@@ -182,7 +194,7 @@ export class RunObserver {
    * 34,539 input tokens while every event for it reported zero.
    *
    * So event-derived usage is **not** a cost measurement. Real totals have to be
-   * read from the session database after the run — see `bench/tokens.ts`, which
+   * read from the session database after the run — see session-db.ts, which
    * is the only accurate source found.
    */
   usageOrZero(): TokenUsage {

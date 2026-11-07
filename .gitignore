@@ -24,3 +24,13 @@ run-report.json
 .env
 .env.local
 .live/
+
+
+# Benchmark archive — kept locally, not in git
+docs/bench-history/
+
+# CI sandboxes
+.ci-home*/
+.ci-native-home/
+.ci-empty-home/
+.ci-flatpak-home/

@@ -173,14 +173,73 @@ export class SqliteTokenSource {
     const sqlite = new Database(this.path, { readonly: true });
     this.connection = {
       sessionRow: (sessionId) => {
-        const row = sqlite.query("SELECT * FROM session WHERE id = ?").get(sessionId);
-        return isRecord(row) ? row : null;
+        // opencode 2.x writes `session_v2` (with `time_suspended`/`resume_attempts`)
+        // and leaves `session` frozen. New sessions are always in v2; a v2 hit
+        // wins, and the legacy table covers hosts that never migrated.
+        for (const table of ["session_v2", "session"]) {
+          try {
+            const row = sqlite.query(`SELECT * FROM ${table} WHERE id = ?`).get(sessionId);
+            if (isRecord(row)) return row;
+            return null;
+          } catch {
+            // Table does not exist on this host; try the other.
+          }
+        }
+        return null;
       },
-      messageData: (sessionId) =>
-        sqlite
-          .query("SELECT data FROM message WHERE session_id = ? ORDER BY time_created ASC")
-          .all(sessionId),
+      messageData: (sessionId) => {
+        for (const table of ["session_message", "message"]) {
+          try {
+            return sqlite
+              .query(`SELECT data FROM ${table} WHERE session_id = ? ORDER BY time_created ASC`)
+              .all(sessionId);
+          } catch {
+            // Table does not exist; try the other.
+          }
+        }
+        return [];
+      },
     };
     return this.connection;
+  }
+}
+
+/**
+ * Newest session id in a directory, across v1 and v2 tables.
+ *
+ * Attribution for `opencode run`: each arm starts with a snapshot and demands
+ * the new session differ from it. Mixed-era databases (v2 live alongside the
+ * frozen v1 tables) need the union or the newest row is invisible to either
+ * query alone.
+ */
+export function newestSessionId(
+  path: string,
+  directory: string,
+  sinceMs = 0,
+): string | null {
+  const sqlite = new Database(path, { readonly: true });
+  try {
+    const row = sqlite
+      .query(
+        "SELECT id, MAX(time_created) AS t FROM (" +
+          "SELECT id, time_created FROM session_v2 WHERE directory = ? AND time_created >= ? " +
+          "UNION ALL " +
+          "SELECT id, time_created FROM session WHERE directory = ? AND time_created >= ?" +
+          ") GROUP BY id ORDER BY t DESC LIMIT 1",
+      )
+      .get(directory, sinceMs, directory, sinceMs) as { id: string } | null;
+    return row?.id ?? null;
+  } catch {
+    try {
+      const row = sqlite
+        .query(
+          "SELECT id FROM session WHERE directory = ? AND time_created >= ? " +
+            "ORDER BY time_created DESC LIMIT 1",
+        )
+        .get(directory, sinceMs) as { id: string } | null;
+      return row?.id ?? null;
+    } catch {
+      return null;
+    }
   }
 }

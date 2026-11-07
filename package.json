@@ -2,7 +2,7 @@
   "name": "cubicore",
   "version": "1.0.0",
   "type": "module",
-  "description": "Cubicore — build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
+  "description": "Cubicore \u2014 build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
   "main": "dist/mcp-main.js",
   "bin": {
     "cubicore": "dist/cli.js"
@@ -13,7 +13,14 @@
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["mcp", "plan", "dispatch", "build", "sub-agent", "cubicore"],
+  "keywords": [
+    "mcp",
+    "plan",
+    "dispatch",
+    "build",
+    "sub-agent",
+    "cubicore"
+  ],
   "author": "Cubicore",
   "license": "MIT",
   "engines": {

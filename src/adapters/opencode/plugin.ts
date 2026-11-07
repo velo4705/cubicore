@@ -41,24 +41,74 @@ import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
 const STRONG_MODEL = process.env.CUBICORE_STRONG_MODEL ?? "opencode/big-pickle";
 const WORKER_MODEL = process.env.CUBICORE_WORKER_MODEL ?? DEFAULT_MODEL;
 
-interface ClientLike {
-  session: {
-    create(args: { query?: { directory?: string }; body?: { parentID?: string; title?: string } }): Promise<{ data?: { id?: string } | null }>;
-    prompt(args: {
-      body: {
-        agent?: string;
-        model?: { providerID: string; modelID: string };
-        parts: Array<{ type: "text"; text: string }>;
-        tools?: Record<string, boolean>;
-      };
-      path: { id: string };
-      query?: { directory?: string };
-    }): Promise<unknown>;
-    diff(args: { path: { id: string }; query?: { directory?: string } }): Promise<{
-      data?: Array<{ file?: string }> | null;
-    }>;
-    abort(args: { path: { id: string }; query?: { directory?: string } }): Promise<unknown>;
-  };
+/**
+ * The raw /api/* surface the 2.x host serves.
+ *
+ * The v1 SDK client in this package posts to routes the 2.x host no longer
+ * serves (`POST /session` returns 405), so spawning goes through the v2 HTTP
+ * API directly — the same way the MCP server talks to the form endpoints.
+ * Model and agent are set on the session itself; the v2 prompt carries text
+ * only, and there is no `tools` field (per-worker tool restriction lives in
+ * the associate agent's own permission config in 2.x).
+ */
+export interface SpawnerTarget {
+  /** Base URL of the opencode server, e.g. http://127.0.0.1:49374 */
+  baseUrl: string;
+  /** Directory the workers work in. */
+  directory: string;
+  /** Basic credentials, when the server requires them (OPENCODE_SERVER_*). */
+  auth?: { username: string; password: string };
+}
+
+/** Auth from the environment, mirroring the rest of the codebase. */
+export function authFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): { username: string; password: string } | undefined {
+  const username = env.OPENCODE_SERVER_USERNAME;
+  const password = env.OPENCODE_SERVER_PASSWORD;
+  if (!username || !password) return undefined;
+  return { username, password };
+}
+
+function apiHeaders(target: SpawnerTarget): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (target.auth) {
+    headers.Authorization = `Basic ${btoa(`${target.auth.username}:${target.auth.password}`)}`;
+  }
+  return headers;
+}
+
+interface ApiResponse {
+  status: number;
+  /** Parsed body, or null when the body is not JSON (e.g. the web UI HTML). */
+  json: { data?: any } | null;
+  text: string;
+}
+
+async function apiJson(
+  target: SpawnerTarget,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<ApiResponse> {
+  const response = await fetch(`${target.baseUrl}${path}`, {
+    method,
+    headers: apiHeaders(target),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let json: ApiResponse["json"] = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // 405 / HTML error pages: leave json null and let callers report status.
+  }
+  return { status: response.status, json, text };
+}
+
+function describe(res: ApiResponse): string {
+  const detail = res.json !== null ? JSON.stringify(res.json).slice(0, 200) : res.text.slice(0, 200);
+  return `HTTP ${res.status}${detail ? `: ${detail}` : ""}`;
 }
 
 function splitModel(model: string): { providerID: string; modelID: string } {
@@ -68,60 +118,81 @@ function splitModel(model: string): { providerID: string; modelID: string } {
 }
 
 export function clientSpawner(
-  client: ClientLike,
-  directory: string,
+  target: SpawnerTarget,
   /** Caller session id. Associates are created as its children so the host UI shows them as sub-agents. */
   sessionID?: string,
 ): SessionSpawner {
+  const route = (id: string, suffix: string) =>
+    `/api/session/${encodeURIComponent(id)}${suffix}`;
+
   return {
-    async create(input?: { title?: string }) {
+    async create(input?: { title?: string; directory?: string }) {
       // parentID is what makes an associate appear in the host's own UI as a
       // sub-agent rather than an orphan session. Without it the work is real
       // but invisible to the founder, which is the whole complaint about a
       // tool call that blocks for a minute and returns a wall of text.
-      const result = await client.session.create({
-        query: { directory },
-        body: {
-          parentID: sessionID,
-          ...(input?.title ? { title: input.title } : {}),
-        },
+      //
+      // `input.directory` is the per-worker worktree the dispatch path
+      // creates. It overrides the shared root so each associate's filesystem
+      // is its own — the scope gate depends on it for changedFiles attribution.
+      const res = await apiJson(target, "POST", "/api/session", {
+        ...(sessionID ? { parentID: sessionID } : {}),
+        ...(input?.title ? { title: input.title } : {}),
+        location: { directory: input?.directory ?? target.directory },
       });
-      const id = result.data?.id;
-      if (!id) throw new Error("opencode did not return a session id");
+      const id = (res.json?.data as { id?: string } | undefined)?.id;
+      if (!id) {
+        throw new Error(`opencode did not return a session id (${describe(res)})`);
+      }
       return { sessionId: id };
     },
 
     async prompt(sessionId, input) {
-      await client.session.prompt({
-        path: { id: sessionId },
-        query: { directory },
-        body: {
+      if (input.agent) {
+        const res = await apiJson(target, "POST", route(sessionId, "/agent"), {
           agent: input.agent,
-          model: input.model ? splitModel(input.model) : undefined,
-          parts: [{ type: "text", text: input.text }],
-          ...(input.tools ? { tools: input.tools } : {}),
-        },
+        });
+        if (res.status >= 400) {
+          throw new Error(`opencode rejected agent "${input.agent}" (${describe(res)})`);
+        }
+      }
+      if (input.model) {
+        const model = splitModel(input.model);
+        const res = await apiJson(target, "POST", route(sessionId, "/model"), {
+          model: { id: model.modelID, providerID: model.providerID },
+        });
+        if (res.status >= 400) {
+          throw new Error(`opencode rejected model "${input.model}" (${describe(res)})`);
+        }
+      }
+      const res = await apiJson(target, "POST", route(sessionId, "/prompt"), {
+        text: input.text,
       });
+      if (res.status >= 400) {
+        throw new Error(`opencode rejected the prompt (${describe(res)})`);
+      }
     },
 
     async changedFiles(sessionId) {
-      const result = await client.session.diff({
-        path: { id: sessionId },
-        query: { directory },
-      });
-      return (result.data ?? [])
-        .map((entry) => entry.file)
-        .filter((file): file is string => typeof file === "string");
+      const res = await apiJson(target, "GET", route(sessionId, "/diff"));
+      if (res.status >= 400 || res.json === null) {
+        throw new Error(`could not read the session diff (${describe(res)})`);
+      }
+      return (res.json.data as Array<{ file?: string }> | undefined)
+        ?.map((entry) => entry.file)
+        .filter((file): file is string => typeof file === "string") ?? [];
     },
 
     async cancel(sessionId) {
-      await client.session.abort({ path: { id: sessionId }, query: { directory } });
+      const res = await apiJson(target, "POST", route(sessionId, "/interrupt"));
+      // Best effort: an interrupt we cannot deliver is still reported by the
+      // wall-clock ceiling in the caller.
+      void res;
     },
   };
 }
 
 export const CubicorePlugin: Plugin = async (input) => {
-  const client = input.client as unknown as ClientLike;
   const directory = input.directory;
   const root = input.worktree || directory;
 
@@ -276,7 +347,10 @@ export const CubicorePlugin: Plugin = async (input) => {
           const workers = new WorkerSessions(
             // Parenting the worker sessions to the caller's makes each associate
             // appear in the host's own sub-agent UI rather than as an orphan.
-            clientSpawner(client, directory, ctx.sessionID),
+            clientSpawner(
+              { baseUrl: input.serverUrl.toString(), directory, auth: authFromEnv() },
+              ctx.sessionID,
+            ),
             models(workerModel),
             enforcer,
             // Live events report zero usage; the session row is the truth.

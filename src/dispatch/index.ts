@@ -94,6 +94,15 @@ export interface DispatchOptions {
   preserveContractIds?: Set<string>;
   /** Step completion states per contract, for telling associates what's done. */
   stepsProgress?: Map<string, Record<string, ContractState>>;
+  /**
+   * Cap on contracts running simultaneously within one stage.
+   *
+   * Admission admits by graph budget, not by machine capacity: a 12-contract
+   * fan-out stage launches twelve opencode sessions at once, which exhausted
+   * a 12 GB host. Setting this serialises the stage in bounded batches.
+   * Unset keeps the stage's full parallel launch.
+   */
+  maxConcurrency?: number;
 }
 
 /**
@@ -200,8 +209,15 @@ export async function dispatch(
       break;
     }
 
+    // A plan satisfying the admission budget can still be too much for the
+    // host. The fan-out stage launches the whole batch at once; setting
+    // maxConcurrency runs it in bounded batches instead (12 opencode sessions
+    // at once exhausted this machine). Unset = whole stage, unchanged.
+    const limit = Math.max(1, options.maxConcurrency ?? batch.length);
+    for (let start = 0; start < batch.length; start += limit) {
+      const chunk = batch.slice(start, start + limit);
     const results = await Promise.all(
-      batch.map(async (contract) => {
+      chunk.map(async (contract) => {
       const contractSteps = options.stepsProgress?.get(contract.id);
       let result = await runner.run(contract, undefined, options.preserveContractIds, contractSteps);
       let gates: GateResult[] = [];
@@ -272,8 +288,8 @@ export async function dispatch(
       return { contract, result, gates, passed: false };
       }),
     );
-
-    settled.push(...results);
+      settled.push(...results);
+    }
   }
 
   for (const { contract, result, gates, passed } of settled) {

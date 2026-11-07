@@ -72,6 +72,28 @@ And install the agents:
 bun run src/mcp/install.ts
 ```
 
+## Install CI (optional infrastructure, mandatory for major install changes)
+
+Installing Cubicore is the one part of this project where failure is silent —
+a broken installer writes nothing or writes to the wrong place on a machine
+the author never sees. So there is a CI workflow (`.github/workflows/install-smoke.yml`)
+that proves the install end-to-end on Linux, macOS and Windows runners:
+
+- builds, packs, and runs the npx install path into a sandboxed HOME on all three OSes
+- verifies the MCP entry (type, enabled, command array) and the agents (including the 120-step bound on `build`)
+- verifies a completely empty HOME exits 0 and writes nothing
+- on Linux, verifies the `--flatpak` path too
+
+It does **not** run on ordinary pushes or PRs — GitHub Actions here is optional
+infrastructure, not a gate. It runs when you label a PR `install-major`, or
+manually via Actions → install-smoke → Run workflow.
+
+**Policy: any PR that changes the installation path — bin layout, how the
+OpenCode variant is detected, how the MCP entry or agents are written, or the
+publish flow — must carry `install-major` and have install-smoke green before
+merge.** Everything else merges without it. Do not add this as a required
+status check; the label and reviewer judgement is the gate.
+
 ## Restart OpenCode
 
 The MCP server and agents are loaded at startup. After installing, restart OpenCode entirely.

@@ -1,6 +1,6 @@
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 
-import { clientSpawner } from "./plugin";
+import { authFromEnv, clientSpawner } from "./plugin";
 import { WorkerSessions } from "../../dispatch/spawn";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
 import { DEFAULT_MODEL, resolveModel } from "../../mcp/model";
@@ -128,8 +128,18 @@ export async function findCallerSession(
   runtime: Runtime,
 ): Promise<string | undefined> {
   try {
-    const result = await runtime.client.session.list({ query: { directory: runtime.directory } });
-    const sessions = (result.data ?? []) as Array<{ id: string; time?: { created?: number } }>;
+    const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
+    const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+    const response = await fetch(
+      `${runtime.baseUrl}/api/session?directory=${encodeURIComponent(runtime.directory)}`,
+      {
+        headers: { Authorization: `Basic ${btoa(`${username}:${password}`)}` },
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    if (!response.ok) return undefined;
+    const result = (await response.json()) as { data?: Array<{ id: string; time?: { created?: number } }> };
+    const sessions = result.data ?? [];
     if (sessions.length === 0) return undefined;
 
     const newest = sessions.reduce((a, b) =>
@@ -213,7 +223,10 @@ export function workerSessions(
   const db = new SqliteTokenSource();
 
   return new WorkerSessions(
-    clientSpawner(runtime.client as never, runtime.directory, runtime.sessionID),
+    clientSpawner(
+      { baseUrl: runtime.baseUrl, directory: runtime.directory, auth: authFromEnv() },
+      runtime.sessionID,
+    ),
     runtime.models,
     undefined as never,
     (sessionId: string) => {
