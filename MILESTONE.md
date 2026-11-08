@@ -344,6 +344,48 @@ Exit criteria:
 - every dispatch has a recorded size and reason;
 - the founder can read why without reading transcripts.
 
+### Design elevation at plan time (phase 1 addition)
+
+Scope:
+
+- Any plan the planner marks UI-capable (contracts whose writes touch
+  screen-facing files or an explicit `ui: true` flag) MUST carry a closed
+  design block before dispatch — same rule as missing checks. No block, no
+  dispatch.
+- The founder, never the agent, picks the direction. Plan-full proposes 2–3
+  coherent directions — name, palette, type scale, density, one signature
+  element — the founder picks one and approves it in the review step.
+- `plan-demo` is deliberately lighter than `plan-full`:
+  - `plan-demo`: direction + palette (≤4) + one type scale + one signature
+    element. A few lines, not a design system.
+  - `plan-full`: the above plus spacing unit, radii (≤2), motion policy, and a
+    `notDoing` list (≤2 fonts, ≤1 gradient per page, no gradient-on-gradient,
+    no scrolljacking, no custom cursors).
+- The acceptable band is named and enforced:
+  **Underdesigning < Perfection < Overdesigning.**
+  Floor: no empty canvas — palette and type are mandatory for UI plans.
+  Ceiling: no decoration without identity — every effect must serve the
+  chosen direction; try-every-thing fails the band.
+- Mechanical enforcement:
+  - validator rejects UI plans without a design block (or with an empty one);
+  - validator over-caps against the block: >2 fonts, >1 gradient per page,
+    >2 banned effects, missing `notDoing`;
+  - new check kind `style:palette` — every hex in the diff appears in the
+    declared palette (failing is retryable);
+  - preview gains a contrast check (body text ≥ 4.5:1) before "it renders".
+- Overdesign is a *gate failure*, not an opinion. A shipped screen that
+  violates the `notDoing` list fails the check like any other violation.
+
+Exit criteria:
+
+- UI plans without a design block do not dispatch;
+- the founder picks the direction; the plan shows the choice it was given;
+- every shipped color appears in the declared palette;
+- body text passes the contrast check at preview;
+- Underdesigning and Overdesigning are both mechanically flagged — no silent
+  bland, no silent busywork;
+- `plan-demo` output is visibly lighter than `plan-full` output.
+
 ### Phase 2 — Strengthen runtime behaviour
 
 Scope:
