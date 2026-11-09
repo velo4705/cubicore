@@ -1,0 +1,41 @@
+{
+  "retrospective": {
+    "verdict": "None of the 2 associates finished with verifiable work. The requested split was either too aggressive for this task, or the plan was wrong — see marker-a — scope: worker modified undeclared path(s): smoke-factory/b.txt; marker-b — scope: worker modified undeclared path(s): smoke-factory/a.txt",
+    "passed": 0,
+    "flagged": 2,
+    "deferred": 0,
+    "totalTokens": 0
+  },
+  "version": 1,
+  "topology": "fan-out",
+  "fit": {
+    "decision": "small-factory",
+    "workers": 2,
+    "confidence": "high",
+    "topology": "fan-out",
+    "why": "a few genuinely independent slices — parallel work pays",
+    "whyNotMore": "any extra worker adds coordination with nothing to parallelise against",
+    "evidence": [
+      "2 contracts",
+      "0 dependency edges",
+      "dependencies do not gate dispatch"
+    ]
+  },
+  "team": 2,
+  "outcome": {
+    "accepted": 0,
+    "failed": 2,
+    "deferred": 0
+  },
+  "usage": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 0,
+    "totalTokens": 0,
+    "cost": 0
+  },
+  "decision": "small-factory — 2 associates — high confidence",
+  "recorded": "2026-11-09T07:31:45.122Z"
+}

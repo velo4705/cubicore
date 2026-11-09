@@ -1,0 +1,13 @@
+{
+  "decision": "small-factory",
+  "workers": 2,
+  "confidence": "high",
+  "topology": "fan-out",
+  "why": "a few genuinely independent slices — parallel work pays",
+  "whyNotMore": "any extra worker adds coordination with nothing to parallelise against",
+  "evidence": [
+    "2 contracts",
+    "0 dependency edges",
+    "dependencies do not gate dispatch"
+  ]
+}

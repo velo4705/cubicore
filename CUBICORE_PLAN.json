@@ -1,0 +1,85 @@
+{
+  "topology": "fan-out",
+  "summary": "Live factory-fit smoke: two disjoint one-file markers. Costs almost nothing.",
+  "contracts": [
+    {
+      "id": "marker-a",
+      "objective": "Create smoke-factory/a.txt containing exactly the line alpha",
+      "reads": [],
+      "writes": [
+        "smoke-factory/a.txt"
+      ],
+      "forbidden": [],
+      "deliverable": "diff",
+      "schema": {
+        "type": "object"
+      },
+      "doneWhen": "smoke-factory/a.txt exists and contains the line alpha",
+      "checks": [
+        {
+          "id": "a-exists",
+          "kind": "intent",
+          "command": "test -f smoke-factory/a.txt && grep -qx alpha smoke-factory/a.txt",
+          "expectation": "exit 0",
+          "gating": "blocking",
+          "convergent": true
+        }
+      ],
+      "budget": {
+        "tokens": 5000,
+        "toolCalls": 10,
+        "wallMs": 120000
+      },
+      "tools": []
+    },
+    {
+      "id": "marker-b",
+      "objective": "Create smoke-factory/b.txt containing exactly the line beta",
+      "reads": [],
+      "writes": [
+        "smoke-factory/b.txt"
+      ],
+      "forbidden": [],
+      "deliverable": "diff",
+      "schema": {
+        "type": "object"
+      },
+      "doneWhen": "smoke-factory/b.txt exists and contains the line beta",
+      "checks": [
+        {
+          "id": "b-exists",
+          "kind": "intent",
+          "command": "test -f smoke-factory/b.txt && grep -qx beta smoke-factory/b.txt",
+          "expectation": "exit 0",
+          "gating": "blocking",
+          "convergent": true
+        }
+      ],
+      "budget": {
+        "tokens": 5000,
+        "toolCalls": 10,
+        "wallMs": 120000
+      },
+      "tools": []
+    }
+  ],
+  "graphBudget": {
+    "nodes": 3,
+    "edges": 0,
+    "tokens": 12000,
+    "wallMs": 240000
+  },
+  "factoryFit": {
+    "decision": "small-factory",
+    "workers": 2,
+    "confidence": "high",
+    "topology": "fan-out",
+    "why": "a few genuinely independent slices — parallel work pays",
+    "whyNotMore": "any extra worker adds coordination with nothing to parallelise against",
+    "evidence": [
+      "2 contracts",
+      "0 dependency edges",
+      "dependencies do not gate dispatch"
+    ]
+  }
+}
