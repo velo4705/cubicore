@@ -11,6 +11,7 @@ Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a proje
 <p align="center">
   <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/v/cubicore?color=blue" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/cubicore"><img src="https://img.shields.io/npm/last-update/cubicore?color=blue" alt="npm last published"></a>
+  <a href="https://github.com/velo4705/cubicore"><img src="https://img.shields.io/badge/GitHub-Source_Code-ff69b4?logo=github&color=white" alt="Cubicore Source code"></a>
   <a href="https://img.shields.io/badge/node-%3E%3D18-brightgreen"><img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen" alt="Node.js 18+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT license"></a>
 </p>
