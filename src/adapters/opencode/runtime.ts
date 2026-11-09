@@ -2,6 +2,7 @@ import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 
 import { authFromEnv, clientSpawner } from "./plugin";
 import { servicePassword } from "../../mcp/service";
+import { pickCallerSession, type ListedCallerSession } from "./caller";
 import { WorkerSessions } from "../../dispatch/spawn";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
 import { DEFAULT_MODEL, resolveModel } from "../../mcp/model";
@@ -139,14 +140,10 @@ export async function findCallerSession(
       },
     );
     if (!response.ok) return undefined;
-    const result = (await response.json()) as { data?: Array<{ id: string; time?: { created?: number } }> };
-    const sessions = result.data ?? [];
-    if (sessions.length === 0) return undefined;
-
-    const newest = sessions.reduce((a, b) =>
-      (b.time?.created ?? 0) > (a.time?.created ?? 0) ? b : a,
-    );
-    return newest.id;
+    const result = (await response.json()) as {
+      data?: Array<ListedCallerSession>;
+    };
+    return pickCallerSession(result.data ?? []);
   } catch {
     return undefined;
   }

@@ -8,6 +8,7 @@ import { PhaseTimer } from "../telemetry/timing";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
 import { ProgressSink } from "./progress";
 import type { ContractState } from "./runs";
+import type { FactoryFit } from "../factory/fit";
 import {
   cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
   recordProgress, startRun,
@@ -21,6 +22,8 @@ import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
+import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
+import { buildRetrospective, renderRetrospective } from "../factory/retrospect";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
   CONTEXT_MD,
@@ -235,6 +238,75 @@ async function createDeployStackForm(
   return result;
 }
 
+/**
+ * The factory-fit question, asked the same way Founders see everything else:
+ * a native opencode form, one question, sent to their own session. The form
+ * is only created when the plan is accepted — a rejected plan gets no
+ * question because there is nothing yet worth dispatching.
+ */
+async function createFactoryFitForm(runtime: Runtime, sessionID: string, fit: FactoryFit, contractCount: number): Promise<FormResult> {
+  const options = factoryFitOptions(fit, contractCount);
+  const recommended = options.recommendedValue === "single-agent" ? options.singleAgent : options.team;
+  const other = options.recommendedValue === "single-agent" ? options.team : options.singleAgent;
+  const formId = frmId("factory-fit");
+  const body = {
+    id: formId,
+    title: "Choose your factory",
+    metadata: {},
+    fields: [
+      {
+        key: "choice",
+        title: "Factory fit",
+        description: options.description,
+        required: true,
+        type: "string",
+        options: [
+          { value: recommended.value, label: `${recommended.label} (recommended)`, description: recommended.description },
+          { value: other.value, label: other.label, description: other.description },
+          { value: "other", label: "Other", description: "Something else, or a constraint you want stated" },
+        ],
+      },
+    ],
+  };
+  const result = await postForm(runtime, sessionID, body);
+  if (!result.ok) {
+    process.stderr.write(`[cubicore plan_write] failed to create factory-fit form: HTTP ${result.status} ${result.body}\n`);
+  }
+  return result;
+}
+
+/**
+ * Ask the founder how they want this to run. Returns the reply lines to append —
+ * empty when there is no caller session to reach (e.g. invoked from the CLI), so
+ * nothing pretends a question went out.
+ */
+async function askFounderFactoryFit(fit: FactoryFit, contractCount: number): Promise<string[]> {
+  try {
+    const runtime = runtimeFromEnv();
+    const sessionID = await findCallerSession(runtime);
+    if (!sessionID) return [];
+    const result = await createFactoryFitForm(runtime, sessionID, fit, contractCount);
+    if (!result.ok) {
+      return [
+        "",
+        `Factory-fit form delivery FAILED (HTTP ${result.status}: ${result.body}). ` +
+          "Do not claim a form was sent. Ask the question now with your question tool: " +
+          `"Team of ${contractCount}, or single agent?" — never as plain text.`,
+      ];
+    }
+    return [
+      "",
+      "The factory-fit question was sent to the founder as a form. Relay the decision above " +
+        "verbatim, then stop. Do NOT ask in plain text. Do NOT call execute, record_factory_fit " +
+        "or anything else until the founder answers. If the answer overrides the recommendation, " +
+        "call record_factory_fit with their choice before /cubicore:execute.",
+    ];
+  } catch (error) {
+    process.stderr.write(`[cubicore plan_write] factory-fit ask failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    return [];
+  }
+}
+
 async function pumpEvents(
   runtime: Runtime,
   workers: { onEvent(event: unknown): void },
@@ -381,6 +453,45 @@ function reply(body: string, directory: string, isError = false): ToolResult {
   const next = nextLine(directory);
   const tail = next ? `\n\n---\n${next}` : "";
   return { content: [{ type: "text", text: `${body}${tail}` }], isError };
+}
+
+/**
+ * Progress markers so the founder can see at a glance what is done, what
+ * failed, and what still needs work -- and so continue knows where to pick
+ * up. Shared by plan_write and record_factory_fit so the markdown the founder
+ * sees after either call reflects the same disk state.
+ */
+function progressFromDisk(
+  directory: string,
+  contracts: Plan["contracts"],
+): { contracts: Map<string, ContractState>; steps: Map<string, Map<string, ContractState>> } {
+  const contractProgress = new Map<string, ContractState>();
+  const stepProgress = new Map<string, Map<string, ContractState>>();
+  for (const run of loadRuns(directory)) {
+    if (run.state !== "done" && run.state !== "failed" && run.state !== "cancelled") continue;
+    for (const p of run.progress) {
+      contractProgress.set(p.contractId, p.state);
+      if (p.steps) {
+        const stepMap = new Map<string, ContractState>();
+        for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
+        stepProgress.set(p.contractId, stepMap);
+      }
+    }
+    break; // newest completed run wins
+  }
+  const persisted = readPersistedProgression(directory);
+  for (const contract of contracts) {
+    const state = persisted[contract.id];
+    if (state) {
+      contractProgress.set(contract.id, state);
+      if (contract.steps?.length) {
+        const stepMap = new Map<string, ContractState>();
+        for (const step of contract.steps) stepMap.set(step.id, state);
+        stepProgress.set(contract.id, stepMap);
+      }
+    }
+  }
+  return { contracts: contractProgress, steps: stepProgress };
 }
 
 /** Validate without dispatching. Free, and the reason the split exists. */
@@ -556,6 +667,56 @@ async function runToCompletion(
 
   controller.abort();
 
+  const retrospective = buildRetrospective({
+    fit: parsed.factoryFit,
+    artifacts: aggregated.artifacts,
+    unresolved: outcome.unresolved,
+    deferred: outcome.deferred.length,
+    usage,
+  });
+  // Factory ledger — one page (.cubicore-factory-ledger.json) that says
+  // what this run decided, what it cost, what it got, and why it wasn't a
+  // single agent. The founder can read it later without transcripts.
+  try {
+    const acceptedCount = outcome.accepted.length;
+    const failedCount = outcome.failed.length;
+    const deferredCount = outcome.deferred.length;
+    const fit = parsed.factoryFit;
+    const ledger = {
+      retrospective: {
+        verdict: retrospective.verdict,
+        passed: retrospective.passed,
+        flagged: retrospective.flagged,
+        deferred: retrospective.deferred,
+        totalTokens: retrospective.totalTokens,
+      },
+      version: 1,
+      topology: parsed.topology,
+      fit: fit ?? null,
+      team: parsed.contracts.length,
+      outcome: {
+        accepted: acceptedCount,
+        failed: failedCount,
+        deferred: deferredCount,
+      },
+      usage: {
+        input: usage.input,
+        output: usage.output,
+        cacheRead: usage.cacheRead,
+        cacheWrite: usage.cacheWrite,
+        reasoning: usage.reasoning,
+        totalTokens,
+        cost: usage.cost,
+      },
+      decision: fit
+        ? `${fit.decision} — ${fit.workers} associates — ${fit.confidence} confidence`
+        : 'decision recorded at plan time; ledger merged here',
+      recorded: new Date().toISOString(),
+    };
+    writeFileSync(`${dir}/.cubicore-factory-ledger.json`, JSON.stringify(ledger, null, 2));
+  } catch {
+    // The ledger is an artifact, not a gate. A filesystem error never fails a run.
+  }
   const verified = await verifyAndSyncPlan(parsed, dir, validation);
   syncRunRecord(runId, dir, parsed, verified);
 
@@ -564,6 +725,8 @@ async function runToCompletion(
 
   return {
     summary: [
+      renderRetrospective(retrospective),
+      "",
       `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ` +
         `${outcome.deferred.length} deferred · verified ${passedCount}/${parsed.contracts.length} on disk`,
       ...aggregated.artifacts.map(
@@ -637,13 +800,29 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
     process.stderr.write(`[cubicore] ${model.reason}\n`);
   }
 
-  const run = startRun(parsed, dir);
+  // The plan was written with its factory decision attached (plan_write).
+  // Honor it here rather than re-deriving a different answer on the second
+  // pass. If the plan says single-agent, dispatch as one associate.
+  const effectiveRaw = (() => {
+    const fit = parsed.factoryFit;
+    if (fit?.decision === "single-agent") {
+      return JSON.stringify(synthesizeSingleAgentPlan(parsed));
+    }
+    return raw;
+  })() as string;
+
+  // Validation + dispatch read the synthesized plan. The streaming cap and
+  // everything downstream treat this as the actual plan.
+  const effectivePlan = parsed.factoryFit?.decision === "single-agent"
+    ? synthesizeSingleAgentPlan(parsed)
+    : parsed;
+  const run = startRun(effectivePlan, dir);
   // Return the verdict in this one call. A Cubicore run is expected to be
   // started and allowed to finish; polling is an extra step the founder
   // should never have to think about.
   try {
     const parent = await resolveParent(parentSessionID);
-    const { summary, halted } = await runToCompletion(raw, run.id, parent, dir);
+    const { summary, halted } = await runToCompletion(effectiveRaw, run.id, parent, dir);
 
     if (halted === "cancelled") {
       cancelRun(run.id, dir, "cancelled by the founder");
@@ -745,6 +924,9 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
 
   const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
+  const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
+  parsed.factoryFit = fit;
+  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
 
   if (parsed.topology === "refuse") {
     return text("This plan refuses to split. That is a valid answer and nothing is written.");
@@ -757,40 +939,16 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     problems.push(`- [mis-declared-topology] declared \`${topology.declared}\`, implies \`${topology.implied}\``);
   }
 
-  writeFileSync(resolved.planPath, raw);
+  // The plan on disk carries the factory-fit decision — execute reads it,
+  // and the markdown renders it. Re-serializing the parsed plan is lossless
+  // now that parsePlan whitelists factoryFit (design/preview/context ride
+  // along the same way).
+  writeFileSync(resolved.planPath, JSON.stringify(parsed, null, 2));
 
-  // Progress markers so the founder can see at a glance what is done,
-  // what failed, and what still needs work -- and so continue knows where
-  // to pick up.
-  const contractProgress = new Map<string, ContractState>();
-  const stepProgress = new Map<string, Map<string, ContractState>>();
-  for (const run of loadRuns(directory)) {
-    if (run.state !== "done" && run.state !== "failed" && run.state !== "cancelled") continue;
-    for (const p of run.progress) {
-      contractProgress.set(p.contractId, p.state);
-      if (p.steps) {
-        const stepMap = new Map<string, ContractState>();
-        for (const [stepId, state] of Object.entries(p.steps)) stepMap.set(stepId, state);
-        stepProgress.set(p.contractId, stepMap);
-      }
-    }
-    break; // newest completed run wins
-  }
-  const persisted = readPersistedProgression(directory);
-  for (const contract of parsed.contracts) {
-    const state = persisted[contract.id];
-    if (state) {
-      contractProgress.set(contract.id, state);
-      if (contract.steps?.length) {
-        const stepMap = new Map<string, ContractState>();
-        for (const step of contract.steps) stepMap.set(step.id, state);
-        stepProgress.set(contract.id, stepMap);
-      }
-    }
-  }
+  const progress = progressFromDisk(directory, parsed.contracts);
   writeFileSync(
     resolved.mdPath,
-    renderPlanMd(parsed, validation, { contracts: contractProgress, steps: stepProgress }),
+    renderPlanMd(parsed, validation, { contracts: progress.contracts, steps: progress.steps }),
   );
 
   // CUBICORE_CONTEXT.md is for humans who need to present the project in
@@ -827,6 +985,7 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     );
 
     if (exhausted && unsafe.length === 0) {
+      const askedFactory = await askFounderFactoryFit(fit, parsed.contracts.length);
       return text(
         [
           `Plan accepted after ${attempts} attempts, with findings recorded rather than blocking.`,
@@ -834,6 +993,7 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
           ...problems.map((p) => `- ${p}`),
           "",
           "These are preferences, not safety problems, and the plan was not reworked for them.",
+          ...askedFactory,
         ].join("\n"),
       );
     }
@@ -851,6 +1011,7 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     );
   }
 
+  const askedFactory = await askFounderFactoryFit(fit, parsed.contracts.length);
   return text(
     [
       `Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
@@ -859,7 +1020,59 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
       renderFit(fit),
       "",
       "Nothing has run.",
+      ...askedFactory,
     ].join("\n"),
+  );
+}
+
+/**
+ * Record the founder's override of the factory-fit recommendation. Rewrites
+ * the plan file, the factory-fit record and the founder-facing markdown so
+ * what execute runs and what the founder reads stay in agreement. Not needed
+ * when the founder accepts the recommendation.
+ */
+async function recordFactoryFit(
+  choice: "team" | "single-agent",
+  note: string | undefined,
+  planNumber: number | undefined,
+  dir: string,
+): Promise<ToolResult> {
+  const resolved = resolvePlanFile(dir, planNumber);
+  let raw: string;
+  try {
+    raw = await Bun.file(resolved.planPath).text();
+  } catch {
+    return text(`No plan file found at ${resolved.planPath}. Plan first.`, true);
+  }
+  let parsed: Plan;
+  try {
+    parsed = parsePlan(raw) as Plan;
+  } catch (error) {
+    const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
+    return text(["Stored plan did not parse:", ...problems.map((p) => `- ${p}`)].join("\n"), true);
+  }
+  const contractCount = parsed.contracts.length;
+  const current = parsed.factoryFit ?? assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
+  const nextFit = applyFounderFactoryChoice(current, contractCount, choice, note);
+  const next: Plan = { ...parsed, factoryFit: nextFit };
+  writeFileSync(resolved.planPath, JSON.stringify(next, null, 2));
+  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(nextFit, null, 2));
+  const validation = validatePlan(next, deriveBaseline(dir));
+  const progress = progressFromDisk(dir, next.contracts);
+  writeFileSync(
+    resolved.mdPath,
+    renderPlanMd(next, validation, { contracts: progress.contracts, steps: progress.steps }),
+  );
+  const tail =
+    choice === "single-agent"
+      ? "execute will collapse this to a single associate."
+      : `execute will run this as written — ${contractCount} associate${contractCount === 1 ? "" : "s"}.`;
+  return reply(
+    [
+      `Recorded: ${nextFit.decision} — ${nextFit.workers} associate${nextFit.workers === 1 ? "" : "s"} (founder ${choice === "single-agent" ? "chose one agent" : `chose the team of ${contractCount}`}).`,
+      tail,
+    ].join("\n"),
+    dir,
   );
 }
 
@@ -1537,6 +1750,33 @@ export const TOOLS = [
       planWrite(args.plan, args.directory ?? process.cwd(), args.planNumber),
   },
   {
+    name: "record_factory_fit",
+    description:
+      WHEN +
+      "Records the founder's answer to the factory-fit question when it overrides the " +
+      'recommendation the plan reported. choice "single-agent" collapses the plan into one ' +
+      'associate at execute time; choice "team" runs the plan as written. Rewrites the plan ' +
+      "file, the factory-fit record and the founder-facing markdown so what execute runs and " +
+      "what the founder reads stay in agreement. No need to call this when the founder accepts " +
+      "the recommendation; do not call it before the founder answers — it is for overrides.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        choice: { type: "string", enum: ["team", "single-agent"], description: "What the founder chose." },
+        note: { type: "string", description: "The founder's own words, if they said why (optional)." },
+        planNumber: { type: "integer", description: "Numbered plan; omit for the base files." },
+        directory: { type: "string", description: "Working directory; defaults to the server's." },
+      },
+      required: ["choice"],
+    },
+    handler: async (args: { choice?: string; note?: string; planNumber?: number; directory?: string }) => {
+      if (args.choice !== "team" && args.choice !== "single-agent") {
+        return text('choice must be "team" or "single-agent".', true);
+      }
+      return recordFactoryFit(args.choice, args.note, args.planNumber, args.directory ?? process.cwd());
+    },
+  },
+  {
     name: "continue",
     description:
       WHEN +
@@ -2119,12 +2359,17 @@ produce the plan JSON and pass it to the plan tool, which writes
 CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
 CUBICORE_CONTEXT.md for team members who need to present the project in person.
 The plan tool also prints the factory-fit decision — the recommended team
-size, topology and why. In your reply, relay that decision verbatim (not
-reworded), then ask the founder EXACTLY ONE question:
-"Dispatch as a team of <N>, or single agent?" and wait. Do not dispatch — do
-not call /cubicore:execute — until the founder answers. If they say single
-agent, cascade to a one-contract plan via /cubicore:refine. If they say
-team of <N> or just "yes", stop and let them run /cubicore:execute next.
+size, topology and why — and on an accepted plan it sends the founder the
+factory-fit question as an opencode form, the same mechanism as the deploy
+questions. In your reply, relay that decision verbatim (not reworded), then
+stop. Do not ask the question in plain text, and do not re-ask it — the form
+is the question. Do not dispatch — do not call /cubicore:execute — until the
+founder answers. If the answer overrides the recommendation (single agent
+when a team was recommended, or a team when one agent was recommended), call
+record_factory_fit with their choice before anything else; it rewrites the
+plan file, the factory-fit record and the markdown so execute runs what the
+founder chose. If they accept the recommendation, or just say "yes", stop and
+let them run /cubicore:execute next.
 
 Prefer \`fan-out\` whenever write scopes are disjoint. A \`reads\` entry usually
 means the checks depend on the files, not that the worker must wait to write its

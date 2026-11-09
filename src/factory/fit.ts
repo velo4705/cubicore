@@ -1,4 +1,4 @@
-import type { Contract, Topology } from "../contracts/types";
+import type { Contract, Plan, Topology } from "../contracts/types";
 import { findDependencies } from "../coordinator/topology";
 
 /**
@@ -74,7 +74,7 @@ export function assessFactoryFit(input: FitInput): FactoryFit {
   const edges = findDependencies(contracts);
   const dependencyPressure = edges.length / Math.max(1, contracts.length - 1);
 
-  evidence.push(`${contracts.length} contract(s)`, `${edges.length} dependency edge(s)`);
+  evidence.push(`${contracts.length} contracts`, `${edges.length} dependency edges`);
 
   // Strong coupling across almost every contract means a pipeline: one stage
   // feeds the next and parallelism buys nothing.
@@ -157,4 +157,117 @@ export function renderFit(fit: FactoryFit): string {
     `Confidence: ${fit.confidence}`,
     ...fit.evidence.map((line) => `- ${line}`),
   ].join("\n");
+}
+
+/**
+ * Synthesize a one-contract plan from an existing one.
+ *
+ * The planner wrote N contracts with disjoint writes. Collapsing them into
+ * a single contract keeps the founder's request intact, keeps disjointness
+ * (one writer), keeps the checks (union), and lets the dispatcher run one
+ * worker instead of N. Only used when the factory-fit decision is
+ * single-agent; otherwise the plan is used verbatim.
+ */
+export function synthesizeSingleAgentPlan(plan: Plan): Plan {
+  if (plan.contracts.length <= 1) return plan;
+  const first = plan.contracts[0]!;
+  const merged = {
+    id: "solo",
+    objective: plan.contracts.map((c) => `[${c.id}] ${c.objective}`).join("\n"),
+    reads: [...new Set(plan.contracts.flatMap((c) => c.reads))],
+    writes: [...new Set(plan.contracts.flatMap((c) => c.writes))],
+    forbidden: [],
+    deliverable: first.deliverable,
+    schema: first.schema,
+    doneWhen: plan.contracts.map((c) => `[${c.id}] ${c.doneWhen}`).join("; "),
+    checks: [...new Map(plan.contracts.flatMap((c) => c.checks).map((chk) => [chk.id, chk])).values()],
+    steps: plan.contracts.flatMap((c) => c.steps ?? []),
+    budget: {
+      tokens: plan.contracts.reduce((sum, c) => sum + (c.budget?.tokens ?? 0), 0),
+      toolCalls: plan.contracts.reduce((sum, c) => sum + (c.budget?.toolCalls ?? 0), 0),
+      wallMs: plan.contracts.reduce((sum, c) => sum + (c.budget?.wallMs ?? 0), 0),
+    },
+    tools: [...new Set(plan.contracts.flatMap((c) => c.tools ?? []))],
+    ui: plan.contracts.some((c) => c.ui === true),
+  };
+  return {
+    ...plan,
+    topology: "pipeline",
+    contracts: [merged],
+    graphBudget: {
+      nodes: 1,
+      edges: 0,
+      tokens: plan.graphBudget.tokens,
+      wallMs: plan.graphBudget.wallMs,
+    },
+  };
+}
+
+export type FounderFactoryChoice = "team" | "single-agent";
+
+/**
+ * The founder's answer to the factory-fit question, applied to the recorded
+ * decision.
+ *
+ * Only two things can change what executes: no run at all, or the recorded
+ * decision. Overriding to a team keeps the plan exactly as written; overriding
+ * to a single agent makes execute collapse it. Anything the founder says but
+ * has no bearing on those two paths is kept verbatim in `why` for the audit
+ * trail.
+ */
+export function applyFounderFactoryChoice(
+  fit: FactoryFit,
+  contractCount: number,
+  choice: FounderFactoryChoice,
+  note?: string,
+): FactoryFit {
+  const reason = note?.trim();
+  if (choice === "single-agent") {
+    return {
+      ...fit,
+      decision: "single-agent",
+      workers: 1,
+      confidence: "low",
+      why: reason ?? `founder asked for one agent instead of the assessed ${fit.decision}`,
+      whyNotMore: "as the founder asked",
+      evidence: [...fit.evidence, "founder override at plan time"],
+    };
+  }
+  return {
+    ...fit,
+    decision: contractCount <= 3 ? "small-factory" : "standard-factory",
+    workers: contractCount,
+    confidence: "low",
+    why: reason ?? `founder asked for the team as written instead of the assessed ${fit.decision}`,
+    whyNotMore: "as the founder asked",
+    evidence: [...fit.evidence, "founder override at plan time"],
+  };
+}
+
+/** What the founder sees in the form and in the audit record. */
+export function factoryFitOptions(fit: FactoryFit, contractCount: number): {
+  recommendedValue: "team" | "single-agent";
+  team: { value: "team"; label: string; description: string };
+  singleAgent: { value: "single-agent"; label: string; description: string };
+  description: string;
+} {
+  const recommendedValue = fit.decision === "single-agent" ? "single-agent" : "team";
+  const teamLabel = `Team of ${contractCount}`;
+  const teamDescription =
+    fit.decision === "single-agent"
+      ? "Run the plan as written — one associate per contract."
+      : fit.why;
+  const singleAgentDescription =
+    fit.decision === "single-agent"
+      ? fit.why
+      : "Collapse the plan into one agent that does the whole thing. Fewer hands, more coordination saved.";
+  const description =
+    `Assessment: ${fit.decision} · ${fit.workers} associate${fit.workers === 1 ? "" : "s"} · ${fit.confidence} confidence. ` +
+    `${fit.why}. ${fit.whyNotMore}.`;
+  return {
+    recommendedValue,
+    team: { value: "team", label: teamLabel, description: teamDescription },
+    singleAgent: { value: "single-agent", label: "Single agent", description: singleAgentDescription },
+    description,
+  };
 }

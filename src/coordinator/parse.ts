@@ -380,6 +380,53 @@ function parseDesign(value: unknown, problems: string[], label = "design"): {
   return { direction, palette, typeface, typeScale, spacing, radii, signature, notDoing, ambition };
 }
 
+const FACTORY_DECISIONS = new Set(["single-agent", "small-factory", "standard-factory", "pipeline", "single-reader"]);
+
+/**
+ * The factory-fit decision is attached at plan time and read at dispatch
+ * time (execute honors `single-agent`). It rides inside the plan file, so it
+ * must round-trip: parse it, carry it, re-serialize it. Dropping it silently
+ * made execute re-derive the split from a plan with no decision attached and
+ * dispatch the team the founder had already been told about — or vice versa.
+ */
+function parseFactoryFit(value: unknown, problems: string[]): Plan["factoryFit"] {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) {
+    problems.push("factoryFit must be an object");
+    return undefined;
+  }
+  const decision = typeof value.decision === "string" && FACTORY_DECISIONS.has(value.decision)
+    ? (value.decision as "single-agent" | "small-factory" | "standard-factory" | "pipeline" | "single-reader")
+    : (problems.push(`factoryFit.decision must be one of ${[...FACTORY_DECISIONS].join(", ")}`), undefined);
+
+  const workers = typeof value.workers === "number" && Number.isInteger(value.workers) && value.workers >= 1
+    ? value.workers
+    : (problems.push("factoryFit.workers must be an integer ≥ 1"), undefined);
+
+  const confidence = typeof value.confidence === "string" && ["high", "medium", "low"].includes(value.confidence)
+    ? (value.confidence as "high" | "medium" | "low")
+    : (problems.push('factoryFit.confidence must be one of "high", "medium", "low"'), undefined);
+
+  const topology = typeof value.topology === "string" && TOPOLOGIES.includes(value.topology as Topology)
+    ? (value.topology as Topology)
+    : (problems.push("factoryFit.topology must be a plan topology"), undefined);
+
+  const text = (key: "why" | "whyNotMore"): string | undefined => {
+    const v = value[key];
+    return typeof v === "string" && v.trim().length > 0 ? v.trim() : (problems.push(`factoryFit.${key} must be a non-empty string`), undefined);
+  };
+  const why = text("why");
+  const whyNotMore = text("whyNotMore");
+
+  const evidenceRaw = value.evidence;
+  const evidence: string[] = Array.isArray(evidenceRaw)
+    ? evidenceRaw.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+    : [];
+
+  if (!decision || !workers || !confidence || !topology || !why || !whyNotMore) return undefined;
+  return { decision, workers, confidence, topology, why, whyNotMore, evidence };
+}
+
 /**
  * Parse a coordinator response into a `Plan`, or throw `MalformedPlan`.
  *
@@ -406,7 +453,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview", "design"].includes(key)) {
+    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview", "design", "factoryFit"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -481,6 +528,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   const design = parseDesign(json.design, problems);
+  const factoryFit = parseFactoryFit(json.factoryFit, problems);
 
   if (problems.length > 0) {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
@@ -494,6 +542,7 @@ export function parsePlan(raw: string): Plan {
     graphBudget,
     preview: parsePreview(json.preview, problems),
     ...(design === undefined ? {} : { design }),
+    ...(factoryFit === undefined ? {} : { factoryFit }),
   };
 }
 

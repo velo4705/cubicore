@@ -1,5 +1,9 @@
 # Milestone
 
+Completed items were moved to `docs/archive/completed-milestones.md` on
+2026-11-09; this document carries only unfinished work.
+
+
 ## Landscape: inline sub-tasks vs sessions
 
 Surveyed across the coding agents Cubicore could plausibly target.
@@ -144,7 +148,7 @@ These are the product outcomes, not implementation details.
 
 ### The twelve concrete improvements
 
-#### 1. Make team creation genuinely dynamic
+#### 1. Make team creation genuinely dynamic — **done (2026-11-09)**
 
 Team size is computed from the task's dependency graph and host capability:
 
@@ -266,7 +270,7 @@ The founder does not want a wall of tool calls. They want an honest picture:
 The dashboard reads persisted state, so it survives a restart. It is a
 status surface, not a second plan.
 
-#### 9. Add a factory-fit assessment
+#### 9. Add a factory-fit assessment — **done (2026-11-09)**
 
 This is the gate before everything. It is both automatic and inspectable.
 
@@ -298,10 +302,13 @@ many change cycles. It needs:
 
 The proof is a 20-feature project over repeated runs, not one heroic build.
 
-#### 11. Measure the claims
+#### 11. Measure the claims (blocked / demoted)
 
-Every claim in the README and the milestone must survive an identical task on
-the same host and model:
+Publishing a Cubicore speed or cost benchmark is not on the cards in the near
+term. Nothing has been measured on the opencode v2 host; benchmarks are
+harness-correctness tools only. Until a measurement exists, the README and
+this document make no cost or speed claim. If one is ever produced, it must
+survive an identical task on the same host and model:
 
 - time-to-complete versus one agent;
 - token cost versus one agent and naive fan-out;
@@ -321,70 +328,8 @@ should say what actually happened, including when the factory is not worth it.
 
 The order below removes the ambiguity: make the current system visibly a
 factory first, make it reliable second, portable third, continuous fourth, and
-proven fifth.
-
-### Phase 1 — Make the current system clearly a factory
-
-Scope:
-
-- Add the mandatory `factoryFit` pre-dispatch decision.
-- Implement `single-agent | small-factory | standard-factory | pipeline |
-  single-reader | refuse`.
-- Compute team size from dependency and write scopes.
-- Render "Why this factory?" in `CUBICORE_PLAN.md`.
-- Persist the assessment in `.cubicore-factory-fit.json`.
-- Add the factory ledger: fit, team, dispatch, gates, integration, verify.
-- Make the founder-facing output small: decision, blockers, done.
-
-Exit criteria:
-
-- a vague or strongly coupled task is not fanned out;
-- a genuinely independent task gets a justified team;
-- one-agent tasks use one agent;
-- every dispatch has a recorded size and reason;
-- the founder can read why without reading transcripts.
-
-### Design elevation at plan time (phase 1 addition)
-
-Scope:
-
-- Any plan the planner marks UI-capable (contracts whose writes touch
-  screen-facing files or an explicit `ui: true` flag) MUST carry a closed
-  design block before dispatch — same rule as missing checks. No block, no
-  dispatch.
-- The founder, never the agent, picks the direction. Plan-full proposes 2–3
-  coherent directions — name, palette, type scale, density, one signature
-  element — the founder picks one and approves it in the review step.
-- `plan-demo` is deliberately lighter than `plan-full`:
-  - `plan-demo`: direction + palette (≤4) + one type scale + one signature
-    element. A few lines, not a design system.
-  - `plan-full`: the above plus spacing unit, radii (≤2), motion policy, and a
-    `notDoing` list (≤2 fonts, ≤1 gradient per page, no gradient-on-gradient,
-    no scrolljacking, no custom cursors).
-- The acceptable band is named and enforced:
-  **Underdesigning < Perfection < Overdesigning.**
-  Floor: no empty canvas — palette and type are mandatory for UI plans.
-  Ceiling: no decoration without identity — every effect must serve the
-  chosen direction; try-every-thing fails the band.
-- Mechanical enforcement:
-  - validator rejects UI plans without a design block (or with an empty one);
-  - validator over-caps against the block: >2 fonts, >1 gradient per page,
-    >2 banned effects, missing `notDoing`;
-  - new check kind `style:palette` — every hex in the diff appears in the
-    declared palette (failing is retryable);
-  - preview gains a contrast check (body text ≥ 4.5:1) before "it renders".
-- Overdesign is a *gate failure*, not an opinion. A shipped screen that
-  violates the `notDoing` list fails the check like any other violation.
-
-Exit criteria:
-
-- UI plans without a design block do not dispatch;
-- the founder picks the direction; the plan shows the choice it was given;
-- every shipped color appears in the declared palette;
-- body text passes the contrast check at preview;
-- Underdesigning and Overdesigning are both mechanically flagged — no silent
-  bland, no silent busywork;
-- `plan-demo` output is visibly lighter than `plan-full` output.
+proven fifth. Phase 1 shipped (archived in `docs/archive/completed-milestones.md`);
+Phase 2 is next.
 
 ### Phase 2 — Strengthen runtime behaviour
 
@@ -462,11 +407,10 @@ Exit criteria:
 
 ### Priority rationale
 
-Phase 1 comes first because the missing decision is the one thing no amount of
-deferred execution can recover. Phase 2 follows because a factory that
-decides correctly but integrates badly is still not a factory. Phase 3 makes
-the decision portable. Phase 4 makes it useful after the first run. Phase 5 is
-mandatory before anyone is allowed to call the system proven.
+Phase 1 shipped; Phase 2 follows because a factory that decides correctly but
+integrates badly is still not a factory. Phase 3 makes the decision portable.
+Phase 4 makes it useful after the first run. Phase 5 is mandatory before
+anyone is allowed to call the system proven.
 
 ### Definition of factory done
 
@@ -734,5 +678,9 @@ after.
 - Debug combines review, checks and fixing in a bounded loop; `preview` leaves the delivered thing running
 - Disjoint writes verified by digest on a real four-associate run
 - Executable checks caught two defective planner fixtures
-- Factory-fit assessment, lifecycle, dashboard and host adapters are product work, not shipped behaviour
+- UI-capable plans require a design block (direction, palette 2–4 hex, typeface, notDoing, ambition); a UI plan without one is rejected before dispatch. `gateStyle` rejects every hex in the diff that is not in the declared palette. A contrast ≥ 4.5:1 check guards body text.
+- Factory-fit pre-dispatch decision is computed at plan time, printed to the founder, attached to the plan, and enforced at execute time: a `single-agent` decision dispatches one associate, not N. `.cubicore-factory-fit.json` records the decision; `.cubicore-factory-ledger.json` records what happened (fit, outcome, tokens, cost).
+- Factory-fit assessment is shipped; lifecycle state machine, dashboard and host adapters are product work, not shipped behaviour
+- Factory-fit verified live (2-associate smoke, 2026-11-09): form delivered to the founder's session, founder answered via the form, dispatch honored the recorded decision, both doneWhen checks passed on disk. The v2 host will not place an associate session in a per-worker worktree (directory is ignored), so the scope gate flags shared-tree fan-out as violations; the founder-approved fix direction is the union-scope gate (not implemented)
+- Factory ledger shows zero tokens on this host; telemetry now picks the database with the newest session rows (unverified until the next live run)
 - Corpus plans for the benchmark do not exist yet; the 3D-world reference is unmeasured

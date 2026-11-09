@@ -135,11 +135,21 @@ export function clientSpawner(
       // `input.directory` is the per-worker worktree the dispatch path
       // creates. It overrides the shared root so each associate's filesystem
       // is its own — the scope gate depends on it for changedFiles attribution.
-      const res = await apiJson(target, "POST", "/api/session", {
-        ...(sessionID ? { parentID: sessionID } : {}),
-        ...(input?.title ? { title: input.title } : {}),
-        location: { directory: input?.directory ?? target.directory },
-      });
+      // opencode 2.x scopes a session by query parameter, not by body:
+      // `POST /session?directory=<dir>` (SessionCreateData: query { directory }).
+      // Passing `location` in the body is silently ignored — associates ran
+      // in the shared project tree and the scope gate flagged both workers,
+      // deterministically, for seeing each other's files.
+      const directory = input?.directory ?? target.directory;
+      const res = await apiJson(
+        target,
+        "POST",
+        `/api/session?directory=${encodeURIComponent(directory)}`,
+        {
+          ...(sessionID ? { parentID: sessionID } : {}),
+          ...(input?.title ? { title: input.title } : {}),
+        },
+      );
       const id = (res.json?.data as { id?: string } | undefined)?.id;
       if (!id) {
         throw new Error(`opencode did not return a session id (${describe(res)})`);

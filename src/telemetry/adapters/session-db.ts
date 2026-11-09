@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { Database } from "bun:sqlite";
 import type { TokenUsage } from "../types";
 import { readUsage } from "./opencode";
@@ -113,7 +115,59 @@ export function defaultDbPath(): string {
   const fromCli = queryCliDbPath();
   if (fromCli) return fromCli;
 
-  return `${process.env.HOME ?? ""}/.local/share/opencode/opencode-stable.db`;
+  // The DB location depends on how the host was installed; checking the
+  // candidates beats guessing wrong and reporting zero usage for every run.
+  // An install can leave both a native and a Flatpak DB on disk, with the
+  // live service writing to the other one. The newest session row decides,
+  // not file existence.
+  const home = process.env.HOME ?? "";
+  const candidates = [
+    `${home}/.local/share/opencode/opencode.db`, // v2 native install
+    `${home}/.var/app/ai.opencode.opencode/data/opencode/opencode.db`, // Flatpak
+    `${home}/.local/share/opencode/opencode-stable.db`, // legacy v1
+  ];
+  let best: { path: string; freshest: number } | undefined;
+  for (const candidate of candidates) {
+    const freshest = newestSessionMs(candidate);
+    if (freshest === null) continue; // missing or unreadable
+    if (!best || freshest > best.freshest) best = { path: candidate, freshest };
+  }
+  if (best) return best.path;
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      // try the next
+    }
+  }
+  return `${home}/.local/share/opencode/opencode.db`;
+}
+
+/**
+ * Newest session row across the v2 and legacy tables, or null when the
+ * candidate cannot be opened or has no sessions. Used only to pick which
+ * candidate database the telemetry reads; a bad pick shows up as zeros, so
+ * this is deliberately strict.
+ */
+export function newestSessionMs(path: string): number | null {
+  try {
+    if (!existsSync(path)) return null;
+    const sqlite = new Database(path, { readonly: true });
+    for (const table of ["session_v2", "session"]) {
+      try {
+        const row = sqlite
+          .query(`SELECT MAX(time_created) AS t FROM ${table}`)
+          .get() as { t: number | null } | undefined;
+        if (row && typeof row.t === "number" && row.t > 0) return row.t;
+      } catch {
+        // Table does not exist on this host; try the other.
+      }
+    }
+    // Database opened but has no rows yet; prefer it over a missing file.
+    return 0;
+  } catch {
+    return null;
+  }
 }
 
 function queryCliDbPath(): string | null {
@@ -124,7 +178,11 @@ function queryCliDbPath(): string | null {
       timeout: 5_000,
     });
     const path = result.stdout.toString().trim();
-    return result.exitCode === 0 && path.length > 0 ? path : null;
+    // `opencode db path` is not a real subcommand here; the help text it
+    // prints used to be taken as a path, which failed to open and silently
+    // zeroed every usage figure. A real path is one file, on one line, that
+    // exists.
+    return result.exitCode === 0 && path.length > 0 && !/\s/.test(path) && existsSync(path) ? path : null;
   } catch {
     return null;
   }

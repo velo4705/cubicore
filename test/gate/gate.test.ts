@@ -181,7 +181,7 @@ describe("gateStyle", () => {
     palette: ["#0F0F0F", "#E6E6E6"],
     typeface: "Fraunces",
     notDoing: ["no second typeface"],
-    ambition: "calm",
+    ambition: "calm" as const,
   };
 
   test("passes when no palette is declared", async () => {

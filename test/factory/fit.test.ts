@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, it } from "bun:test";
 import type { Contract, Plan } from "../../src/contracts/types";
 import { assessFactoryFit } from "../../src/factory/fit";
 
@@ -18,8 +18,12 @@ function contract(overrides: Partial<Contract> = {}): Contract {
   };
 }
 
-function plan(contracts: Contract[], topology: Plan["topology"] = "fan-out"): Pick<Plan, "topology" | "contracts"> {
-  return { topology, contracts };
+function plan(contracts: Contract[], topology: Plan["topology"] = "fan-out"): Plan {
+  return {
+    topology,
+    contracts,
+    graphBudget: { nodes: 8, edges: 0, tokens: 100_000, wallMs: 600_000 },
+  };
 }
 
 describe("assessFactoryFit", () => {
@@ -76,5 +80,30 @@ describe("assessFactoryFit", () => {
     const fit = assessFactoryFit(plan(contracts));
     expect(fit.decision).toBe("standard-factory");
     expect(fit.workers).toBe(5);
+  });
+});
+
+describe("synthesizeSingleAgentPlan", () => {
+  it("merges disjoint contracts into one, preserving checks", async () => {
+    const { synthesizeSingleAgentPlan } = await import("../../src/factory/fit");
+    const src = plan([
+      contract({ id: "a", writes: ["src/a.ts"], objective: "do a", ui: true }),
+      contract({ id: "b", writes: ["src/b.ts"], objective: "do b", checks: [
+        { id: "unit", kind: "intent", command: "npm run a", expectation: "pass", gating: "blocking", convergent: true },
+      ] }),
+    ], "fan-out");
+    const once = synthesizeSingleAgentPlan(src as never);
+    expect(once.contracts).toHaveLength(1);
+    expect(once.contracts[0]?.writes).toEqual(expect.arrayContaining(["src/a.ts", "src/b.ts"]));
+    expect(once.contracts[0]?.checks.map((c: { id: string }) => c.id)).toEqual(expect.arrayContaining(["unit"]));
+    expect(once.graphBudget.nodes).toBe(1);
+    expect(once.contracts[0]?.ui).toBe(true);
+    expect(once.design).toBe(src.design);
+  });
+
+  it("is a no-op for a single contract", async () => {
+    const { synthesizeSingleAgentPlan } = await import("../../src/factory/fit");
+    const src = plan([contract({ id: "solo" })], "fan-out");
+    expect(synthesizeSingleAgentPlan(src as never).contracts).toHaveLength(1);
   });
 });
