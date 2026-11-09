@@ -1,6 +1,6 @@
 {
   "name": "cubicore",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "Cubicore — build exactly what the founder requested. Plan, dispatch, test, refine, deploy.",
   "main": "dist/mcp-main.js",
