@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cubicore — Parallel, verified work</title>
+    <meta
+      name="description"
+      content="Cubicore turns a prompt into verified, parallel, contract-driven work with isolated execution, mechanical checks, and clean handoffs."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container nav">
+        <a href="#top" class="brand" aria-label="Cubicore home">
+          <span class="brand-mark">C</span>
+          <span>Cubicore</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Main navigation">
+          <a href="#what-it-is">What it is</a>
+          <a href="#features">Features</a>
+          <a href="#demo">Live demo</a>
+          <a href="#quick-start">Quick start</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#commands">Commands</a>
+        </nav>
+
+        <a class="button button-secondary" href="https://github.com/cubicore" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero section">
+        <div class="container hero-grid">
+          <div data-reveal>
+            <p class="eyebrow">Parallel contract work</p>
+            <h1>Cubicore</h1>
+            <p class="lead">
+              A virtual company that turns a prompt into verified, parallel, contract-driven work.
+            </p>
+
+            <div class="cta-row">
+              <a class="button button-primary" href="https://github.com/cubicore" target="_blank" rel="noreferrer">GitHub</a>
+              <a class="button button-secondary" href="tutorial.html">Watch the Live Tutorial</a>
+              <a class="button button-ghost" href="#quick-start">Quick Start</a>
+            </div>
+          </div>
+
+          <div class="hero-panel" data-reveal>
+            <div class="terminal-window" aria-label="Cubicore command preview">
+              <div class="terminal-bar">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="dot" aria-hidden="true"></span>
+              </div>
+              <div class="terminal-body">
+                <div class="terminal-line"><span class="prompt">$</span> cubicore plan-demo "build a habit tracker"</div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">kind: 2 associates</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">scope: disjoint write paths</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">checks: schema, lint, test</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="what-it-is" class="section">
+        <div class="container">
+          <p class="eyebrow">What it is</p>
+          <h2 class="section-heading">A prompt becomes a delivered system.</h2>
+          <div class="two-col">
+            <div data-reveal>
+              <p>
+                Cubicore turns a prompt into a plan, splits it into independent contracts, runs them in parallel with worktree isolation,
+                gates every contract with mechanical checks, and iterates until the preview block passes, then debugs review/test/fix until the
+                remaining issues disappear.
+              </p>
+              <p>
+                You get: parallel execution, mechanical verification, contract-driven scope, automatic fix loops.
+              </p>
+            </div>
+
+            <div class="panel" data-reveal>
+              <h3>Plan → Contract → Verify → Deploy</h3>
+              <div class="diagram-flow" aria-label="Cubicore flow">
+                <div class="diagram-box">Prompt</div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-box">Plan</div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-box">Execute</div>
+              </div>
+              <div class="diagram-flow" style="margin-top: 16px;">
+                <div class="diagram-box">Scope</div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-box">Verify</div>
+                <div class="diagram-arrow">→</div>
+                <div class="diagram-box">Deploy</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section">
+        <div class="container">
+          <p class="eyebrow">Features</p>
+          <h2 class="section-heading">Built for parallel, verified delivery.</h2>
+
+          <div class="three-col">
+            <article class="card" data-reveal>
+              <h3>Parallel by Default</h3>
+              <p>Contracts with disjoint write scopes run simultaneously. No manual orchestration.</p>
+            </article>
+
+            <article class="card" data-reveal>
+              <h3>Mechanical Verification</h3>
+              <p>Every contract has blocking, convergent checks (tests, typecheck, lint). No “looks good” — only pass/fail.</p>
+            </article>
+
+            <article class="card" data-reveal>
+              <h3>Contract-Driven Scope</h3>
+              <p>Each worker gets its own write scope, read list, and checks. Collisions caught at plan time, not runtime.</p>
+            </article>
+
+            <article class="card" data-reveal>
+              <h3>Auto-Debug Loop</h3>
+              <p>Checks fail → /cubicore:debug reviews/tests/fixes → re-tests → loops until the failures disappear.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="demo" class="section">
+        <div class="container">
+          <p class="eyebrow">Live Demo</p>
+          <h2 class="section-heading">See the full lifecycle in one page.</h2>
+
+          <div class="panel" data-reveal>
+            <div class="terminal-window">
+              <div class="terminal-bar">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="dot" aria-hidden="true"></span>
+                <span class="dot" aria-hidden="true"></span>
+              </div>
+              <div class="terminal-body">
+                <div class="terminal-line"><span class="prompt">$</span> cubicore plan-demo "build a habit tracker"</div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">Planning: 2 disjoint contracts</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">Designing: CUBICORE_ASSOCIATES/ briefs written</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">Executing: parallel checks pass</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">Debugging: invalid route fixed, re-check passes</span></div>
+                <div class="terminal-line"><span class="prompt">→</span> <span class="value">Deployment: served HTTP 200</span></div>
+              </div>
+            </div>
+
+            <div class="cta-row" style="margin-top: 20px;">
+              <a class="button button-primary" href="tutorial.html">Watch the tutorial</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="quick-start" class="section">
+        <div class="container">
+          <p class="eyebrow">Quick Start</p>
+          <h2 class="section-heading">Three commands, no ceremony.</h2>
+
+          <pre data-reveal><code># 1. Install
+npm i -g @cubicore/cli
+
+# 2. Plan
+cubicore plan "Build a personal expense tracker API with SQLite"
+
+# 3. Execute
+cubicore execute</code></pre>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="section">
+        <div class="container">
+          <p class="eyebrow">How it works</p>
+          <h2 class="section-heading">From prompt to product in five steps.</h2>
+
+          <div class="three-col">
+            <article class="step" data-reveal>
+              <h3>Plan</h3>
+              <p><code>/cubicore:plan-demo/plan-full</code> researches the repo, asks clarifying questions, writes <span class="inline-code">CUBICORE_PLAN.json</span>, and checks a preview block.</p>
+            </article>
+
+            <article class="step" data-reveal>
+              <h3>Design</h3>
+              <p>Cubicore writes one brief per associate into <span class="inline-code">CUBICORE_ASSOCIATES/</span>, with its own scope, checks, and no cross-reads.</p>
+            </article>
+
+            <article class="step" data-reveal>
+              <h3>Execute</h3>
+              <p>Spawns isolated associates in parallel, gating each with Schema → Verify → Scope.</p>
+            </article>
+
+            <article class="step" data-reveal>
+              <h3>Debug</h3>
+              <p>Reviews code and runs all contract checks. Failures become minimal fixes and re-runs until green.</p>
+            </article>
+
+            <article class="step" data-reveal>
+              <h3>Deploy</h3>
+              <p><code>/cubicore:deploy</code> plans hosting, writes the deploy handoff, and serves a clean production result.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="architecture" class="section">
+        <div class="container">
+          <p class="eyebrow">Architecture</p>
+          <h2 class="section-heading">A simple delivery loop.</h2>
+
+          <div class="panel" data-reveal>
+            <div class="diagram-flow" aria-label="Architecture flow">
+              <div class="diagram-box">Plan</div>
+              <div class="diagram-arrow">→</div>
+              <div class="diagram-box">Execute</div>
+              <div class="diagram-arrow">→</div>
+              <div class="diagram-box">Debug</div>
+              <div class="diagram-arrow">→</div>
+              <div class="diagram-box">Deploy</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="commands" class="section">
+        <div class="container">
+          <p class="eyebrow">Commands Reference</p>
+          <h2 class="section-heading">The core interface.</h2>
+
+          <div class="table-wrap" data-reveal>
+            <table>
+              <thead>
+                <tr>
+                  <th>Command</th>
+                  <th>Purpose</th>
+                  <th>Typical Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>cubicore plan</code></td>
+                  <td>Create a plan, contracts, and validation map.</td>
+                  <td><code>CUBICORE_PLAN.json</code>, contract briefs, preview block</td>
+                </tr>
+                <tr>
+                  <td><code>cubicore execute</code></td>
+                  <td>Run the queued contracts in parallel with isolated scopes.</td>
+                  <td>Per-associate logs, verification results, status summary</td>
+                </tr>
+                <tr>
+                  <td><code>cubicore debug</code></td>
+                  <td>Inspect failed checks and repair the root cause.</td>
+                  <td>Fix suggestions, patch loop, re-check confirmation</td>
+                </tr>
+                <tr>
+                  <td><code>cubicore deploy</code></td>
+                  <td>Prepare the production handoff and deployment plan.</td>
+                  <td>Serve readiness, deployment notes, handoff artifact</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-row">
+        <div>
+          <p class="eyebrow" style="margin-bottom: 8px;">Source</p>
+          <a class="button button-secondary" href="https://github.com/cubicore" target="_blank" rel="noreferrer">View source</a>
+        </div>
+
+        <div>
+          <p class="eyebrow" style="margin-bottom: 8px;">License</p>
+          <p class="muted">MIT</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
