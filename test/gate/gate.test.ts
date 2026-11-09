@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { gateSchema, gateScope, gateVerify, matchesGlob, runGates, type CommandRunner } from "../../src/gate";
+import { gateSchema, gateScope, gateStyle, gateVerify, matchesGlob, runGates, type CommandRunner } from "../../src/gate";
 import type { Contract } from "../../src/contracts/types";
 
 function contract(overrides: Partial<Contract> = {}): Contract {
@@ -172,5 +172,77 @@ describe("runGates", () => {
       { changedFiles: ["src/b.ts"] },
     );
     expect(gates.map((g) => g.gate)).toEqual(["schema", "verify", "scope"]);
+  });
+});
+
+describe("gateStyle", () => {
+  const design = {
+    direction: "editorial",
+    palette: ["#0F0F0F", "#E6E6E6"],
+    typeface: "Fraunces",
+    notDoing: ["no second typeface"],
+    ambition: "calm",
+  };
+
+  test("passes when no palette is declared", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cubicore-gate-style-"));
+    fs.writeFileSync(path.join(dir, "x.css"), "body { color: #123456; }");
+    const result = gateStyle({ artifact: { contractId: "w1", deliverable: "diff", raw: "x" }, contract: contract() }, { changedFiles: ["x.css"], root: dir });
+    expect(result.passed).toBe(true);
+  });
+
+  test("fails on a raw hex outside the declared palette", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cubicore-gate-style-"));
+    fs.writeFileSync(path.join(dir, "x.css"), "body { color: #123456; }");
+    const result = gateStyle(
+      { artifact: { contractId: "w1", deliverable: "diff", raw: "x" }, contract: contract() },
+      { changedFiles: ["x.css"], root: dir, design },
+    );
+    expect(result.passed).toBe(false);
+    expect(result.retryable).toBe(true);
+    expect(result.detail).toContain("#123456");
+  });
+
+  test("accepts an in-palette hex (case-insensitive)", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cubicore-gate-style-"));
+    fs.writeFileSync(path.join(dir, "x.css"), "body { color: #0F0F0F; }");
+    const result = gateStyle(
+      { artifact: { contractId: "w1", deliverable: "diff", raw: "x" }, contract: contract() },
+      { changedFiles: ["x.css"], root: dir, design },
+    );
+    expect(result.passed).toBe(true);
+  });
+
+  test("reports unverified when the change list cannot be read", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const result = gateStyle(
+      { artifact: { contractId: "w1", deliverable: "diff", raw: "x" }, contract: contract() },
+      { changedFiles: ["x.css"], root: path.join(os.tmpdir(), "cubicore-does-not-exist"), design },
+    );
+    expect(result.passed).toBe(false);
+    expect(result.unverified).toBe(true);
+  });
+
+  test("accepts the contract when the palette is declared but the diff has no raw hex", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cubicore-gate-style-"));
+    fs.writeFileSync(path.join(dir, "x.css"), "body { color: var(--fg); background: var(--bg); }");
+    const result = gateStyle(
+      { artifact: { contractId: "w1", deliverable: "diff", raw: "x" }, contract: contract() },
+      { changedFiles: ["x.css"], root: dir, design },
+    );
+    expect(result.passed).toBe(true);
   });
 });

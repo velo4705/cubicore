@@ -55,6 +55,8 @@ export interface DispatchOutcome {
 }
 
 export interface DispatchOptions {
+  /** The tree the workers wrote into, for reading file contents during style check. */
+  root?: string;
   /**
    * Contracts an earlier run already satisfied, unchanged.
    *
@@ -226,7 +228,12 @@ export async function dispatch(
         gates = await runGates(
           { artifact: result.artifact ?? emptyArtifact(contract), contract, baseline: options.baseline },
           gateRunner,
-          { changedFiles: result.changedFiles, changesUnknown: result.changesUnknown },
+          {
+            changedFiles: result.changedFiles,
+            changesUnknown: result.changesUnknown,
+            root: result.root ?? options.root ?? process.cwd(),
+            design: plan.design,
+          },
         );
 
         const passed = gates.every((gate) => gate.passed);

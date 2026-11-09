@@ -192,13 +192,11 @@ export class WorkerSessions {
       // Run in the main tree instead, it sees everything -- Cubicore's own
       // plan and run state included -- and reports another worker's files as
       // a scope violation.
+      const workDir = worktree && !worktree.degraded ? worktree.path : this.root;
       const fromGit =
         observed.length > 0 || fromSpawner.length > 0
           ? { files: [], unknown: false }
-          : await changedFilesSince(
-              worktree && !worktree.degraded ? worktree.path : this.root,
-              this.baseline,
-            );
+          : await changedFilesSince(workDir, this.baseline);
       const changedFiles =
         observed.length > 0 ? observed : fromSpawner.length > 0 ? fromSpawner : fromGit.files;
       const changesUnknown =
@@ -210,6 +208,8 @@ export class WorkerSessions {
         // The two must stay distinguishable or exhaustion looks like success.
         status: snapshot.error ? "failed" : settled ? "accepted" : "budget-exhausted",
         changedFiles,
+        /** Directory the changed files live in (worktree, or project root when degraded). */
+        root: workDir,
         usage: this.resolveUsage ? this.resolveUsage(sessionId) : snapshot.usage,
         ms: Date.now() - startedAt,
         toolCalls: snapshot.toolCalls,

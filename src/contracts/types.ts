@@ -221,6 +221,8 @@ export interface WorkerResult {
    * second as the first.
    */
   changesUnknown?: boolean;
+  /** Directory the changed files live in (worktree, or project root when worktrees are disabled/degraded). */
+  root?: string;
   usage: TokenUsage;
   ms: number;
   toolCalls: number;
