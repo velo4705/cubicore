@@ -29,5 +29,9 @@
   "files": [
     "dist/",
     "README.md"
-  ]
+  ],
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.35",
+    "@opencode-ai/sdk": "^1.18.35"
+  }
 }
