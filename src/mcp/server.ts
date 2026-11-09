@@ -402,6 +402,10 @@ async function plan(raw: string, dir: string): Promise<ToolResult> {
 
   const validation = validatePlan(parsed, deriveBaseline(dir));
   const topology = checkTopology(parsed);
+  const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
+  parsed.factoryFit = fit;
+  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
+
 
   const problems: string[] = validation.findings.map((f) => `- [${f.code}] ${f.message}`);
 
@@ -846,9 +850,6 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
       true,
     );
   }
-
-  const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
-  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
 
   return text(
     [
@@ -2108,7 +2109,7 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, use the recommended (most widely used) framework and language for this domain (React/Vite + TypeScript for web, Python + tkinter for desktop GUI, Express + JavaScript for APIs) and state it clearly in the plan. Do not ask — pick and state.
 
-**Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Choose a direction boldly based on the request's domain — "porcelain/light editorial", "terminal-first monospace", "maximalist color pop", "hand-drawn warmth", etc. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <pick> — good?" If "anything", take your proposal. Do not oscillate, do not list alternatives. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing. notDoing: 3 short prohibitions. ambition: "bold" for marketing-facing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards/tools/data surfaces.
+**Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Pick a direction by NAME, not by guesswork — "editorial porcelain", "dark editorial", "terminal-first monospace", "maximalist pop", "hand-drawn warmth", or a SPECIFIC invented direction with a name you would defend. Never fall back to "rounded corners, system font, blue accent" — that is the failure mode, not the default. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <specific pick> — good?" If "anything", take your proposal. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing from the matching direction. notDoing: 3 short prohibitions. ambition: "bold" for marketing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards — never lower than the founder's known bar.
 
 **User request:** ${request}${extraNote}
 
@@ -2117,6 +2118,13 @@ substitute, upgrade, or replace it with a project of your own choosing. Then
 produce the plan JSON and pass it to the plan tool, which writes
 CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
 CUBICORE_CONTEXT.md for team members who need to present the project in person.
+The plan tool also prints the factory-fit decision — the recommended team
+size, topology and why. In your reply, relay that decision verbatim (not
+reworded), then ask the founder EXACTLY ONE question:
+"Dispatch as a team of <N>, or single agent?" and wait. Do not dispatch — do
+not call /cubicore:execute — until the founder answers. If they say single
+agent, cascade to a one-contract plan via /cubicore:refine. If they say
+team of <N> or just "yes", stop and let them run /cubicore:execute next.
 
 Prefer \`fan-out\` whenever write scopes are disjoint. A \`reads\` entry usually
 means the checks depend on the files, not that the worker must wait to write its
@@ -2276,6 +2284,12 @@ ${change ? "" : "Ask what should change, or work it out from the plan and from t
 exactly as it is -- same id, same write scope, same checks -- and add contracts for the new
 work. An existing contract that passed is not re-run, so do not restate it or change its
 scope to make room: the new contracts must be disjoint from the old ones on their own.
+
+**Team size override.** If the founder says "single agent", "do it as one", or similar, do
+NOT split the work. Collapse the plan to ONE contract whose write scope is the union of the
+existing ones (or the whole tree if it is a greenfield ask), keep every check, and set the
+topology to single-agent-compatible. If the founder says "split it into 3" or the like, divide
+across disjoint scopes accordingly — the same single contract, three writers, disjoint writes.
 
 **Changing.** The existing work is wrong or the approach is different. Then rewrite the
 contracts it affects, remove the ones that no longer apply, and merge any that would overlap

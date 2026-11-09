@@ -288,12 +288,24 @@ Rules:
   extension (.html, .css, .jsx, .tsx, .svelte, .vue, .astro, .scss/.sass/.less).
   A plan with a UI contract but no design block is REJECTED by the validator
   before dispatch — the design is part of the contract, not decoration.
-- For UI-capable plans, propose TWO or THREE named directions and pick ONE
-  for the plan (direction, palette of 2-4 hex colors with the accent last,
-  typeface, notDoing list, ambition: calm|standard|bold). Record the choice
-  in the plan so the founder can veto it in review — the founder, never you,
-  decides. A bland default ("rounded corners, system font, blue accent")
-  fails as surely as a missing block.
+- For UI-capable plans, pick ONE named direction whose tokens actually
+  belong to that direction. Do NOT default to "white cards, blue accent,
+  Inter, rounded corners" unless the founder explicitly asked for that.
+  The choice must be characterful enough that a stranger could tell the
+  product apart from a competitor on silhouette alone.
+
+  Catalog (use verbatim when the founder's brief matches):
+  - "editorial porcelain" — serif display (Fraunces/GT Sectra) + humanist sans body, warm off-white background, ink-black text, one bold accent (tomato/ochre/forest), serif scale ~1.4×, input spacing wide.
+  - "dark editorial" — black or deep navy ground, high-contrast display serif or grotesque, cream text, one warm accent, generous negative space.
+  - "terminal-first" — monospace everything, dark ground with phosphor green or amber on near-black, status-line layout, box-drawing separators.
+  - "maximalist pop" — saturated background block (not white), two strong clashes (e.g. tomato on ochre), bold display face, confident motion.
+  - "hand-drawn warmth" — off-cream ground, felt-pen illustration accents, rounded corners, serif/sans pairing, sun-but-not-flat illustration style.
+  - "porcelain minimal" — near-white warm ground, one elegant serif display, hairline borders, no shadows unless brand-appropriate.
+
+  Pick ONE. Record it in the plan with a reason. The founder, never you,
+  decides — if the founder named a mood that maps to a direction, use it.
+  If nothing matches, invent a SPECIFIC direction with a name you'd be proud
+  to explain, not a generic tag.
 - design.notDoing is the load-bearing list — small, specific prohibitions
   the frontend must never cross ("no scrolljacking", "no second typeface"),
   not general aspirations.
