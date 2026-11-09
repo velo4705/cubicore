@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs — Cubicore</title>
+  <meta name="description" content="Cubicore documentation: commands, answers to common questions, and how the factory behaves." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="docs-page">
+  <header class="site-header">
+    <div class="container nav">
+      <a href="index.html" class="button button-ghost" style="padding:.45rem .8rem; font-size:.85rem;">← Landing</a>
+      <a href="#top" class="brand" style="margin-left:auto"><span class="brand-mark">C</span>Docs</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="section" style="border-bottom:none; padding-top:3rem;">
+      <div class="container" style="max-width: 920px;">
+        <p class="eyebrow">Documentation</p>
+        <h1 style="font-family:var(--display); letter-spacing:-.02em; font-size:clamp(2rem,4.5vw,3rem); margin:.4rem 0 1.5rem; font-weight:600;">Everything worth knowing.</h1>
+
+        <div class="faq">
+          <h2 style="font-family:var(--display); font-size:1.35rem; letter-spacing:-.01em; margin:1rem 0 .5rem;">Commands</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>You want</th><th>Type</th></tr></thead>
+              <tbody>
+                <tr><td>Start with nothing</td><td><code>/cubicore:plan-demo</code></td></tr>
+                <tr><td>Start with everything</td><td><code>/cubicore:plan-full</code></td></tr>
+                <tr><td>Build it</td><td><code>/cubicore:execute</code></td></tr>
+                <tr><td>Check it's running</td><td><code>/cubicore:preview</code></td></tr>
+                <tr><td>Review &amp; fix it</td><td><code>/cubicore:debug</code></td></tr>
+                <tr><td>Change the plan</td><td><code>/cubicore:refine</code></td></tr>
+                <tr><td>Resume an interrupted run</td><td><code>/cubicore:continue</code></td></tr>
+                <tr><td>Cost before spending</td><td><code>/cubicore:estimate</code></td></tr>
+                <tr><td>What's happening now</td><td><code>/cubicore:status</code></td></tr>
+                <tr><td>Throw the last execution away</td><td><code>/cubicore:undo</code></td></tr>
+                <tr><td>Ship it</td><td><code>/cubicore:deploy</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2 style="font-family:var(--display); font-size:1.35rem; letter-spacing:-.01em; margin:1.5rem 0 .5rem;">FAQ</h2>
+          <details open>
+            <summary>How is Cubicore different from "just asking opencode"?</summary>
+            <p>Without Cubicore, one capable agent does everything, sequentially, with no mechanical checks and no bounded scope. With Cubicore, work is split, each piece is gated by checks that can actually fail, and the factory refuses to ship failures. The output gets better; the shared-foo-calls trap gets avoided.</p>
+          </details>
+          <details>
+            <summary>What is the factory-fit question?</summary>
+            <p>Before any dispatch, Cubicore sizes the task: contracts, dependency edges, write scopes. If the job doesn't deserve a team, Cubicore says so — usually by proposing a single agent or refusing. When it does, it writes a plan and asks one question:</p>
+            <p><code>Dispatch as a team of N, or single agent?</code></p>
+            <p>Answering the form switches the plan to the mode you chose without a second prompt.</p>
+          </details>
+          <details>
+            <summary>Does it work without git?</summary>
+            <p>It initialises a git repository on first use in the project. Without git, diffs cannot be attributed and no scope gate can run — the output degrades to "nothing verified", and Cubicore says that out loud rather than claiming a pass.</p>
+          </details>
+          <details>
+            <summary>Which agents can call /cubicore?</summary>
+            <p>opencode is the reference host, and the only fully-working one right now. The MCP registers globally in your opencode config, so any session can call the commands.</p>
+          </details>
+          <details>
+            <summary>What does it cost?</summary>
+            <p>Each sub-agent is a fraction of a frontier run; the plan decides how many run at all. A tiny prompt may dispatch zero companions — and should. Token usage and the factory's verdict are printed in the run output.</p>
+          </details>
+          <details>
+            <summary>What do I need installed?</summary>
+            <p>opencode. Optionally bun (for the MCP host). Cubicore installs its own runtime; you never edit your opencode config by hand.</p>
+          </details>
+          <details>
+            <summary>Something is off — how do I fix it?</summary>
+            <p><code>/cubicore:status</code> shows what Cubicore sees per directory. For a fresh install that misbehaves, re-run <code>npx cubicore@latest setup</code> and restart opencode fully.</p>
+          </details>
+          <details>
+            <summary>Where's the source / can I contribute?</summary>
+            <p><a href="https://github.com/cubicore/cubicore" target="_blank" rel="noreferrer">github.com/cubicore/cubicore</a> — see CONTRIBUTING.md. This project doesn't hide that the evidence for some of its claims is thin; complain loudly if it tells you otherwise.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-row">
+      <span><a href="index.html">← Landing</a> · <a href="https://github.com/cubicore/cubicore" target="_blank" rel="noreferrer">cubicore/cubicore</a> · MIT</span>
+      <span>Built with <a href="https://opencode.ai" target="_blank" rel="noreferrer">opencode</a> as the reference host.</span>
+    </div>
+  </footer>
+</body>
+</html>

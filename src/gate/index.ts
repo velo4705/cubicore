@@ -13,7 +13,7 @@ import type { Check } from "../contracts/types";
  * gate, because a schema retry produces a *different* artifact.
  */
 
-export type GateName = "schema" | "verify" | "scope" | "style";
+export type GateName = "schema" | "verify" | "scope" | "style" | "role";
 
 export interface GateResult {
   gate: GateName;
@@ -310,6 +310,38 @@ export function gateUnionScope(
   };
 }
 
+
+/**
+ * The role gate — advisory only.
+ *
+ * opencode 2.1.3 does not attribute file or tool events to sessions, so there
+ * is no run-time signal a role can be held to here. A tool policy enforced
+ * only after the damage is done is not enforcement: it is a letter. So on
+ * this host the gate's verdict is always "pass — not verifiable on this
+ * host; advisory only", reported as such. On a host with attributed events
+ * (e.g. via an event stream matched to the session id), the same gate
+ * enforces what the role declared and flags violations instead of passing
+ * everything through.
+ */
+export function gateRole(input: GateInput, _options?: GateOptions): GateResult {
+  const role = input.contract.role;
+  if (!role) {
+    return { gate: "role", passed: true, detail: "no role declared — advisory absent", retryable: false };
+  }
+  const deny = (role.tools?.deny?.length ?? 0) > 0;
+  const handoff = !!role.handoff;
+  return {
+    gate: "role",
+    passed: true,
+    detail: [
+      `role "${role.name}" — advisory only on this host (no file or tool events are attributed to sessions).`,
+      deny ? `declared tool deny: ${(role.tools?.deny ?? []).join(", ")} — not enforceable here.` : "no tool deny declared.",
+      handoff ? `handoff owes ${role.handoff!.deliverable} for ${role.handoff!.audience} — checked only by the plan author before dispatch.` : "no handoff artifact declared.",
+    ].join(" "),
+    retryable: false,
+  };
+}
+
 /**
  * Single-segment-agnostic glob. `*` spans `/`, matching opencode's own resource
  * semantics, so `src/*` legitimately covers `src/a/b.ts`.
@@ -419,5 +451,6 @@ export async function runGates(
   if (!scope.passed) return results;
 
   results.push(gateStyle(input, options));
+  results.push(gateRole(input, options));
   return results;
 }

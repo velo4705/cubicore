@@ -100,6 +100,12 @@ export interface Contract {
   /** Marks this contract screen-facing. Triggers the design requirement. */
   ui?: boolean;
   tools?: string[];
+  /**
+   * The role this contract belongs to. Exact authority, not an honorific —
+   * the factory can enforce it at gate time on hosts with attributed tool
+   * events; on opencode 2.1.3 it is advisory (see gateRole).
+   */
+  role?: Role;
 }
 
 import type { PreviewSpec } from "../plan/preview";
@@ -145,6 +151,49 @@ export type DesignAmbition = "calm" | "standard" | "bold";
  * writes glob that targets screen-facing files (html/css/jsx/tsx/svelte/
  * vue/astro/htm).
  */
+
+/**
+ * A factory role — not a label. A role is a capability-scoped contract: what
+ * this associate may do, on what data, with what budgets, and what it hands
+ * back. Agnostic of model; agnostic of agent name.
+ *
+ * On opencode 2.1.3, the tool and file attribution observe.ts needs is not
+ * available — the host does not attribute events to sessions — so toolPolicy
+ * is enforced as an advisory-only gate. On hosts with event attribution,
+ * it is enforceable at run time. Either way, the role's limits live in the
+ * plan on disk — reviewable before the run starts, not an honorific in the
+ * agent config.
+ */
+export interface Role {
+  /** The role's own name — e.g. "owner-of-types", "verify-only". Not a job title. */
+  name: string;
+  /** Capabilities this role exercises. Disjoint from sibling roles' where possible. */
+  capabilities: readonly string[];
+  /** Advisory on opencode 2.1.3 (no attribution); enforceable on hosts that emit attributed tool events. */
+  tools?: {
+    allow?: readonly string[];
+    deny?: readonly string[];
+  };
+  /** What this role owes the integration wave, and who consumes it. */
+  handoff?: {
+    deliverable: string;
+    audience: string;
+  };
+  /** Explicit exclusions — not recommendations, contractual statements. */
+  exclusions?: readonly string[];
+  /**
+   * When the role cannot do its job: the expected transition
+   * ("blocked, reasons, needs a human"), not a retry budget.
+   */
+  escalation?: string;
+  /** Role-level budget; defaults to the containing contract's budget. */
+  budget?: {
+    tokens?: number;
+    toolCalls?: number;
+    wallMs?: number;
+  };
+}
+
 export interface Design {
   /** Named direction: e.g. "editorial", "terminal", "porcelain", "industrial". */
   direction: string;
@@ -174,6 +223,19 @@ export interface Plan {
   /** Design direction for UI-capable projects. Absent for back-end/library work. */
   design?: Design;
   /**
+   * "Planner's opinion" — the planner's short argument for what this build
+   * should be in full, what is deliberately left out, and why.
+   *
+   * This is advice, not scope: execute does not dispatch against it,
+   * it is never read by the dispatcher, and the founder strikes it for free
+   * in refine. It exists so a founder who cannot spell out the details still
+   * sees what an expert would include by default and why — then approves a
+   * plan that is authoritatively better than their bare prompt, or strips it
+   * to whatever they actually wanted.
+   */
+  opinion?: string;
+
+  /**
    * Human-readable description of what this project is, for the founder.
    * Rendered at the top of CUBICORE_PLAN.md so anyone can understand
    * what is being built without reading every contract.
@@ -199,6 +261,17 @@ export interface Plan {
    * associates, why them, why not more. Set by plan, read by dispatch.
    */
   factoryFit?: FactoryFit;
+  /**
+   * The integration wave: one command that proves the *merged* tree still
+   * works — `npm run build`, `tsc --noEmit`, `cargo check`, a smoke script
+   * that boots the app. Absent for libraries and reports with nothing to
+   * build. Contracts' checks pass individually, but the union of separately
+   * green contracts can still be a broken build; this gate exists so that
+   * failure is caught before hand-off, not by the founder after it.
+   *
+   * `timeoutMs` caps the wave; a hung build must not hang the factory.
+   */
+  integration?: { command: string; timeoutMs?: number };
 }
 
 /**

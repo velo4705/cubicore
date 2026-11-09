@@ -1,16 +1,5 @@
-const revealItems = document.querySelectorAll('[data-reveal]');
-
-if (revealItems.length > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.18 });
-
-  revealItems.forEach((item) => observer.observe(item));
-} else {
-  revealItems.forEach((item) => item.classList.add('is-visible'));
-}
+// No reveal-on-scroll gating here. The previous version hid every section
+// behind opacity:0 and only revealed them when IntersectionObserver fired,
+// which made anything below the fold invisible until a visitor scrolled.
+// That "off-error" made the page look broken in full-page captures. Content
+// is visible on arrival; animation, if any, should never gate legibility.

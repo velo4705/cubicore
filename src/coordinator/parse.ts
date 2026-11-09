@@ -138,6 +138,93 @@ function parseCheck(value: unknown, label: string, problems: string[]): Check | 
   };
 }
 
+
+/**
+ * Parse and validate a contract role.
+ *
+ * A malformed role is not a reason to discard the plan — the field is optional —
+ * but it is a reason to stop before any tokens are spent.
+ */
+function parseRole(value: unknown, label: string, problems: string[]): import("../contracts/types").Role | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) {
+    problems.push(`${label}.role must be an object`);
+    return undefined;
+  }
+  const name = typeof value.name === "string" && value.name.trim().length > 0 ? value.name.trim() : undefined;
+  if (!name) problems.push(`${label}.role.name must be a non-empty string`);
+
+  const capabilitiesRaw = value.capabilities;
+  const capabilities = checkGlobArray(capabilitiesRaw === undefined ? [] : capabilitiesRaw, `${label}.role.capabilities`, []);
+
+  let tools: import("../contracts/types").Role["tools"] | undefined;
+  if (value.tools !== undefined && value.tools !== null) {
+    if (!isRecord(value.tools)) {
+      problems.push(`${label}.role.tools must be an object`);
+    } else {
+      const allowRaw = value.tools.allow;
+      const denyRaw = value.tools.deny;
+      const allow = allowRaw === undefined ? [] : checkGlobArray(allowRaw, `${label}.role.tools.allow`, []);
+      const deny = denyRaw === undefined ? [] : checkGlobArray(denyRaw, `${label}.role.tools.deny`, []);
+      tools = {
+        ...(allow.length === 0 ? {} : { allow }),
+        ...(deny.length === 0 ? {} : { deny }),
+      };
+    }
+  }
+
+  let handoff: import("../contracts/types").Role["handoff"] | undefined;
+  if (value.handoff !== undefined && value.handoff !== null) {
+    if (!isRecord(value.handoff)) {
+      problems.push(`${label}.role.handoff must be an object`);
+    } else {
+      const deliverable = typeof value.handoff.deliverable === "string" && value.handoff.deliverable.trim().length > 0 ? value.handoff.deliverable.trim() : undefined;
+      const audience = typeof value.handoff.audience === "string" && value.handoff.audience.trim().length > 0 ? value.handoff.audience.trim() : undefined;
+      if (!deliverable || !audience) {
+        problems.push(`${label}.role.handoff needs non-empty deliverable and audience`);
+      } else {
+        handoff = { deliverable, audience };
+      }
+    }
+  }
+
+  let exclusions: string[] | undefined;
+  if (value.exclusions !== undefined && value.exclusions !== null) {
+    exclusions = checkGlobArray(value.exclusions, `${label}.role.exclusions`, []);
+  }
+
+  const escalation = typeof value.escalation === "string" && value.escalation.trim().length > 0 ? value.escalation.trim() : undefined;
+
+  let budget: import("../contracts/types").Role["budget"] | undefined;
+  if (value.budget !== undefined && value.budget !== null) {
+    if (!isRecord(value.budget)) {
+      problems.push(`${label}.role.budget must be an object`);
+    } else {
+      const budgetObj = (value.budget ?? {}) as Record<string, unknown>;
+      const t = (key: "tokens" | "toolCalls" | "wallMs"): number | undefined => {
+        const raw = budgetObj[key];
+        return typeof raw === "number" && Number.isFinite(raw) && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+      };
+      budget = {
+        ...(t("tokens") !== undefined ? { tokens: t("tokens") } : {}),
+        ...(t("toolCalls") !== undefined ? { toolCalls: t("toolCalls") } : {}),
+        ...(t("wallMs") !== undefined ? { wallMs: t("wallMs") } : {}),
+      };
+    }
+  }
+
+  if (!name) return undefined;
+  return {
+    name,
+    capabilities,
+    ...(tools ? { tools } : {}),
+    ...(handoff ? { handoff } : {}),
+    ...(exclusions && exclusions.length ? { exclusions } : {}),
+    ...(escalation ? { escalation } : {}),
+    ...(budget && Object.keys(budget).length ? { budget } : {}),
+  };
+}
+
 function parseContract(value: unknown, label: string, problems: string[]): Contract | null {
   if (!isRecord(value)) {
     problems.push(`${label} must be an object`);
@@ -147,13 +234,14 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
   const allowed = [
     "id", "objective", "reads", "writes", "forbidden",
     "deliverable", "schema", "doneWhen", "checks", "steps", "budget",
-    "tools", "ui",
+    "tools", "ui", "role",
   ];
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
   }
 
   const ui = parseOptionalBoolean(value.ui, problems, `${label}.ui`);
+  const role = parseRole(value.role, label, problems);
 
   const text = (key: string): string => {
     const raw = value[key];
@@ -226,6 +314,7 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
     budget,
     tools: Array.isArray(value.tools) ? value.tools as string[] : [],
     ...(ui === undefined ? {} : { ui }),
+    ...(role ? { role } : {}),
   };
 }
 
@@ -453,7 +542,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview", "design", "factoryFit"].includes(key)) {
+    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -501,6 +590,21 @@ export function parsePlan(raw: string): Plan {
     }
   }
 
+  const opinionRaw = json.opinion;
+  let opinion: string | undefined;
+  if (opinionRaw !== undefined && opinionRaw !== null) {
+    if (typeof opinionRaw !== "string" || opinionRaw.trim().length === 0) {
+      problems.push("opinion must be a non-empty string");
+    } else {
+      const trimmed = opinionRaw.trim();
+      if (trimmed.length > 500) {
+        problems.push("opinion must be at most 500 characters");
+      } else {
+        opinion = trimmed;
+      }
+    }
+  }
+
   const contextRaw = json.context;
   let context: PlanContext | undefined;
   if (contextRaw !== undefined && contextRaw !== null) {
@@ -528,6 +632,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   const design = parseDesign(json.design, problems);
+  const integration = parseIntegration(json.integration, problems);
   const factoryFit = parseFactoryFit(json.factoryFit, problems);
 
   if (problems.length > 0) {
@@ -537,10 +642,12 @@ export function parsePlan(raw: string): Plan {
   return {
     topology: topologyRaw as Topology,
     summary,
+    opinion,
     context,
     contracts,
     graphBudget,
     preview: parsePreview(json.preview, problems),
+    ...(integration === undefined ? {} : { integration }),
     ...(design === undefined ? {} : { design }),
     ...(factoryFit === undefined ? {} : { factoryFit }),
   };
@@ -555,6 +662,36 @@ export function parsePlan(raw: string): Plan {
  * and silently dropped, so the run instructions vanished between the plan
  * file and the dispatcher.
  */
+
+/**
+ * The integration wave. Same discipline as every other optional block:
+ * absent means "no merged-tree check to run", present must parse, and a
+ * badly-declared plan fails at plan time rather than at execute time.
+ */
+function parseIntegration(value: unknown, problems: string[]): Plan["integration"] {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) {
+    problems.push("integration must be an object");
+    return undefined;
+  }
+  const command = typeof value.command === "string" && value.command.trim().length > 0 ? value.command.trim() : undefined;
+  if (!command) {
+    problems.push("integration.command must be a non-empty string");
+  }
+  const timeoutRaw = value.timeoutMs;
+  let timeoutMs: number | undefined;
+  if (timeoutRaw !== undefined && timeoutRaw !== null) {
+    const n = typeof timeoutRaw === "number" ? timeoutRaw : Number.NaN;
+    if (Number.isFinite(n) && Number.isInteger(n) && n >= 1000 && n <= 900_000) {
+      timeoutMs = n;
+    } else {
+      problems.push("integration.timeoutMs must be an integer in [1000, 900000]");
+    }
+  }
+  if (!command) return undefined;
+  return { command, ...(timeoutMs === undefined ? {} : { timeoutMs }) };
+}
+
 function parsePreview(value: unknown, problems: string[]): PreviewSpec | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) {

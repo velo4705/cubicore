@@ -192,6 +192,11 @@ export function recordProgress(
 }
 
 /** Human-readable status, so a poll needs no parsing. */
+/**
+ * What the founder sees. One line for the run's own state, one line per
+ * associate, one line for the factory's verdict. No transcripts — this is
+ * the whole picture on one screen, and that is the point of it.
+ */
 export function describe(run: Run): string {
   const elapsed = ((Date.now() - run.startedAt) / 1000).toFixed(1);
   const done = run.progress.filter((p) => p.state === "done").length;
@@ -199,17 +204,42 @@ export function describe(run: Run): string {
   const skipped = run.progress.filter((p) => p.state === "skipped").length;
   const counts = `${done} done, ${failed} failed, ${skipped} skipped`;
 
-  if (run.state === "running") {
-    return `run ${run.id}: running, ${run.plan.contracts.length} associates (${counts}), ${elapsed}s elapsed`;
-  }
+  const stage = run.state === "running"
+    ? "dispatch"
+    : run.state === "paused"
+      ? "paused"
+      : run.state === "cancelled"
+        ? "cancelled"
+        : run.state === "failed"
+          ? "failed"
+          : "done";
+
+  const contractLines = run.plan.contracts.map((contract) => {
+    const p = run.progress.find((entry) => entry.contractId === contract.id);
+    const icon = p?.state === "done" ? "✅" : p?.state === "failed" ? "❌" : p?.state === "skipped" ? "⏭️" : p?.state === "running" ? "🔄" : "⏳";
+    const detail = p?.detail ?? (p?.state ?? "waiting");
+    const head = `${icon} ${contract.id}`;
+    const body = ` — ${detail}${contract.writes.length > 0 ? ` (writes: ${contract.writes.join(", ")})` : ""}`;
+    return `${head}${body}`;
+  });
+
+  const lines = [
+    `run ${run.id} · stage: ${stage} · elapsed ${elapsed}s`,
+    `Associates: ${counts}`,
+    ...contractLines,
+  ];
+
   if (run.state === "paused") {
-    return `run ${run.id}: paused at ${counts}, ${elapsed}s elapsed. Resume it with the resume command.`;
+    lines.push("Next: /cubicore:continue resumes the run from where it stopped.");
+  } else if (run.state === "running") {
+    lines.push("Next: this run is still in flight; check again in a moment.");
+  } else if (run.state === "failed") {
+    lines.push(`Next: see the failure${run.error ? ` (${run.error})` : ""}. \`/cubicore:refine\` to narrow the plan or \`/cubicore:continue\` to resume.`);
+  } else if (run.state === "cancelled") {
+    lines.push("Next: the run stopped on purpose. \`/cubicore:continue\` resumes it.");
+  } else if (run.summary) {
+    lines.push(`Verdict:`, run.summary);
   }
-  if (run.state === "cancelled") {
-    return `run ${run.id}: cancelled (${run.cancelledBecause ?? "no reason given"}) after ${elapsed}s, ${counts}.`;
-  }
-  if (run.state === "failed") {
-    return `run ${run.id}: failed after ${elapsed}s — ${run.error}`;
-  }
-  return `run ${run.id}: done in ${elapsed}s (${counts})\n\n${run.summary ?? ""}`;
+
+  return lines.join("\n");
 }

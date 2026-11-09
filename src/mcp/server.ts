@@ -40,7 +40,7 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
-import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import { cleanOrphanedWorktrees } from "../dispatch/worktree";
@@ -661,6 +661,15 @@ async function runToCompletion(
     );
   const totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite + usage.reasoning;
 
+  // The integration wave. If the plan says the merged tree must still build,
+  // run that proof NOW — before anything is declared done. This is the last
+  // chance to catch a broken union whose pieces pass their own gates: pieces
+  // on paper that combine into a broken build are not delivered.
+  let integrationOutcome: Awaited<ReturnType<typeof runIntegration>> | undefined;
+  if (parsed.integration) {
+    integrationOutcome = await runIntegration(parsed.integration, dir);
+  }
+
   const aggregated = aggregate(
     [...outcome.accepted, ...outcome.failed.map((f) => f.result)],
     outcome.unresolved,
@@ -676,6 +685,7 @@ async function runToCompletion(
     unresolved: outcome.unresolved,
     deferred: outcome.deferred.length,
     usage,
+    integration: integrationOutcome,
   });
   // Factory ledger — one page (.cubicore-factory-ledger.json) that says
   // what this run decided, what it cost, what it got, and why it wasn't a
@@ -714,13 +724,30 @@ async function runToCompletion(
       decision: fit
         ? `${fit.decision} — ${fit.workers} associates — ${fit.confidence} confidence`
         : 'decision recorded at plan time; ledger merged here',
+      integration: integrationOutcome ? {
+        command: integrationOutcome.command,
+        passed: integrationOutcome.passed,
+        output: integrationOutcome.passed ? "" : integrationOutcome.output.slice(0, 600),
+      } : null,
       recorded: new Date().toISOString(),
     };
     writeFileSync(`${dir}/.cubicore-factory-ledger.json`, JSON.stringify(ledger, null, 2));
+
+    // Append-only archive. The latest run is a fresh read; every past run
+    // stays on disk as history. The ledger used to be overwritten on every
+    // execute, which destroyed the audit trail it exists to carry.
+    try {
+      appendFileSync(`${dir}/.cubicore-factory-history.jsonl`, JSON.stringify(ledger) + "\n");
+    } catch {
+      // History is a nicety; the latest ledger is the authoritative one.
+    }
   } catch {
     // The ledger is an artifact, not a gate. A filesystem error never fails a run.
   }
   const verified = await verifyAndSyncPlan(parsed, dir, validation);
+  if (integrationOutcome && integrationOutcome.passed === false) {
+    verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
+  }
   syncRunRecord(runId, dir, parsed, verified);
 
   const passedCount = [...verified.progress.values()].filter((state) => state === "done").length;
@@ -1112,6 +1139,27 @@ async function runCheckedShell(
   return { exitCode, output: `${stdout}\n${stderr}`.trim() };
 }
 
+/**
+ * Run the plan's integration command against the merged tree.
+ *
+ * Absent from plans that have nothing to build across the whole product.
+ * A timeout is a failure, not an indefinite wait — an integration wave that
+ * could only signal success by running forever would teach a factory to hang.
+ */
+async function runIntegration(
+  integration: { command: string; timeoutMs?: number },
+  dir: string,
+): Promise<{
+  readonly command: string;
+  readonly passed: boolean;
+  readonly output: string;
+}> {
+  const timeoutMs = Math.min(Math.max(integration.timeoutMs ?? 180_000, 1_000), 900_000);
+  const result = await runCheckedShell(integration.command, dir, timeoutMs);
+  const passed = result.exitCode === 0;
+  return { command: integration.command, passed, output: result.output };
+}
+
 const PROGRESS_JSON = ".cubicore-progress.json";
 
 let progressionLock: Promise<void> = Promise.resolve();
@@ -1256,7 +1304,7 @@ async function verifyAndSyncPlan(
  * checks pass on the current tree.
  */
 async function markPlanContract(
-  args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string },
+  args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string; expectedRole?: string },
 ): Promise<ToolResult> {
   const dir = args.directory ?? process.cwd();
   const state = args.state ?? "done";
@@ -1276,6 +1324,29 @@ async function markPlanContract(
   const parsed = loaded.plan;
   const contract = parsed.contracts.find((candidate) => candidate.id === args.contractId);
   if (!contract) return text(`No contract named ${JSON.stringify(args.contractId)} in ${PLAN_JSON}.`, true);
+
+  // If the plan declares a role on the contract, the caller must name it.
+  // The association is unverifiable on this host (no event attribution), but
+  // the declaration is cheap, and it stops two associates accidentally
+  // marking each other's contract without intent. The honest thing to do —
+  // not a pretense of enforcement.
+  if (contract.role) {
+    const declared = typeof args.expectedRole === "string" ? args.expectedRole.trim() : "";
+    if (!declared) {
+      return text(
+        `Refusing to mark: this contract carries a role ("${contract.role.name}"), and the caller did not declare ${contract.role.name} as their own role. ` +
+          `A contract without the right handsmark cannot be marked done from the wrong hands.`,
+        true,
+      );
+    }
+    if (declared !== contract.role.name) {
+      return text(
+        `Refusing to mark: expected role ${JSON.stringify(contract.role.name)} for contract ${contract.id}, got ${JSON.stringify(declared)}. ` +
+          `The plan assigns this contract to ${contract.role.name}, not to ${declared}.`,
+        true,
+      );
+    }
+  }
 
   let detail = args.detail?.trim() || (state === "done" ? "associate verified its own work" : "associate reported failure");
   if (state === "done") {
@@ -1967,10 +2038,11 @@ export const TOOLS = [
         state: { type: "string", enum: ["done", "failed", "skipped"], description: "Status to mark. Defaults to done." },
         detail: { type: "string", description: "Short reason or handoff note." },
         directory: { type: "string", description: "Working directory; defaults to the server's." },
+        expectedRole: { type: "string", description: "The role you are operating as for this contract (matches contract.role.name when the plan declares one)." },
       },
       required: ["contractId"],
     },
-    handler: async (args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string }) =>
+    handler: async (args: { contractId: string; state?: "done" | "failed" | "skipped"; detail?: string; directory?: string; expectedRole?: string }) =>
       markPlanContract(args),
   },
   {
@@ -2350,9 +2422,11 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **1. Decide scope.** ${decideScope}
 
-**Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, use the recommended (most widely used) framework and language for this domain (React/Vite + TypeScript for web, Python + tkinter for desktop GUI, Express + JavaScript for APIs) and state it clearly in the plan. Do not ask — pick and state.
+**Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, build with the best *current-trend* stack for this domain and say so — not merely the most popular one from two years ago. Name the chosen combo and a one-sentence reason. Do not ask — decide and state.
 
 **Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Pick a direction by NAME, not by guesswork — "editorial porcelain", "dark editorial", "terminal-first monospace", "maximalist pop", "hand-drawn warmth", or a SPECIFIC invented direction with a name you would defend. Never fall back to "rounded corners, system font, blue accent" — that is the failure mode, not the default. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <specific pick> — good?" If "anything", take your proposal. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing from the matching direction. notDoing: 3 short prohibitions. ambition: "bold" for marketing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards — never lower than the founder's known bar.
+
+**Opinion:** Before writing the plan, think like a professional who just got this brief and fill in what the user did not say. Write ONE short paragraph (max two sentences, ~400 characters) as the plan's "opinion" field in the JSON: what the requested thing really is today, what an experienced builder would include by default, what you deliberately leave out, and why. Keep it honest — if the user's instinct is right for the problem, say so; do not invent sophistication. Do not widen or narrow the product; just state the best honest full version as it would be done properly *now*. If you would recommend a framework over what's listed, it goes in the plan (never the reply).
 
 **User request:** ${request}${extraNote}
 
@@ -2403,8 +2477,9 @@ Every contract needs:
 - A \`schema\` field describing its output
 - At least one check that \`can fail\`
 - Disjoint \`writes\` from every other contract
+- Optionally a \`role\` object: { name, capabilities, tools?, handoff?, exclusions?, escalation?, budget? } — exact authority, not a job title. A plan with roles is preferred for anything non-trivial; if you use them, use them fully — name is required, an empty capability list is a lie.
 
-Plan JSON must match the schema below, but the OUTPUT must NOT include "$schema", "type", "required", or "additionalProperties" fields — those are validator metadata only. Every contract must have exactly: id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget. No other fields (no "preview", no "$schema").
+Plan JSON must match the schema below, but the OUTPUT must NOT include "$schema", "type", "required", or "additionalProperties" fields — those are validator metadata only. Every contract must have exactly: id, objective, reads, writes, forbidden, deliverable, schema, doneWhen, checks, budget; optionally role (a fully-populated one — see "Every contract needs"). No other fields (no "preview", no "$schema").
 
 ${PLAN_SCHEMA_JSON}`;
 }
@@ -2441,7 +2516,11 @@ function planFullScope(): string {
     "names a framework or tool, include an installation contract that installs its " +
     "dependencies (npm, pip, cargo, apt, brew, etc.) in the same wave wherever safe. " +
     "Aim for at most two dependency waves; long pipelines are a symptom of bad splitting, not a virtue. " +
-    "Do not create narrative market content by default. Either omit `context`, or keep every required field to a short line if context is genuinely required.";
+    "Do not create narrative market content by default. Either omit `context`, or keep every required field to a short line if context is genuinely required. " +
+    "If the product can be built, typechecked, or boot-tested across the whole tree, include a top-level " +
+    "\"integration\" object with { command, timeoutMs? }: the build command, the typecheck, the merged test suite. " +
+    "The factory runs it after verification; the run is not done until it also passes. " +
+    "If there is nothing to test as a whole, omit it.";
 }
 
 export function promptFor(name: string, args: Record<string, string>) {

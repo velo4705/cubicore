@@ -17,6 +17,44 @@ const globArray = {
   items: { type: "string", minLength: 1 },
 } as const;
 
+const role = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name"],
+  properties: {
+    name: { type: "string", minLength: 1 },
+    capabilities: globArray,
+    tools: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        allow: globArray,
+        deny: globArray,
+      },
+    },
+    handoff: {
+      type: "object",
+      additionalProperties: false,
+      required: ["deliverable", "audience"],
+      properties: {
+        deliverable: { type: "string", minLength: 1 },
+        audience: { type: "string", minLength: 1 },
+      },
+    },
+    exclusions: globArray,
+    escalation: { type: "string", minLength: 1 },
+    budget: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        tokens: { type: "integer", minimum: 100 },
+        toolCalls: { type: "integer", minimum: 1 },
+        wallMs: { type: "integer", minimum: 1000 },
+      },
+    },
+  },
+} as const;
+
 const step = {
   type: "object",
   additionalProperties: false,
@@ -87,6 +125,7 @@ const contract = {
       description:
         "True for any screen-facing contract. Triggers the design requirement.",
     },
+    role,
   },
 } as const;
 
@@ -103,9 +142,29 @@ export const planSchema = {
     summary: {
       type: "string",
       minLength: 1,
+      maxLength: 400,
       description:
         "Human-readable description of what this project is, for the founder. " +
         "Rendered at the top of CUBICORE_PLAN.md.",
+    },
+    opinion: {
+      type: "string",
+      maxLength: 500,
+      description:
+        "The planner's argument for the build in full. What the founder did " +
+        "not say and an expert would include by default, what is deliberately " +
+        "left out, and why. One paragraph, at most two sentences. Advice, " +
+        "not a contract: the dispatcher never reads it and the founder can " +
+        "strike it for free in refine.",
+    },
+    integration: {
+      type: "object",
+      additionalProperties: false,
+      required: ["command"],
+      properties: {
+        command: { type: "string", minLength: 1 },
+        timeoutMs: { type: "number", minimum: 1000, maximum: 900000 },
+      },
     },
     context: {
       type: "object",
@@ -264,6 +323,14 @@ Rules:
 - "summary" is a human-readable description of what this project is. Write one
   or two sentences so the founder can understand the product at a glance,
   without reading every contract. It goes at the top of CUBICORE_PLAN.md.
+- "opinion" is the planner's argument for the build in full — what the founder
+  would want if they knew exactly what to ask for, what is deliberately left
+  out, and why. One paragraph, at most two sentences, ~400 characters. Advice,
+  not a contract: it is not dispatched, and the founder can strike it for free.
+- "integration" (optional) is one command proving the merged tree works:
+  the build command, the typecheck command, etc. It runs after verification,
+  before the factory says done. A hung command must not hang the factory —
+  include "timeoutMs" if the command might exceed 120000 (2 minutes default).
 - Every contract MUST have a "schema" field — an object describing the
   output it produces. A contract without a schema is invalid and will be
   rejected before anything is spent.

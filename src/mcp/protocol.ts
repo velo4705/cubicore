@@ -132,6 +132,26 @@ export function renderPlanMd(
     );
   }
 
+  if (plan.opinion) {
+    md.push(
+      `## Planner's opinion`,
+      ``,
+      `> ${plan.opinion}`,
+      ``,
+      `_This is advice, not scope. It was not dispatched. Strike it for free with /cubicore:refine._`,
+      ``,
+    );
+  }
+
+  const integrationSection = plan.integration ? [
+    `## Integration wave`,
+    ``,
+    `\`\`\`bash`,
+    plan.integration.command,
+    `\`\`\``,
+    ``,
+  ] : [];
+
   const designSection = plan.design ? [
     `## Design`,
     ``,
@@ -155,6 +175,7 @@ export function renderPlanMd(
     `- **Wall ceiling:** ${Math.round(plan.graphBudget.wallMs / 1000)}s`,
     `- **Validation:** ${validation.ok ? "passed" : `${validation.findings.length} finding(s)`}`,
     ``,
+    ...integrationSection,
     ...designSection,
     ...fitSection,
     `## Associates`,

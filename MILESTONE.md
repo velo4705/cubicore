@@ -162,19 +162,30 @@ The founder can override the number, but the default must be justified, never
 maximal. The plan records the factory budget: workers, waves, wall clock,
 tokens, check runs, and the cost of the orchestration itself.
 
-#### 2. Make roles more than labels
+#### 2. Make roles more than labels — **partial**
 
 `backend`, `frontend` and `test-writer` are not roles. A factory role is:
 
 - a bounded write scope
-- a capability set and tool policy
+- a capability set
+- a tool policy (advisory here)
 - budget and retry limits
 - required handoff artifacts
-- checks that decide acceptance
 - exclusions and escalation rules
 
 Roles may be composed and restricted, but never given a name instead of a
 contract. The host receives the role's exact authority, not an honorific.
+
+**Shipped (2026-11-10):** the `role` schema on contracts; parse-time validation;
+role gate wired into the gate chain; the plan prompt tells the planner to use
+full roles (name required, empty capability list rejected). Tool policy is
+advisory **on opencode 2.1.3** — the host does not attribute tool or file
+events to sessions, so the policy cannot be enforced post-hoc; the gate reports
+"advisory only, not enforceable here" honestly rather than claiming otherwise.
+**Left undone here (no second host):** runtime enforcement; roles are the
+authority a founder can see and check before dispatch, not a run-time lock.
+**Needs:** a second host with event attribution to close the gap between the
+contract and a running worker.
 
 #### 3. Add a real factory lifecycle
 
@@ -337,7 +348,12 @@ Scope:
 
 - Explicit lifecycle states and legal transitions.
 - Roles with capabilities, tool restrictions and budgets.
-- Integration contract and integration wave.
+- Integration contract and integration wave. **Done (slice):** plans can carry
+  a top-level `integration` block ({command, timeoutMs?}); the factory runs it
+  after verification and the run is not "done" until it also passes. The
+  merged-tree build/boot/typecheck is the gate that catches a broken union
+  whose pieces each pass. Integration failure is recorded in the retrospect
+  verdict and the ledger, and reported to the founder as ship-blocking.
 - Conflict and collision reporting from actual diffs.
 - Adaptive split/merge/skip/escalate decisions.
 - Real retry limits and `unfixable` outcomes.
@@ -410,7 +426,136 @@ Exit criteria:
 Phase 1 shipped; Phase 2 follows because a factory that decides correctly but
 integrates badly is still not a factory. Phase 3 makes the decision portable.
 Phase 4 makes it useful after the first run. Phase 5 is mandatory before
-anyone is allowed to call the system proven.
+anyone is allowed to call the system proven. The Five Areas milestone
+(Behaviour, Portability, User-Visible Value) runs alongside Phases 2–5 and is
+the product-side checklist for what we deliver.
+
+### The Five Areas milestone — Behaviour, Portability, User-Visible Value
+
+Phases are dependency-ordered for engineering; the five outcomes are the
+product-shaped checklist. This milestone pins the three under-worked areas —
+2, 3, 4 — to concrete work in Phases 2 and 3. A phase is not "done" because
+its code compiles; each area in it has exit criteria below and each area
+carries its own honest accounting of shipped versus missing.
+
+The under-worked outcomes:
+
+| Outcome | What it covers |
+|---|---|
+| **Real Agent-Factory Behaviour** | Factory states, controlled handoffs, work queues, integration, retrospect, archive — not just parallel task calls |
+| **Host Portability** | One factory contract, adapters per host, honestly degraded |
+| **User-Visible Value** | Founder sees what is happening, why, what each associate owns, what is blocked, what to do next — without transcripts |
+
+The done and the rest, same format as the twelve.
+
+#### Area 2 — Real Agent-Factory Behaviour
+
+Done (2026-11-09, updated 2026-11-10):
+
+- factory-fit decision is dispatched before the work starts and recorded
+  verbatim in the markdown, the fit record and the ledger;
+- a per-run retrospective verdict is printed to the founder (what the factory
+  did, passed/flagged, tokens);
+- integration wave (2026-11-10): a top-level `integration` block on the plan
+  is run against the merged tree after verification — a broken build can no
+  longer say it was done;
+- single-agent decisions are honoured at execute (`schema round-trip`);
+- union-scope gate (2026-11-10): the run is judged against the plan's union of
+  declared writes, not against per-worker files that cannot be attributed on
+  opencode 2.1.3;
+- archive (`.cubicore-factory-history.jsonl` — 2026-11-10): a rolling,
+  append-only per-run record, replacing the overwrite-only ledger.
+
+Missing:
+
+- lifecycle states beyond the dispatch loop — `intent → fit → plan → team
+  proposal → dispatch → observe → integrate → verify → retrospect → archive`
+  — with durable per-state records and legal transitions (a worker reporting
+  blocked moves to `escalated`, never an unbounded retry);
+- a contract that fails a gate moves to a narrower revision, explicitly named
+  by the factory — not "merge whatever changed";
+- handoff artifacts verified when passed between waves — not a promise;
+- collision reporting from actual changed files (not just unioned declared
+  writes): the founder learns *which* worker wrote *which* file that no
+  contract declared;
+- adaptive split/merge/skip — split a blocked contract, merge two that
+  discovered they own one file, replace an unavailable capability, stop
+  spending on work cheaper as one agent;
+- archive: a final per-run ledger entry that is a real record, not an overwrite
+  of the current one. **Done (2026-11-10):** each run appends to
+  `.cubicore-factory-history.jsonl`; the latest ledger stays a fast read and
+  the past is no longer destroyed by the current run.
+
+Exit criteria:
+
+- an integration failure is caught before hand-off (shipped);
+- a blocked contract moves to a defined `escalated` state with bounded retries
+  and a recorded reason;
+- no two associates own the same file in the run, or if they do, the founder is
+  told by name;
+- a run can be cancelled, resumed and audited (partially: resume works; the
+  audited/cancelled paths need the same rigour).
+
+#### Area 3 — Host Portability
+
+Done (2026-11-09):
+
+- Pipelined compile/runs today on OpenCode as reference host; MCP credential
+  bridging for hosts that do not pass env services.
+
+Missing:
+
+- an adapter interface answering the same questions on every host: can it
+  dispatch inline sub-agents, make child sessions, isolate worktrees, enforce
+  tool and filesystem permissions, stream lifecycle events, cancel a worker;
+- a second host — Claude Code first (its users already expect sub-agents),
+  then Codex; Cursor, Windsurf and session-only hosts degrade through the
+  session contract;
+- exit criteria for the second host: the same plan builds green on two hosts,
+  missing host capabilities reported plainly rather than silently emulated,
+  and the founder switches hosts by editing one config line;
+- a smoke suite: plan → dispatch → gate → integrate → verify, on at least
+  one second host.
+
+Exit criteria:
+
+- one factory plan builds green on at least two hosts;
+- no silent fallback to a different execution model;
+- adapters declare limits rather than faking capabilities.
+
+#### Area 4 — User-Visible Value
+
+Done (2026-11-09, updated 2026-11-10):
+
+- factory-fit decision is shown to the founder as a native opencode form,
+  overridable by the founder;
+- `## Why this factory?` rendered in `CUBICORE_PLAN.md` with the decision, the
+  reason, confidence, and the evidence;
+- the founder can answer "why this split?" without reading transcripts —
+  the markdown says it out loud;
+- the run ends with an explicit done/blocked verdict from the retrospective.
+
+Missing:
+
+- mid-run visibility: a `/cubicore:status` that renders the current stage
+  (fit → dispatch → integration → verify → done), each associate's state
+  (running / waiting / blocked / green / red), the blocking gate, and the one
+  next action — without reading tool-call transcripts. **Done (2026-11-10):**
+  `describe()` prints the stage, per-associate state and writes, and the one
+  next action; `/cubicore:status` surfaces it.
+- collision/scope-violation surfaced to the founder, not buried in
+  `unresolved[]`;
+- archive of plan-and-run context across runs — decisions, amendments,
+  follow-ups, one place to look instead of hunting `CUBICORE_PLAN*.md` files;
+- a tight summary after run: done / not done, what to do next, in one line.
+
+Exit criteria:
+
+- the founder can answer "what is Cubicore doing right now?" with one command,
+  without reading transcripts;
+- a blocked run tells the founder exactly one next move;
+- nothing the founder sees is unverified — every line is the verdict of a
+  gate, not the agent's opinion.
 
 ### Definition of factory done
 

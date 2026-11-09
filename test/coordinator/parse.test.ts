@@ -146,12 +146,28 @@ describe("the emitted schema matches the parser", () => {
     expect(contractProps).toEqual(expect.arrayContaining(Object.keys(VALID.contracts[0])));
   });
 
+  test("a plan carrying an opinion parses cleanly", () => {
+    const withOpinion = parsePlan(JSON.stringify({ ...VALID, opinion: "one tight paragraph" }));
+    expect(withOpinion.opinion).toBe("one tight paragraph");
+  });
+
+  test("an oversized opinion is rejected", () => {
+    const bad = { ...VALID, opinion: "x".repeat(600) };
+    try {
+      parsePlan(JSON.stringify(bad));
+      expect.unreachable("expected oversized opinion to throw");
+    } catch (error) {
+      if (!(error instanceof MalformedPlan)) throw error;
+      expect(error.problems.join(" ")).toMatch(/opinion/i);
+    }
+  });
+
   test("the plan's top-level keys are the same in the schema and the parser", () => {
     // adding `preview` to the schema did not have to be added to the parser
     // either. Every plan carrying a preview block was rejected as "plan has
     // unknown field preview", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "context", "design", "graphBudget", "summary", "topology", "preview"].sort();
+    const parserKeys = ["contracts", "opinion", "context", "design", "graphBudget", "summary", "topology", "preview", "integration"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.
