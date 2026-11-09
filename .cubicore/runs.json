@@ -1,10 +1,10 @@
 [
   {
-    "id": "run-mw8xxxiq",
-    "startedAt": 1794209384690,
+    "id": "run-mw8z5yao",
+    "startedAt": 1794211438560,
     "plan": {
       "topology": "fan-out",
-      "summary": "Live factory-fit smoke: two disjoint one-file markers. Costs almost nothing.",
+      "summary": "Packed-artifact publish check: two disjoint one-file markers.",
       "contracts": [
         {
           "id": "marker-a",
@@ -101,7 +101,7 @@
         "detail": "verified against blocking checks on disk"
       }
     ],
-    "summary": "**What the factory did**\n- Decision: small-factory · 2 associates\n- Passed: 0 · Flagged: 2\n- Tokens: 0\n- Why this size: a few genuinely independent slices — parallel work pays\n- Verdict: None of the 2 associates finished with verifiable work. The requested split was either too aggressive for this task, or the plan was wrong — see marker-a — scope: worker modified undeclared path(s): smoke-factory/b.txt; marker-b — scope: worker modified undeclared path(s): smoke-factory/a.txt\n\nfan-out · 0 passed, 2 failed, 0 deferred · verified 2/2 on disk\n- marker-a: flagged — marker-a — scope: worker modified undeclared path(s): smoke-factory/b.txt\n- marker-b: flagged — marker-b — scope: worker modified undeclared path(s): smoke-factory/a.txt",
-    "finishedAt": 1794209505357
+    "summary": "**What the factory did**\n- Decision: small-factory · 2 associates\n- Passed: 2 · Flagged: 0\n- Tokens: 0\n- Why this size: a few genuinely independent slices — parallel work pays\n- Verdict: All 2 associates produced verifiable work. The split was small-factory; every contract ran with its own checks before integration.\n\nfan-out · 2 passed, 0 failed, 0 deferred · verified 2/2 on disk\n- marker-a: budget-exhausted\n- marker-b: budget-exhausted",
+    "finishedAt": 1794211558987
   }
 ]

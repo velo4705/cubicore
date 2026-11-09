@@ -611,6 +611,7 @@ async function runToCompletion(
   // stale directories for removed contracts don't linger or collide.
   cleanOrphanedWorktrees(dir, parsed.contracts.map((c) => c.id));
 
+  const unionWrites = [...new Set(parsed.contracts.flatMap((c) => c.writes))];
   const outcome = await dispatch(
     parsed,
     workers.asRunner(),
@@ -636,6 +637,8 @@ async function runToCompletion(
       discard: (contractId) => workers.discard(contractId),
       // Contracts an earlier run already satisfied, unchanged, are not re-run.
       satisfiedContracts: satisfiedOverride ?? satisfiedContracts(dir, parsed),
+      root: dir,
+      unionWrites,
       // Contracts whose worktrees should be preserved (not wiped) on resume.
       preserveContractIds,
       // Step completion states per contract, so associates skip completed steps.

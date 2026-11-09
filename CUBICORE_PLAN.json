@@ -1,6 +1,6 @@
 {
   "topology": "fan-out",
-  "summary": "Live factory-fit smoke: two disjoint one-file markers. Costs almost nothing.",
+  "summary": "Packed-artifact publish check: two disjoint one-file markers.",
   "contracts": [
     {
       "id": "marker-a",

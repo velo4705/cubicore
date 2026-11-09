@@ -2,7 +2,7 @@
 
 ## What this is
 
-Live factory-fit smoke: two disjoint one-file markers. Costs almost nothing.
+Packed-artifact publish check: two disjoint one-file markers.
 
 - **Topology:** fan-out
 - **Project size:** small (2 associates)

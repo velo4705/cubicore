@@ -58,6 +58,12 @@ export interface DispatchOptions {
   /** The tree the workers wrote into, for reading file contents during style check. */
   root?: string;
   /**
+   * Union of declared writes across every contract in the plan. The scope
+   * gate judges the run against this union, because per-worker attribution
+   * is not available on this host. Anything outside it flags the run.
+   */
+  unionWrites?: readonly string[];
+  /**
    * Contracts an earlier run already satisfied, unchanged.
    *
    * Ids only, and only for contracts the caller has confirmed are identical
@@ -232,6 +238,7 @@ export async function dispatch(
             changedFiles: result.changedFiles,
             changesUnknown: result.changesUnknown,
             root: result.root ?? options.root ?? process.cwd(),
+            unionWrites: options.unionWrites,
             design: plan.design,
           },
         );

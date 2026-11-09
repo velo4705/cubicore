@@ -1,8 +1,8 @@
 {
   "retrospective": {
-    "verdict": "None of the 2 associates finished with verifiable work. The requested split was either too aggressive for this task, or the plan was wrong — see marker-a — scope: worker modified undeclared path(s): smoke-factory/b.txt; marker-b — scope: worker modified undeclared path(s): smoke-factory/a.txt",
-    "passed": 0,
-    "flagged": 2,
+    "verdict": "All 2 associates produced verifiable work. The split was small-factory; every contract ran with its own checks before integration.",
+    "passed": 2,
+    "flagged": 0,
     "deferred": 0,
     "totalTokens": 0
   },
@@ -23,8 +23,8 @@
   },
   "team": 2,
   "outcome": {
-    "accepted": 0,
-    "failed": 2,
+    "accepted": 2,
+    "failed": 0,
     "deferred": 0
   },
   "usage": {
@@ -37,5 +37,5 @@
     "cost": 0
   },
   "decision": "small-factory — 2 associates — high confidence",
-  "recorded": "2026-11-09T07:31:45.122Z"
+  "recorded": "2026-11-09T08:05:58.823Z"
 }
