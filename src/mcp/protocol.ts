@@ -87,6 +87,19 @@ export function canExecute(state: CycleState): { allowed: boolean; reason: strin
   return { allowed: true, reason: `Cycle ${state.cycle + 1} of ${state.maxCycles}.` };
 }
 
+/** The factory decision rendered for the plan file. */
+export function renderFactoryFit(fit: { decision: string; workers: number; why: string; whyNotMore: string; confidence: string }): string {
+  return [
+    `## Why this factory?`,
+    ``,
+    `- Decision: ${fit.decision} (team of ${fit.workers})`,
+    `- Why: ${fit.why}`,
+    `- Why not more: ${fit.whyNotMore}`,
+    `- Confidence: ${fit.confidence}`,
+    ``,
+  ].join("\n");
+}
+
 export function renderPlanMd(
   plan: Plan,
   validation: { ok: boolean; findings: { code: string; message: string }[] },
@@ -133,6 +146,8 @@ export function renderPlanMd(
     ``,
   ].filter((line) => line !== ``) : [];
 
+  const fitSection = plan.factoryFit ? renderFactoryFit(plan.factoryFit).split("\n") : [];
+
   md.push(
     `- **Topology:** ${plan.topology}`,
     `- **Project size:** ${size} (${workers} associate${workers === 1 ? "" : "s"})`,
@@ -141,6 +156,7 @@ export function renderPlanMd(
     `- **Validation:** ${validation.ok ? "passed" : `${validation.findings.length} finding(s)`}`,
     ``,
     ...designSection,
+    ...fitSection,
     `## Associates`,
     ``,
     ...plan.contracts.map((c) => {

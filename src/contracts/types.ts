@@ -1,4 +1,5 @@
 import type { TokenUsage } from "../telemetry/types";
+import type { FactoryFit } from "../factory/fit";
 
 export type Topology =
   | "fan-out"
@@ -193,6 +194,11 @@ export interface Plan {
    * nothing to run.
    */
   preview?: PreviewSpec;
+  /**
+   * The decision the factory-fit pre-dispatch assessment makes — how many
+   * associates, why them, why not more. Set by plan, read by dispatch.
+   */
+  factoryFit?: FactoryFit;
 }
 
 /**

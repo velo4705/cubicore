@@ -33,6 +33,7 @@ import {
   renderContextMd,
   renderDebugMd,
   renderPlanMd,
+  renderFactoryFit,
   writeCycleState,
   type TestFinding,
 } from "./protocol";
@@ -846,9 +847,18 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     );
   }
 
+  const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
+  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
+
   return text(
-    [`Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
-     `${parsed.contracts.length} associate(s), topology ${parsed.topology}. Nothing has run.`].join("\n"),
+    [
+      `Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
+      `Associates: ${parsed.contracts.length}, topology ${parsed.topology}.`,
+      "",
+      renderFit(fit),
+      "",
+      "Nothing has run.",
+    ].join("\n"),
   );
 }
 
