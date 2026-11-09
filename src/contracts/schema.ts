@@ -82,6 +82,11 @@ const contract = {
     steps: { type: "array", items: step },
     budget,
     tools: { type: "array", items: { type: "string", minLength: 1 } },
+    ui: {
+      type: "boolean",
+      description:
+        "True for any screen-facing contract. Triggers the design requirement.",
+    },
   },
 } as const;
 
@@ -202,6 +207,27 @@ export const planSchema = {
         },
       },
     },
+    design: {
+      type: "object",
+      additionalProperties: false,
+      required: ["direction", "palette", "typeface", "notDoing", "ambition"],
+      properties: {
+        direction: { type: "string", minLength: 1 },
+        palette: {
+          type: "array",
+          minItems: 2,
+          maxItems: 4,
+          items: { type: "string", pattern: "^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+        },
+        typeface: { type: "string", minLength: 1 },
+        typeScale: { type: "number", exclusiveMinimum: 1, maximum: 1.5 },
+        spacing: { type: "number", exclusiveMinimum: 0 },
+        radii: { type: "array", maxItems: 2, items: { type: "integer", minimum: 0 } },
+        signature: { type: "string" },
+        notDoing: { type: "array", items: { type: "string", minLength: 1 } },
+        ambition: { type: "string", enum: ["calm", "standard", "bold"] },
+      },
+    },
     graphBudget: {
       type: "object",
       additionalProperties: false,
@@ -257,6 +283,21 @@ Rules:
 - "steps" within a contract are ordered sub-tasks. Each step writes its own
   files and can be tracked independently so an interrupted run can resume
   from completed steps rather than restarting the whole contract.
+- UI-capable plans MUST carry a "design" block. UI-capable means: any
+  contract with "ui": true, or any "writes" glob ending in a screen-facing
+  extension (.html, .css, .jsx, .tsx, .svelte, .vue, .astro, .scss/.sass/.less).
+  A plan with a UI contract but no design block is REJECTED by the validator
+  before dispatch — the design is part of the contract, not decoration.
+- For UI-capable plans, propose TWO or THREE named directions and pick ONE
+  for the plan (direction, palette of 2-4 hex colors with the accent last,
+  typeface, notDoing list, ambition: calm|standard|bold). Record the choice
+  in the plan so the founder can veto it in review — the founder, never you,
+  decides. A bland default ("rounded corners, system font, blue accent")
+  fails as surely as a missing block.
+- design.notDoing is the load-bearing list — small, specific prohibitions
+  the frontend must never cross ("no scrolljacking", "no second typeface"),
+  not general aspirations.
+
 - The founder may describe the split in any terms — team members, phases,
   milestones, parts, pieces, however they like. The number matters, not the
   words. Translate whatever they say into contracts with disjoint write

@@ -1,6 +1,7 @@
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 
 import { authFromEnv, clientSpawner } from "./plugin";
+import { servicePassword } from "../../mcp/service";
 import { WorkerSessions } from "../../dispatch/spawn";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
 import { DEFAULT_MODEL, resolveModel } from "../../mcp/model";
@@ -66,14 +67,14 @@ function discoverPort(): string | null {
 }
 
 export function runtimeFromEnv(env: Record<string, string | undefined> = process.env): Runtime {
-  const username = env.OPENCODE_SERVER_USERNAME;
-  const password = env.OPENCODE_SERVER_PASSWORD;
+  const username = env.OPENCODE_SERVER_USERNAME ?? "opencode";
+  const password = env.OPENCODE_SERVER_PASSWORD ?? servicePassword();
 
-  if (!username || !password) {
+  if (!password) {
     throw new Error(
-      "Cubicore MCP needs OPENCODE_SERVER_USERNAME and OPENCODE_SERVER_PASSWORD. " +
-        "When launched by opencode both are inherited; running standalone requires " +
-        "`opencode serve` plus those two variables in the environment.",
+      "Cubicore MCP needs a service password. OpenCode may inject OPENCODE_SERVER_PASSWORD " +
+        "into MCP servers at launch, or it can be read from the host's service.json. " +
+        "Neither was found. Restart OpenCode, or set both variables explicitly.",
     );
   }
 

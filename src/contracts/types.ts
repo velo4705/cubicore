@@ -96,6 +96,8 @@ export interface Contract {
    * any associate, but the plan declares which ones this contract will use.
    * Empty array or absent means no MCP/tools needed beyond the base tool set.
    */
+  /** Marks this contract screen-facing. Triggers the design requirement. */
+  ui?: boolean;
   tools?: string[];
 }
 
@@ -130,10 +132,46 @@ export interface PlanContext {
   ask: string[];
 }
 
+export type DesignAmbition = "calm" | "standard" | "bold";
+
+/**
+ * The aesthetic direction for this project. Mandatory for UI-capable plans:
+ * the planner proposes 2-3 directions, the founder picks one in review, and
+ * the validator rejects UI plans without one before dispatch.
+ *
+ * `ui` marks a contract as screen-facing. UI capability is detected two
+ * ways and either triggers the requirement: an explicit `ui: true`, or a
+ * writes glob that targets screen-facing files (html/css/jsx/tsx/svelte/
+ * vue/astro/htm).
+ */
+export interface Design {
+  /** Named direction: e.g. "editorial", "terminal", "porcelain", "industrial". */
+  direction: string;
+  /** Hex colors, at most 4. The accent colour is listed last. Every hex in
+   *  the diff must appear in this palette — that is the gate. */
+  palette: string[];
+  /** Typeface family name. */
+  typeface: string;
+  /** Type scale ratio between 1.1 and 1.5. */
+  typeScale?: number;
+  /** Base spacing unit in px. */
+  spacing?: number;
+  /** Radii levels in use; at most two. */
+  radii?: number[];
+  /** One signature element the whole product hangs off. */
+  signature?: string;
+  /** Things explicitly not done. Ends debates up front. */
+  notDoing: string[];
+  /** How far from minimal the result may wander. */
+  ambition: DesignAmbition;
+}
+
 export interface Plan {
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;
+  /** Design direction for UI-capable projects. Absent for back-end/library work. */
+  design?: Design;
   /**
    * Human-readable description of what this project is, for the founder.
    * Rendered at the top of CUBICORE_PLAN.md so anyone can understand

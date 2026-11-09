@@ -147,11 +147,13 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
   const allowed = [
     "id", "objective", "reads", "writes", "forbidden",
     "deliverable", "schema", "doneWhen", "checks", "steps", "budget",
-    "tools",
+    "tools", "ui",
   ];
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
   }
+
+  const ui = parseOptionalBoolean(value.ui, problems, `${label}.ui`);
 
   const text = (key: string): string => {
     const raw = value[key];
@@ -223,6 +225,7 @@ function parseContract(value: unknown, label: string, problems: string[]): Contr
     ...(steps ? { steps } : {}),
     budget,
     tools: Array.isArray(value.tools) ? value.tools as string[] : [],
+    ...(ui === undefined ? {} : { ui }),
   };
 }
 
@@ -282,6 +285,101 @@ function textField(value: unknown, label: string, problems: string[]): string {
   return value.trim();
 }
 
+function parseOptionalBoolean(value: unknown, problems: string[], label: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") {
+    problems.push(`${label} must be a boolean`);
+    return undefined;
+  }
+  return value;
+}
+
+function parseHexColor(value: unknown, problems: string[], label: string): string | undefined {
+  if (typeof value !== "string") {
+    problems.push(`${label} must be a hex color string`);
+    return undefined;
+  }
+  if (!/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)) {
+    problems.push(`${label} must be a 6- or 8-digit hex color (got "${value}")`);
+    return undefined;
+  }
+  return value.toLowerCase();
+}
+
+const DESIGN_AMBITIONS = new Set(["calm", "standard", "bold"]);
+
+function parseDesign(value: unknown, problems: string[], label = "design"): {
+  direction: string; palette: string[]; typeface: string; typeScale?: number; spacing?: number;
+  radii?: number[]; signature?: string; notDoing: string[]; ambition: "calm" | "standard" | "bold";
+} | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isRecord(value)) {
+    problems.push(`${label} must be an object`);
+    return undefined;
+  }
+  const v = value as Record<string, unknown>;
+  const allowed = ["direction", "palette", "typeface", "typeScale", "spacing", "radii", "signature", "notDoing", "ambition"];
+  for (const key of Object.keys(v)) {
+    if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
+  }
+  for (const key of ["direction", "palette", "typeface", "notDoing", "ambition"]) {
+    if (v[key] === undefined || v[key] === null) problems.push(`${label}.${key} is required`);
+  }
+
+  const direction = typeof v.direction === "string" && v.direction.trim().length > 0 ? v.direction.trim() : undefined;
+  if (!direction) problems.push(`${label}.direction must be a non-empty string`);
+
+  let palette: string[] = [];
+  const paletteRaw = v.palette;
+  if (!Array.isArray(paletteRaw) || paletteRaw.length < 2 || paletteRaw.length > 4) {
+    problems.push(`${label}.palette must be an array of 2–4 hex colors`);
+  } else {
+    palette = paletteRaw
+      .map((c, i) => parseHexColor(c, problems, `${label}.palette[${i}]`))
+      .filter((c): c is string => typeof c === "string");
+  }
+
+  const typeface = typeof v.typeface === "string" && v.typeface.trim().length > 0 ? v.typeface.trim() : undefined;
+  if (!typeface) problems.push(`${label}.typeface must be a non-empty string`);
+
+  const typeScale = v.typeScale === undefined || v.typeScale === null ? undefined
+    : typeof v.typeScale === "number" && v.typeScale > 1 && v.typeScale <= 1.5 ? v.typeScale
+    : (problems.push(`${label}.typeScale must be a number in (1, 1.5]`), undefined);
+
+  const spacing = v.spacing === undefined || v.spacing === null ? undefined
+    : typeof v.spacing === "number" && v.spacing > 0 ? v.spacing
+    : (problems.push(`${label}.spacing must be a positive number`), undefined);
+
+  const radii = v.radii === undefined || v.radii === null ? undefined
+    : Array.isArray(v.radii) && v.radii.every((n) => typeof n === "number" && n >= 0 && Number.isInteger(n)) && v.radii.length <= 2 ? (v.radii as number[])
+    : (problems.push(`${label}.radii must be an array of at most 2 non-negative integers`), undefined);
+
+  const signature = typeof v.signature === "string" && v.signature.trim().length > 0 ? v.signature.trim() : undefined;
+
+  let notDoing: string[] = [];
+  const notDoingRaw = v.notDoing;
+  if (!Array.isArray(notDoingRaw) || notDoingRaw.length === 0) {
+    problems.push(`${label}.notDoing must be a non-empty array`);
+  } else {
+    notDoing = notDoingRaw.map((x, i) => {
+      if (typeof x !== "string" || x.trim().length === 0) {
+        problems.push(`${label}.notDoing[${i}] must be a non-empty string`);
+        return undefined;
+      }
+      return x.trim();
+    }).filter((x): x is string => typeof x === "string");
+  }
+
+  const ambition = typeof v.ambition === "string" && DESIGN_AMBITIONS.has(v.ambition)
+    ? (v.ambition as "calm" | "standard" | "bold")
+    : (problems.push(`${label}.ambition must be one of "calm", "standard", "bold"`), undefined);
+
+  if (!direction || !typeface || !ambition || palette.length < 2 || palette.length > 4 || notDoing.length === 0) {
+    return undefined;
+  }
+  return { direction, palette, typeface, typeScale, spacing, radii, signature, notDoing, ambition };
+}
+
 /**
  * Parse a coordinator response into a `Plan`, or throw `MalformedPlan`.
  *
@@ -308,7 +406,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview"].includes(key)) {
+    if (!["topology", "summary", "context", "contracts", "graphBudget", "preview", "design"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -344,10 +442,6 @@ export function parsePlan(raw: string): Plan {
       tokens: checkPositiveInt(graphRaw.tokens, "graphBudget.tokens", problems),
       wallMs: checkPositiveInt(graphRaw.wallMs, "graphBudget.wallMs", problems),
     };
-  }
-
-  if (problems.length > 0) {
-    throw new MalformedPlan("coordinator response did not match the plan schema", problems);
   }
 
   const summaryRaw = json.summary;
@@ -386,6 +480,12 @@ export function parsePlan(raw: string): Plan {
     }
   }
 
+  const design = parseDesign(json.design, problems);
+
+  if (problems.length > 0) {
+    throw new MalformedPlan("coordinator response did not match the plan schema", problems);
+  }
+
   return {
     topology: topologyRaw as Topology,
     summary,
@@ -393,6 +493,7 @@ export function parsePlan(raw: string): Plan {
     contracts,
     graphBudget,
     preview: parsePreview(json.preview, problems),
+    ...(design === undefined ? {} : { design }),
   };
 }
 

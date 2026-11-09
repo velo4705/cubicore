@@ -177,3 +177,54 @@ describe("validatePlan", () => {
     expect(codes(result)).toContain("budget-exceeded");
   });
 });
+
+describe("design elevation — UI-capable plans", () => {
+  test("a UI contract without a design block is rejected", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true })],
+    }));
+    expect(codes(result)).toContain("missing-design");
+  });
+
+  test("a UI contract writing a screen-facing file needs the block even without ui:true", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ writes: ["src/page.tsx"] })],
+    }));
+    expect(codes(result)).toContain("missing-design");
+  });
+
+  test("a UI plan with a complete design block passes", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true })],
+      design: {
+        direction: "terminal",
+        palette: ["#0f0f0f", "#e6e6e6", "#3b82f6"],
+        typeface: "JetBrains Mono",
+        notDoing: ["no scrolljacking", "no second typeface", "no gradient"],
+        ambition: "calm",
+      },
+    }));
+    expect(result.ok).toBe(true);
+  });
+
+  test("an underspecified design is rejected with its missing parts named", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true })],
+      design: {
+        direction: "terminal",
+        palette: ["#0f0f0f"],
+        typeface: "JetBrains Mono",
+        notDoing: [],
+        ambition: "calm",
+      } as never,
+    }));
+    expect(codes(result)).toContain("missing-design");
+  });
+
+  test("a back-end plan needs no design block", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ writes: ["src/api.ts"] })],
+    }));
+    expect(result.ok).toBe(true);
+  });
+});

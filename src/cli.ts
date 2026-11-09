@@ -205,7 +205,7 @@ function readConfig(path: string): { config: OpencodeConfig; wasJsonc: boolean }
  * PATH is extended only when we resolved an absolute bun binary: desktop
  * instances often launch with a minimal PATH that lacks ~/.bun/bin.
  */
-function mcpEntry(command: string[], bunAbsolute: string | null): Record<string, unknown> {
+function mcpEntry(command: string[], bunAbsolute: string | null, configDir?: string): Record<string, unknown> {
   const environment: Record<string, string> = {};
   const fallbackPath =
     platform() === "win32"
@@ -222,6 +222,11 @@ function mcpEntry(command: string[], bunAbsolute: string | null): Record<string,
   } else {
     environment.PATH = current || fallbackPath;
   }
+  // Record which variant the MCP was installed for. Not a secret — a path.
+  // The MCP reads the host's own service.json from here when OpenCode does
+  // not inject OPENCODE_SERVER_PASSWORD into the child process. That is the
+  // official credential store; the password never enters this config.
+  if (configDir) environment.OPENCODE_CONFIG_DIR = configDir;
   return {
     type: "local",
     enabled: true,
@@ -393,7 +398,7 @@ async function main(): Promise<void> {
   }
 
   const mcp = { ...(config.mcp ?? {}) };
-  mcp.cubicore = mcpEntry(bunCommand, bun.absolute);
+  mcp.cubicore = mcpEntry(bunCommand, bun.absolute, target.configDir);
   config.mcp = mcp;
 
   try {

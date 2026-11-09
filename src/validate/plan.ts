@@ -112,6 +112,37 @@ function checkPair(a: Contract, b: Contract): Finding[] {
   return findings;
 }
 
+/**
+ * UI-capable means the plan will produce something a founder can look at.
+ * Detected conservatively: either a contract marks itself `ui: true`, or a
+ * writes glob targets a screen-facing file format. There is no opt-out by
+ * accident — a back-end plan with a stray `ui: true` is rejected the same
+ * as one with a real one, and the founder can override by refining.
+ */
+const UI_WRITES = /\.(?:html?|css|scss|sass|less|jsx|tsx|svelte|vue|astro|styl?|html)$/i;
+
+export function isUiCapable(plan: Plan): boolean {
+  return plan.contracts.some((c) => c.ui === true || c.writes.some((w) => UI_WRITES.test(w)));
+}
+
+function checkDesign(plan: Plan): Finding[] {
+  if (!isUiCapable(plan)) return [];
+  if (plan.design && plan.design.palette.length >= 2 && plan.design.notDoing.length > 0) {
+    return [];
+  }
+  const ids = plan.contracts.map((c) => c.id);
+  return [
+    {
+      code: "missing-design",
+      contractIds: ids,
+      message:
+        plan.design
+          ? `plan is UI-capable and a design block exists but is underspecified; the design must name direction, palette (2-4 hex), typeface, notDoing, and ambition`
+          : `plan is UI-capable (writes touch screen-facing files) but has no design block; the planner must propose a direction and the founder must pick one`,
+    },
+  ];
+}
+
 function checkGraphBudget(plan: Plan): Finding[] {
   const findings: Finding[] = [];
   const ids = plan.contracts.map((c) => c.id);
@@ -194,6 +225,7 @@ export function validatePlan(
     }
   }
 
+  findings.push(...checkDesign(plan));
   findings.push(...checkGraphBudget(plan));
 
   return { ok: findings.length === 0, findings };

@@ -137,10 +137,13 @@ describe("parsePlan", () => {
 
 describe("the emitted schema matches the parser", () => {
   test("the fixture validates against every required property in the schema", () => {
+    // `ui` is optional by design — a non-UI contract omits it — so the schema
+    // is a strict subset-breathing superset for contracts: every fixture key
+    // must appear in the schema, and the schema may grow optional keys on top.
     const contractProps = Object.keys(
       (planSchema.properties.contracts as { items: { properties: object } }).items.properties,
     );
-    expect(contractProps.sort()).toEqual(Object.keys(VALID.contracts[0]).sort());
+    expect(contractProps).toEqual(expect.arrayContaining(Object.keys(VALID.contracts[0])));
   });
 
   test("the plan's top-level keys are the same in the schema and the parser", () => {
@@ -148,7 +151,7 @@ describe("the emitted schema matches the parser", () => {
     // either. Every plan carrying a preview block was rejected as "plan has
     // unknown field preview", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "context", "graphBudget", "summary", "topology", "preview"].sort();
+    const parserKeys = ["contracts", "context", "design", "graphBudget", "summary", "topology", "preview"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.
@@ -159,6 +162,51 @@ describe("the emitted schema matches the parser", () => {
       }),
     );
     expect(withPreview.preview?.command).toBe("npm start");
+  });
+
+  test("the parser reads a UI contract's design block", () => {
+    const withDesign = parsePlan(
+      JSON.stringify({
+        ...VALID,
+        contracts: [{ ...VALID.contracts[0], ui: true }],
+        design: {
+          direction: "editorial",
+          palette: ["#1a1a1a", "#f5f5f0", "#c8963e"],
+          typeface: "Fraunces",
+          notDoing: ["no second typeface", "no gradient-on-gradient"],
+          ambition: "standard",
+        },
+      }),
+    );
+    expect(withDesign.design?.direction).toBe("editorial");
+    expect(withDesign.design?.palette).toEqual(["#1a1a1a", "#f5f5f0", "#c8963e"]);
+    expect(withDesign.contracts[0]?.ui).toBe(true);
+  });
+
+  test("the parser rejects a design block with a bad hex colour", () => {
+    const error = catchMalformed(() =>
+      parsePlan(
+        JSON.stringify({
+          ...VALID,
+          contracts: [{ ...VALID.contracts[0], ui: true }],
+          design: {
+            direction: "editorial",
+            palette: ["teal", "#1a1a1a"],
+            typeface: "Fraunces",
+            notDoing: ["no second typeface"],
+            ambition: "bold",
+          },
+        }),
+      ),
+    );
+    expect(error.problems.join(" ")).toContain("palette[0]");
+  });
+
+  test("the planner prompt states the design block rule", () => {
+    // If the model cannot see the rule, the validator's missing-design rejection
+    // is a loophole the model will walk through every time.
+    const { PLANNER_PROMPT } = require("../../src/contracts/schema") as { PLANNER_PROMPT: string };
+    expect(PLANNER_PROMPT).toContain("UI-capable plans MUST carry a \"design\" block");
   });
 
   test("the parser accepts a plan with context", () => {
