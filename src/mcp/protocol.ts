@@ -119,6 +119,20 @@ export function renderPlanMd(
     );
   }
 
+  const designSection = plan.design ? [
+    `## Design`,
+    ``,
+    `**Direction:** ${plan.design.direction}`,
+    `**Ambition:** ${plan.design.ambition}`,
+    `**Palette:** ${plan.design.palette.map((c) => `\`${c}\``).join(", ")}`,
+    `**Typeface:** ${plan.design.typeface}${plan.design.typeScale ? ` @ ${plan.design.typeScale}×` : ""}`,
+    plan.design.spacing !== undefined ? `**Spacing:** ${plan.design.spacing}px` : ``,
+    plan.design.radii && plan.design.radii.length > 0 ? `**Radii:** ${plan.design.radii.join(", ")}px` : ``,
+    plan.design.signature ? `**Signature:** ${plan.design.signature}` : ``,
+    `**Never:** ${plan.design.notDoing.map((d) => `\`${d}\``).join("; ")}`,
+    ``,
+  ].filter((line) => line !== ``) : [];
+
   md.push(
     `- **Topology:** ${plan.topology}`,
     `- **Project size:** ${size} (${workers} associate${workers === 1 ? "" : "s"})`,
@@ -126,6 +140,7 @@ export function renderPlanMd(
     `- **Wall ceiling:** ${Math.round(plan.graphBudget.wallMs / 1000)}s`,
     `- **Validation:** ${validation.ok ? "passed" : `${validation.findings.length} finding(s)`}`,
     ``,
+    ...designSection,
     `## Associates`,
     ``,
     ...plan.contracts.map((c) => {

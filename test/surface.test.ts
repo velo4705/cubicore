@@ -6,7 +6,8 @@ import { join } from "node:path";
 
 import { promptFor } from "../src/mcp/server";
 import { COMMAND, nextOptions } from "../src/mcp/next";
-import { DEBUG_MD } from "../src/mcp/protocol";
+import { DEBUG_MD, renderPlanMd } from "../src/mcp/protocol";
+import type { Plan } from "../src/contracts/types";
 
 /**
  * A command the founder is told to type has to exist.
@@ -98,5 +99,47 @@ describe("the guidance names real commands", () => {
     const options = nextOptions(dir);
     const recommended = options.find((o) => o.recommended);
     expect(recommended?.step).toBe("deploy");
+  });
+});
+
+describe("renderPlanMd — design block", () => {
+  const basePlan = (): Plan => ({
+    topology: "fan-out",
+    summary: "A tiny test plan",
+    contracts: [{
+      id: "w1",
+      objective: "do a thing",
+      reads: ["src/a.ts"],
+      writes: ["src/a.ts"],
+      forbidden: [],
+      deliverable: "diff",
+      schema: { type: "object" },
+      doneWhen: "it works",
+      checks: [{ id: "unit", kind: "intent", command: "npm test", expectation: "pass", gating: "blocking", convergent: true }],
+      budget: { tokens: 1000, toolCalls: 5, wallMs: 60_000 },
+    }],
+    graphBudget: { nodes: 1, edges: 0, tokens: 10000, wallMs: 60_000 },
+  });
+
+  it("the design block appears in the rendered plan", () => {
+    const result = renderPlanMd({
+      ...basePlan(),
+      design: {
+        direction: "dark editorial",
+        ambition: "bold",
+        palette: ["#0a0a0a", "#f5f5f0", "#c8963e"],
+        typeface: "Fraunces",
+        notDoing: ["no second typeface", "no gradients"],
+      },
+    }, { ok: true, findings: [] });
+    expect(result).toContain("dark editorial");
+    expect(result).toContain("#c8963e");
+    expect(result).toContain("Fraunces");
+    expect(result).toContain("no second typeface");
+  });
+
+  it("absent design block renders no empty section", () => {
+    const result = renderPlanMd(basePlan(), { ok: true, findings: [] });
+    expect(result).not.toContain("## Design");
   });
 });

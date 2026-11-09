@@ -228,3 +228,36 @@ describe("design elevation — UI-capable plans", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("contrast — body text legibility", () => {
+  const good = ["#0f0f0f", "#f5f5f0", "#3b82f6"];
+  const mono = ["#777777", "#888888", "#999999"];
+
+  test("passes when the palette contains one compliant pair", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true })],
+      design: {
+        direction: "terminal",
+        palette: good,
+        typeface: "JetBrains Mono",
+        notDoing: ["no second typeface"],
+        ambition: "calm",
+      },
+    }));
+    expect(codes(result)).not.toContain("weak-contrast-palette");
+  });
+
+  test("rejects a monotonous palette that cannot produce legible body text", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true })],
+      design: {
+        direction: "warm-static",
+        palette: mono,
+        typeface: "Inter",
+        notDoing: ["no second typeface"],
+        ambition: "calm",
+      },
+    }));
+    expect(codes(result)).toContain("weak-contrast-palette");
+  });
+});

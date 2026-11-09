@@ -125,9 +125,24 @@ export function isUiCapable(plan: Plan): boolean {
   return plan.contracts.some((c) => c.ui === true || c.writes.some((w) => UI_WRITES.test(w)));
 }
 
+import { bestPairContrast } from "./luminance";
+
 function checkDesign(plan: Plan): Finding[] {
   if (!isUiCapable(plan)) return [];
   if (plan.design && plan.design.palette.length >= 2 && plan.design.notDoing.length > 0) {
+    const best = bestPairContrast(plan.design.palette);
+    if (best < 4.5) {
+      const ids = plan.contracts.map((c) => c.id);
+      return [
+        {
+          code: "weak-contrast-palette",
+          contractIds: ids,
+          message:
+            `best contrast ratio across the declared palette is ${best.toFixed(2)}; body text needs 4.5. ` +
+            "Adjust the palette so at least one pair clears the bar (light text on dark or vice versa).",
+        },
+      ];
+    }
     return [];
   }
   const ids = plan.contracts.map((c) => c.id);

@@ -2098,7 +2098,7 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, use the recommended (most widely used) framework and language for this domain (React/Vite + TypeScript for web, Python + tkinter for desktop GUI, Express + JavaScript for APIs) and state it clearly in the plan. Do not ask — pick and state.
 
-**Style (web apps only):** If the user wants a web app and did not specify a style, recommend and use Modern Minimal (clean typography, neutral palette, subtle shadows) — state it in the plan. If the user specified glassmorphism, cute, retro, dark, or any other style, use only that and do not override.
+**Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Choose a direction boldly based on the request's domain — "porcelain/light editorial", "terminal-first monospace", "maximalist color pop", "hand-drawn warmth", etc. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <pick> — good?" If "anything", take your proposal. Do not oscillate, do not list alternatives. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing. notDoing: 3 short prohibitions. ambition: "bold" for marketing-facing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards/tools/data surfaces.
 
 **User request:** ${request}${extraNote}
 
