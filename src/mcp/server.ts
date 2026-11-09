@@ -24,6 +24,7 @@ import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective } from "../factory/retrospect";
+import { enterFactoryLifecycle, completeFactoryLifecycle, factoryLifecycleStatusLine, blockFactoryLifecycle } from "../factory/lifecycle";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
   CONTEXT_MD,
@@ -578,6 +579,7 @@ async function runToCompletion(
     parsed = parsePlan(raw) as Plan;
   } catch (error) {
     const problems = error instanceof MalformedPlan ? error.problems : [String(error)];
+    blockFactoryLifecycle(dir, `malformed plan: ${problems[0] ?? "unknown problems"}`);
     return { summary: `Malformed plan:\n${problems.map((p) => `- ${p}`).join("\n")}`, halted: null };
   }
 
@@ -612,6 +614,7 @@ async function runToCompletion(
   cleanOrphanedWorktrees(dir, parsed.contracts.map((c) => c.id));
 
   const unionWrites = [...new Set(parsed.contracts.flatMap((c) => c.writes))];
+  enterFactoryLifecycle(dir, "dispatch", `topology=${parsed.topology}; contracts=${parsed.contracts.length}`);
   const outcome = await dispatch(
     parsed,
     workers.asRunner(),
@@ -670,6 +673,12 @@ async function runToCompletion(
     integrationOutcome = await runIntegration(parsed.integration, dir);
   }
 
+  // observe → integrate → verify transitions, recorded in .cubicore-factory-state.json
+  enterFactoryLifecycle(dir, "observe", `accepted=${outcome.accepted.length}; failed=${outcome.failed.length}; deferred=${outcome.deferred.length}`);
+  completeFactoryLifecycle(dir, "workers done or failed");
+  enterFactoryLifecycle(dir, "integrate", "worktrees collected / copied back");
+  completeFactoryLifecycle(dir, "worktrees handled");
+  enterFactoryLifecycle(dir, "verify");
   const aggregated = aggregate(
     [...outcome.accepted, ...outcome.failed.map((f) => f.result)],
     outcome.unresolved,
@@ -738,6 +747,8 @@ async function runToCompletion(
     // execute, which destroyed the audit trail it exists to carry.
     try {
       appendFileSync(`${dir}/.cubicore-factory-history.jsonl`, JSON.stringify(ledger) + "\n");
+    enterFactoryLifecycle(dir, "archive", "ledger appended to history.jsonl");
+    completeFactoryLifecycle(dir, "run logged and archived");
     } catch {
       // History is a nicety; the latest ledger is the authoritative one.
     }
@@ -745,7 +756,9 @@ async function runToCompletion(
     // The ledger is an artifact, not a gate. A filesystem error never fails a run.
   }
   const verified = await verifyAndSyncPlan(parsed, dir, validation);
+  completeFactoryLifecycle(dir, `verified=${[...verified.progress.values()].filter(v => v === "done").length}/${parsed.contracts.length} on disk`);
   if (integrationOutcome && integrationOutcome.passed === false) {
+    enterFactoryLifecycle(dir, "blocked", `integration failed: ${integrationOutcome.output.slice(0, 80)}`);
     verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
   }
   syncRunRecord(runId, dir, parsed, verified);
@@ -904,7 +917,9 @@ async function status(runId: string, waitMs = 0, directory?: string): Promise<To
     await Bun.sleep(1000);
   }
 
-  return text(describe(getRun(runId, where)!));
+  const run = getRun(runId, where)!;
+  const lifecycleLine = factoryLifecycleStatusLine(where);
+  return text(`${describe(run)}\n\n${lifecycleLine}`);
 }
 
 /**
@@ -958,7 +973,10 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   parsed.factoryFit = fit;
   writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
 
+  // Lifecycle: factory-fit assessment happens next — record it as the project's stage.
+  enterFactoryLifecycle(dir, "fit", `topology=${parsed.topology}`);
   if (parsed.topology === "refuse") {
+    completeFactoryLifecycle(dir, "refused to split — no team formed");
     return text("This plan refuses to split. That is a valid answer and nothing is written.");
   }
 
@@ -988,6 +1006,10 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     const contextMdPath = resolved.mdPath.replace("PLAN.md", "CONTEXT.md").replace("PLAN_", "CONTEXT_");
     writeFileSync(contextMdPath, renderContextMd(parsed.context));
   }
+
+  // Lifecycle: plan written and delivered to founder.
+  enterFactoryLifecycle(dir, "plan", `contracts=${parsed.contracts.length}`);
+  completeFactoryLifecycle(dir, `plan written to CUBICORE_PLAN.json`);
 
   if (problems.length === 0) {
     // A good plan clears the budget. Without this a refine would start at

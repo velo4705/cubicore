@@ -197,6 +197,11 @@ export function recordProgress(
  * associate, one line for the factory's verdict. No transcripts — this is
  * the whole picture on one screen, and that is the point of it.
  */
+/** Status line for /cubicore:status that includes the lifecycle stage. */
+export function statusLine(run: Run): string {
+  return describe(run);
+}
+
 export function describe(run: Run): string {
   const elapsed = ((Date.now() - run.startedAt) / 1000).toFixed(1);
   const done = run.progress.filter((p) => p.state === "done").length;
