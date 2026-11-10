@@ -9,6 +9,7 @@ import { BudgetEnforcer } from "../adapters/opencode/hooks";
 import { deriveCaps } from "./budgets";
 import type { WorkerRunner } from "./index";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../telemetry/types";
+import { sessionIdleStatus } from "./session-db-idle";
 
 /**
  * Build the per-worker tool restriction.
@@ -158,17 +159,21 @@ export class WorkerSessions {
       });
 
       this.trace?.("worker.prompted", { contractId: contract.id, sessionId });
+      // opencode 2.1.3 may terminate the agent but never publish session.idle
+      // to the MCP's event pump. The session database is ground truth for
+      // termination. Poll it as the fallback when the event path misses.
       const settled = await waitFor(
         () => observer.snapshot().idle,
         contract.budget.wallMs,
       );
+      const terminalIdle = settled || await pollIdle(sessionId, contract.budget.wallMs);
 
       // Reaching here without an idle session means the worker blew its wall
       // budget. Ask the host to cancel; whether that actually stops the spend
       // depends on `cancel` existing, which is why the result reports the
       // distinction instead of collapsing it.
       let cancelled = false;
-      if (!settled) {
+      if (!terminalIdle) {
         this.enforcer?.recordWallClockOverrun(sessionId);
         if (this.spawner.cancel) {
           await this.spawner.cancel(sessionId);
@@ -206,7 +211,7 @@ export class WorkerSessions {
         contractId: contract.id,
         // A session error is a failure; an unfinished session is a budget kill.
         // The two must stay distinguishable or exhaustion looks like success.
-        status: snapshot.error ? "failed" : settled ? "accepted" : "budget-exhausted",
+        status: snapshot.error ? "failed" : terminalIdle ? "accepted" : "budget-exhausted",
         changedFiles,
         /** Directory the changed files live in (worktree, or project root when degraded). */
         root: workDir,
@@ -268,6 +273,17 @@ export class WorkerSessions {
   asRunner(): WorkerRunner {
     return { run: (contract, attempt, preserveContractIds, stepsProgress) => this.run(contract, attempt, preserveContractIds, stepsProgress) };
   }
+}
+
+/** Poll the session database until it sees the terminal-idle flag set. */
+async function pollIdle(sessionId: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = sessionIdleStatus(sessionId);
+    if (res.idle) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
 }
 
 /** Resolves true when the condition holds, false when the budget runs out. */

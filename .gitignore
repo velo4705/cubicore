@@ -34,3 +34,8 @@ docs/bench-history/
 .ci-native-home/
 .ci-empty-home/
 .ci-flatpak-home/
+
+# runtime scratch — .cubicore/ is dispatcher/workdir scaffolding, never source
+.cubicore/
+smoke-scope-*.txt
+idle-*.txt

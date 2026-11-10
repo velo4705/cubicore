@@ -261,6 +261,13 @@ export function gateScope(
  * did anything land outside every declared write in the plan? If the plan
  * declared nothing, nothing is allowed to land.
  */
+
+/** True when the file is an artefact of Cubicore's own dispatch, not worker output. */
+function isDispatchArtefact(file: string): boolean {
+  const normalised = file.replace(/^\.\//, "");
+  return normalised.startsWith(".cubicore/");
+}
+
 export function gateUnionScope(
   input: GateInput,
   options: GateOptions,
@@ -289,8 +296,14 @@ export function gateUnionScope(
     };
   }
 
+  // Event attribution could (unverified, host-dependent) report paths under
+  // .cubicore/worktrees/<id> — i.e. internal dispatch artefacts, not product
+  // files the plan ever declares. If a framework/discipline artefact shows up
+  // it must not be counted as an out-of-scope production edit.
   const stray = options.changedFiles.filter(
-    (file) => !unionWrites.some((glob) => glob === file || glob === "**" || matchesGlob(glob, file)),
+    (file) =>
+      !isDispatchArtefact(file) &&
+      !unionWrites.some((glob) => glob === file || glob === "**" || matchesGlob(glob, file)),
   );
 
   if (stray.length === 0) {

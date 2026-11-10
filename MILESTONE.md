@@ -325,13 +325,22 @@ Scope:
 - Better cancellation and resume semantics.
 - Factory dashboard/status ledger with all worker states.
 
-Exit criteria:
+Exit criteria — partial:
 
-- a blocked contract changes the plan safely;
-- a bad check is distinguished from bad code;
-- an integration failure is caught before hand-off;
-- a run can be cancelled, resumed and audited;
-- the founder never sees six agents all editing the same file.
+- a blocked contract changes the plan safely; **done (slice)** — verification
+  now marks a contract blocked when the check could not run (missing binary,
+  permission denied, offline dependency) instead of falsely reporting failed.
+  Persistence, `/cubicore:status`, and `describe()` render the blocked state
+  with its own icon; refine still refuses on an invalid plan; union-scope
+  still stops colliding writes.
+- a bad check is distinguished from bad code; **done (slice)** — unverified
+  vs flagged through the full path; the retrospective says which is which.
+- an integration failure is caught before hand-off — shipped;
+- a run can be cancelled, resumed and audited — resume exists; cancel + audit
+  would benefit from persisted verdict per contract, not only per task;
+- the founder never sees six agents all editing the same file — union-scope
+  gate blocks out-of-union writes; per-worker attribution is impossible on
+  opencode 2.1.3, so the founder sees a union, not a per-worker map.
 
 ### Phase 3 — Improve portability
 

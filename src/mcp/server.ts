@@ -758,19 +758,21 @@ async function runToCompletion(
   const verified = await verifyAndSyncPlan(parsed, dir, validation);
   completeFactoryLifecycle(dir, `verified=${[...verified.progress.values()].filter(v => v === "done").length}/${parsed.contracts.length} on disk`);
   if (integrationOutcome && integrationOutcome.passed === false) {
-    enterFactoryLifecycle(dir, "blocked", `integration failed: ${integrationOutcome.output.slice(0, 80)}`);
+    const blocker = isEnvironmentBlocker(1, integrationOutcome.output);
+    enterFactoryLifecycle(dir, "blocked", `integration ${blocker ? "blocked — environment issue" : "failed"}: ${integrationOutcome.output.slice(0, 80)}`);
     verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
   }
   syncRunRecord(runId, dir, parsed, verified);
 
   const passedCount = [...verified.progress.values()].filter((state) => state === "done").length;
+  const blockedCount = [...verified.progress.values()].filter((state) => state === "blocked").length;
   const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
 
   return {
     summary: [
       renderRetrospective(retrospective),
       "",
-      `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ` +
+      `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ${blockedCount > 0 ? `${blockedCount} blocked, ` : ""}` +
         `${outcome.deferred.length} deferred · verified ${passedCount}/${parsed.contracts.length} on disk`,
       ...aggregated.artifacts.map(
         (a) => `- ${a.contractId}: ${a.status}${a.unresolved.length ? ` — ${a.unresolved.join("; ")}` : ""}`,
@@ -1182,6 +1184,22 @@ async function runIntegration(
   return { command: integration.command, passed, output: result.output };
 }
 
+
+/**
+ * Heuristic: did this failure happen because the command itself could not
+ * run, or because the code it started on returned non-zero? A missing binary
+ * or an offline dependency is not a bad build — mistaking one for the other
+ * and marking an unverified contract as "failed" would have the factory
+ * claim a working product is broken.
+ *
+ * Exit codes: 127 = not found; 126 = permission/not executable. Plus common
+ * phrases indicating the runtime, not the code, was missing.
+ */
+function isEnvironmentBlocker(exitCode: number, output: string): boolean {
+  if (exitCode === 127 || exitCode === 126) return true;
+  return /(\bcould not (run|be run)\b|\bcommand not found\b|\bno such file or directory\b|\bENOENT\b|\bEACCES\b|\bEAI_AGAIN\b|\bENOTFOUND\b|\bECONNREFUSED\b)/i.test(output);
+}
+
 const PROGRESS_JSON = ".cubicore-progress.json";
 
 let progressionLock: Promise<void> = Promise.resolve();
@@ -1272,26 +1290,23 @@ async function refreshPlanProgress(
       continue;
     }
 
-    let ok = true;
+    let ok: "done" | "blocked" | "failed" = "done";
     for (const check of checks) {
       try {
         const result = await runCheckedShell(check.command, directory);
         if (result.exitCode !== 0) {
-          ok = false;
+          ok = isEnvironmentBlocker(result.exitCode, result.output) ? "blocked" : "failed";
           failures.push({ contractId: contract.id, checkId: check.id, output: result.output.slice(0, 600) });
           break;
         }
       } catch (error) {
-        ok = false;
-        failures.push({
-          contractId: contract.id,
-          checkId: check.id,
-          output: error instanceof Error ? error.message : String(error),
-        });
+        const message = error instanceof Error ? error.message : String(error);
+        ok = isEnvironmentBlocker(1, message) ? "blocked" : "failed";
+        failures.push({ contractId: contract.id, checkId: check.id, output: message });
         break;
       }
     }
-    progress.set(contract.id, ok ? "done" : "failed");
+    progress.set(contract.id, ok);
   }
 
   return { progress, failures };

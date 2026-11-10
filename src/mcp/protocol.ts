@@ -116,7 +116,7 @@ export function renderPlanMd(
     progress?.steps?.get(c.id)?.get(stepId);
 
   const iconFor = (state: ContractState | undefined): string =>
-    state === "done" ? "✅" : state === "failed" ? "❌" : state === "running" ? "🔄" : "⏳";
+    state === "done" ? "✅" : state === "blocked" ? "⚠️" : state === "failed" ? "❌" : state === "running" ? "🔄" : "⏳";
 
   const md = [
     `# Cubicore plan`,

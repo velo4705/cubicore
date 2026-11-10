@@ -14,7 +14,7 @@ import type { Plan } from "../contracts/types";
  * tomorrow, and ask what happened.
  */
 
-export type ContractState = "pending" | "running" | "done" | "failed" | "skipped";
+export type ContractState = "pending" | "running" | "done" | "blocked" | "failed" | "skipped";
 
 export interface RunProgress {
   contractId: string;
@@ -205,9 +205,10 @@ export function statusLine(run: Run): string {
 export function describe(run: Run): string {
   const elapsed = ((Date.now() - run.startedAt) / 1000).toFixed(1);
   const done = run.progress.filter((p) => p.state === "done").length;
+  const blocked = run.progress.filter((p) => p.state === "blocked").length;
   const failed = run.progress.filter((p) => p.state === "failed").length;
   const skipped = run.progress.filter((p) => p.state === "skipped").length;
-  const counts = `${done} done, ${failed} failed, ${skipped} skipped`;
+  const counts = `${done} done${blocked > 0 ? ` · ${blocked} blocked` : ""} · ${failed} failed · ${skipped} skipped`;
 
   const stage = run.state === "running"
     ? "dispatch"
@@ -221,7 +222,12 @@ export function describe(run: Run): string {
 
   const contractLines = run.plan.contracts.map((contract) => {
     const p = run.progress.find((entry) => entry.contractId === contract.id);
-    const icon = p?.state === "done" ? "✅" : p?.state === "failed" ? "❌" : p?.state === "skipped" ? "⏭️" : p?.state === "running" ? "🔄" : "⏳";
+    const icon =
+      p?.state === "done" ? "✅" :
+      p?.state === "blocked" ? "⚠️" :
+      p?.state === "failed" ? "❌" :
+      p?.state === "skipped" ? "⏭️" :
+      p?.state === "running" ? "🔄" : "⏳";
     const detail = p?.detail ?? (p?.state ?? "waiting");
     const head = `${icon} ${contract.id}`;
     const body = ` — ${detail}${contract.writes.length > 0 ? ` (writes: ${contract.writes.join(", ")})` : ""}`;

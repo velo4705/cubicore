@@ -13,6 +13,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { preflight } from "./preview-lang";
 
 /** How to run the delivered thing, and what "working" looks like — for any platform. */
 export interface PreviewSpec {
@@ -307,6 +308,20 @@ async function runAndVerify(spec: PreviewSpec, cwd: string, command: string): Pr
   const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
   let output = "";
   let child: ReturnType<typeof Bun.spawn> | undefined;
+
+  // Preflight: if the command names an interpreter we can check on PATH,
+  // fail fast with the fix instead of a cryptic shell error. Founder asked
+  // for this; it costs one `command -v`.
+  const check = preflight(command);
+  if (check.interpreted !== null && !check.available) {
+    return {
+      ok: false,
+      detail: `Preview aborted before launching: ${check.detail}`,
+      output: "",
+      elapsedMs: Date.now() - started,
+      reason: "interpreter-not-on-path",
+    };
+  }
 
   try {
     child = Bun.spawn(["sh", "-c", command], {
