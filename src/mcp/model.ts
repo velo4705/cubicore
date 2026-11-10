@@ -13,11 +13,11 @@
  * one.
  */
 
-// `opencode/minimax-m3.1-flash-free` was withdrawn from the provider without
-// ceremony, as was space-bunny-free before it. `crouton-alpha-free` is the
-// model the founder's own sessions run today, verified present in
-// `opencode models` (opencode/crouton-alpha-free).
-export const DEFAULT_MODEL = "opencode/crouton-alpha-free";
+// `opencode/crouton-alpha-free` is not in the provider list at the time of
+// 1.0.5 — every associate compiled against it arrived silently idle. This
+// default has to track whatever is actually on the founder's host today;
+// before each release run `opencode models` and update this line.
+export const DEFAULT_MODEL = "opencode/inkling-2-small-free";
 
 export interface ModelCheck {
   ok: boolean;

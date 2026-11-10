@@ -257,6 +257,12 @@ export interface Plan {
    */
   preview?: PreviewSpec;
   /**
+   * Planner's honest size classification of the request, chosen before the
+   * first contract. Guides the plan; never a gate by itself.
+   */
+  scale?: "small" | "medium" | "large" | "massive";
+
+  /**
    * The decision the factory-fit pre-dispatch assessment makes — how many
    * associates, why them, why not more. Set by plan, read by dispatch.
    */

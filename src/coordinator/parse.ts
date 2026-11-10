@@ -542,7 +542,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration"].includes(key)) {
+    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -634,6 +634,18 @@ export function parsePlan(raw: string): Plan {
   const design = parseDesign(json.design, problems);
   const integration = parseIntegration(json.integration, problems);
   const factoryFit = parseFactoryFit(json.factoryFit, problems);
+  const scaleRaw = json.scale;
+  let scale: Plan["scale"];
+  if (scaleRaw !== undefined && scaleRaw !== null) {
+    if (
+      typeof scaleRaw !== "string"
+      || !["small", "medium", "large", "massive"].includes(scaleRaw)
+    ) {
+      problems.push(`scale must be one of "small", "medium", "large", "massive"`);
+    } else {
+      scale = scaleRaw as Plan["scale"];
+    }
+  }
 
   if (problems.length > 0) {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
@@ -650,6 +662,7 @@ export function parsePlan(raw: string): Plan {
     ...(integration === undefined ? {} : { integration }),
     ...(design === undefined ? {} : { design }),
     ...(factoryFit === undefined ? {} : { factoryFit }),
+    ...(scale === undefined ? {} : { scale }),
   };
 }
 

@@ -167,7 +167,7 @@ describe("the emitted schema matches the parser", () => {
     // either. Every plan carrying a preview block was rejected as "plan has
     // unknown field preview", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["contracts", "opinion", "context", "design", "graphBudget", "summary", "topology", "preview", "integration"].sort();
+    const parserKeys = ["contracts", "opinion", "context", "design", "graphBudget", "summary", "topology", "preview", "integration", "scale"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.

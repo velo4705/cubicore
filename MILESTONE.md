@@ -146,23 +146,9 @@ These are the product outcomes, not implementation details.
 | **User-Visible Value** | The founder can see what is happening, why it is happening, what each associate owns, what is blocked, and what to do next — without reading transcripts |
 | **Proof That It Works** | Reproducible benchmarks show time, cost, defects, collisions and completion rate versus a single agent and a naive fan-out |
 
-### The twelve concrete improvements
+### The remaining concrete improvements
 
-#### 1. Make team creation genuinely dynamic — **done (2026-11-09)**
-
-Team size is computed from the task's dependency graph and host capability:
-
-- zero worker: the task is refused
-- one worker: one agent does the whole job
-- two or more: only if the slices are independent and checks exist
-- shared core: one reader produces a findings artifact; others consume it
-- coupled/unclear work: sequential pipeline or refusal
-
-The founder can override the number, but the default must be justified, never
-maximal. The plan records the factory budget: workers, waves, wall clock,
-tokens, check runs, and the cost of the orchestration itself.
-
-#### 2. Make roles more than labels — **partial**
+#### 1. Make roles more than labels — **partial**
 
 `backend`, `frontend` and `test-writer` are not roles. A factory role is:
 
@@ -187,7 +173,7 @@ authority a founder can see and check before dispatch, not a run-time lock.
 **Needs:** a second host with event attribution to close the gap between the
 contract and a running worker.
 
-#### 3. Add a real factory lifecycle
+#### 2. Add a real factory lifecycle
 
 The current dispatch is a one-shot fan-out. A factory needs an explicit state
 machine:
@@ -201,7 +187,7 @@ an unbounded retry. A failed gate moves the contract back to a narrower
 revision. A passing gate moves it to `ready-to-integrate`; it never means
 "merge whatever changed."
 
-#### 4. Improve automatic integration
+#### 3. Improve automatic integration
 
 Parallel workers do not need to touch each other's files, but their work
 still has to become one product. Cubicore needs:
@@ -217,7 +203,7 @@ still has to become one product. Cubicore needs:
 The factory does not silently concatenate reports. It composes the result and
 proves the composition works.
 
-#### 5. Add adaptive execution
+#### 4. Add adaptive execution
 
 A factory must change course when the facts change:
 
@@ -231,7 +217,7 @@ A factory must change course when the facts change:
 Adaptation is bounded by budgets and recorded as a decision. It is not licence
 to re-plan endlessly.
 
-#### 6. Build a proper host-adapter layer
+#### 5. Build a proper host-adapter layer
 
 Cubicore needs one factory contract and many host adapters. The adapter
 answers the same questions everywhere:
@@ -249,7 +235,7 @@ next because their users already expect sub-agents. Cursor, Windsurf and
 session-only hosts degrade to the same contract through sessions. Unsupported
 capabilities are reported, not silently emulated.
 
-#### 7. Make MCP more automatic
+#### 6. Make MCP more automatic
 
 The MCP should be a factory operator, not a command manual:
 
@@ -265,7 +251,7 @@ The MCP should be a factory operator, not a command manual:
 If the host cannot perform an action itself, the MCP returns the exact next
 operation instead of pretending it happened.
 
-#### 8. Add a factory dashboard or readable status
+#### 7. Add a factory dashboard or readable status
 
 The founder does not want a wall of tool calls. They want an honest picture:
 
@@ -281,23 +267,7 @@ The founder does not want a wall of tool calls. They want an honest picture:
 The dashboard reads persisted state, so it survives a restart. It is a
 status surface, not a second plan.
 
-#### 9. Add a factory-fit assessment — **done (2026-11-09)**
-
-This is the gate before everything. It is both automatic and inspectable.
-
-It estimates independent slices, coupling, checkability, host support, worker
-count, expected wall/token cost, and risk. It returns a decision and the
-reason. It must be able to conclude:
-
-- "one agent is enough";
-- "three workers are enough and why";
-- "this is not decomposable without a shared-core reader";
-- "not enough acceptance criteria; clarify first";
-- "factory cost exceeds the expected benefit; single agent."
-
-A large prompt alone never qualifies.
-
-#### 10. Improve continuous-project support
+#### 8. Improve continuous-project support
 
 Cubicore is a factory for one-off projects and for projects that live through
 many change cycles. It needs:
@@ -313,7 +283,7 @@ many change cycles. It needs:
 
 The proof is a 20-feature project over repeated runs, not one heroic build.
 
-#### 11. Measure the claims (blocked / demoted)
+#### 9. Measure the claims (blocked / demoted)
 
 Publishing a Cubicore speed or cost benchmark is not on the cards in the near
 term. Nothing has been measured on the opencode v2 host; benchmarks are
@@ -335,7 +305,7 @@ The 3D-world reference task remains valuable because it is real. The target
 is to beat, or at least not lose badly to, a strong one-agent run. Cubicore
 should say what actually happened, including when the factory is not worth it.
 
-#### 12. Prioritized implementation plan
+#### 10. Prioritized implementation plan
 
 The order below removes the ambiguity: make the current system visibly a
 factory first, make it reliable second, portable third, continuous fourth, and
@@ -348,12 +318,7 @@ Scope:
 
 - Explicit lifecycle states and legal transitions.
 - Roles with capabilities, tool restrictions and budgets.
-- Integration contract and integration wave. **Done (slice):** plans can carry
-  a top-level `integration` block ({command, timeoutMs?}); the factory runs it
-  after verification and the run is not "done" until it also passes. The
-  merged-tree build/boot/typecheck is the gate that catches a broken union
-  whose pieces each pass. Integration failure is recorded in the retrospect
-  verdict and the ledger, and reported to the founder as ship-blocking.
+- Integration wave shipped (details in `docs/archive/completed-milestones.md`).
 - Conflict and collision reporting from actual diffs.
 - Adaptive split/merge/skip/escalate decisions.
 - Real retry limits and `unfixable` outcomes.
@@ -465,6 +430,11 @@ Done (2026-11-09, updated 2026-11-10):
   opencode 2.1.3;
 - archive (`.cubicore-factory-history.jsonl` — 2026-11-10): a rolling,
   append-only per-run record, replacing the overwrite-only ledger.
+- Blocked-vs-flagged distinction (2026-11-10): an associate whose blocking
+  check could not run (missing tool, offline dependency) is recorded as
+  `blocked`, distinct from `flagged` (ran and failed). The retrospect now
+  prints both verdicts — "N could not be verified on this host" does not
+  get hidden behind a generic failure.
 
 Missing:
 
@@ -498,10 +468,7 @@ Exit criteria:
 
 #### Area 3 — Host Portability
 
-Done (2026-11-09):
-
-- Pipelined compile/runs today on OpenCode as reference host; MCP credential
-  bridging for hosts that do not pass env services.
+Done — see `docs/archive/completed-milestones.md`.
 
 Missing:
 
@@ -525,15 +492,7 @@ Exit criteria:
 
 #### Area 4 — User-Visible Value
 
-Done (2026-11-09, updated 2026-11-10):
-
-- factory-fit decision is shown to the founder as a native opencode form,
-  overridable by the founder;
-- `## Why this factory?` rendered in `CUBICORE_PLAN.md` with the decision, the
-  reason, confidence, and the evidence;
-- the founder can answer "why this split?" without reading transcripts —
-  the markdown says it out loud;
-- the run ends with an explicit done/blocked verdict from the retrospective.
+Done — see `docs/archive/completed-milestones.md`.
 
 Missing:
 

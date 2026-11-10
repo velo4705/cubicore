@@ -157,6 +157,16 @@ export const planSchema = {
         "not a contract: the dispatcher never reads it and the founder can " +
         "strike it for free in refine.",
     },
+    scale: {
+      type: "string",
+      enum: ["small", "medium", "large", "massive"],
+      description:
+        "Planner's honest size classification of the request, chosen before " +
+        "splitting. small = one sitting of work; medium = a few coordinated " +
+        "files; large = many files, clear sub-systems; massive = multi-crate " +
+        "open-ended projects (a game, an OS, a compiler). The classification " +
+        "guides the plan; it does not admit any contract by itself.",
+    },
     integration: {
       type: "object",
       additionalProperties: false,
@@ -331,6 +341,10 @@ Rules:
   the build command, the typecheck command, etc. It runs after verification,
   before the factory says done. A hung command must not hang the factory —
   include "timeoutMs" if the command might exceed 120000 (2 minutes default).
+- "scale" (optional) is one of "small" | "medium" | "large" | "massive" —
+  your honest classification of the request's size BEFORE you started writing.
+  Choose it explicitly and write the plan against it. A "massive" that produces
+  three contracts instead of many needs its reason recorded, or it wasn't honest.
 - Every contract MUST have a "schema" field — an object describing the
   output it produces. A contract without a schema is invalid and will be
   rejected before anything is spent.

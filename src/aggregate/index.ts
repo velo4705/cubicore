@@ -16,6 +16,24 @@ export interface AggregatedArtifact {
   deliverable: string;
   changedFiles: string[];
   unresolved: string[];
+  /**
+   * true when a blocking check failed only because it could not run on this
+   * host — missing tool, empty output, network offline. Distinct from
+   * "bad code". The retrospective uses it so the founder sees the real reason.
+   */
+  unverified: boolean;
+}
+
+/**
+ * Best-effort probe of the unresolved lines for the "unverified" phrase.
+ * The gate owns this wording; aggregate checks it exists before anyone else
+ * relies on it for UX. If the wording changes in gate, this fallback degrades
+ * to "unverified = false" — no crash, no false positives.
+ */
+function isUnverified(unresolved: readonly string[], contractId: string): boolean {
+  return unresolved.some((line) =>
+    line.startsWith(`${contractId} —`) && /could not run/i.test(line),
+  );
 }
 
 export interface Aggregation {
@@ -47,16 +65,23 @@ export function aggregate(
   failedContracts: readonly string[] = [],
 ): Aggregation {
   const failed = new Set(failedContracts);
+  const blocked = new Set(
+    results
+      .map((r) => r.contractId)
+      .filter((id) => failed.has(id)),
+  );
   const artifacts: AggregatedArtifact[] = results.map((result) => {
     const flagged = failed.has(result.contractId);
+    const unverified = isUnverified(unresolved, result.contractId);
     return {
       contractId: result.contractId,
-      status: flagged ? "flagged" : result.status,
+      status: flagged ? (unverified ? "blocked" : "flagged") : result.status,
       deliverable: result.artifact?.deliverable ?? "none",
       changedFiles: result.changedFiles,
       unresolved: flagged
         ? unresolved.filter((line) => line.startsWith(`${result.contractId} —`))
         : [],
+      unverified,
     };
   });
 

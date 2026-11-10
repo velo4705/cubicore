@@ -209,3 +209,72 @@ Exit criteria:
 
 ---
 Kept verbatim from the working documents on 2026-11-09.
+
+
+---
+
+## 2026-11-09 — 2026-11-10 consolidation
+
+These entries were removed from `MILESTONE.md` on 2026-11-10 so that file stays
+actionable. Not everything below is code-complete or live-verified on every
+host; it is recorded here with the honesty of what shipped.
+
+### Twelve concrete improvements — items done
+
+#### 1. Make team creation genuinely dynamic
+
+Team size computed from task dependency graph and host capability:
+zero worker → refusal; one → single agent; two or more only if disjoint,
+checkable contracts exist; coupled/unclear work → pipeline or refusal.
+Did not ship a web-capable shared-core reader path, but the heatmap routes
+small/medium/large contracts through the same gate.
+
+#### 9. Add a factory-fit assessment
+
+Machine-checked assessment before dispatch: independent slices, coupling,
+checkability, host support, worker count, wall/token cost. Emits one of six
+decisions and surfaces it in the plan markdown. Implements the contract-field
+round-trip (`factoryFit` survives `parsePlan` round-trip → ledger).
+
+### Five Areas — Area 2 items done
+
+- factory-fit decision recorded verbatim in markdown, fit record and ledger;
+- per-run retrospective verdict straight to the founder (passed/flagged/tokens);
+- integration wave — top-level `integration` block, merged-tree command runs
+  after verification, failure sinks the run;
+- single-agent decisions honoured at execute (schema round-trip);
+- union-scope gate — pixels are not trusted to per-worker attribution, every
+  worker shares one union of declared writes;
+- `blocked`-vs-`flagged` differentiation shipped end-to-end (could not verify
+  check vs ran and failed check);
+- `.cubicore-factory-history.jsonl` — append-only archive displacing the
+  overwrite-only ledger;
+- `.cubicore-factory-state.json` — explicit lifecycle stage records covering
+  `intent → fit → plan → dispatch → observe → integrate → verify → retrospect → archive`,
+  surfaced by `/cubicore:status`.
+
+### Five Areas — Area 3 items done
+
+- Pipewheel/curl/compile runs run today on OpenCode as reference host; MCP
+  credential bridging for hosts that do not pass env services.
+
+### Five Areas — Area 4 items done
+
+- factory-fit decision shown to the founder as a native opencode form,
+  overridable by the founder;
+- `## Why this factory?` rendered in `CUBICORE_PLAN.md` (decision, reason,
+  confidence, evidence);
+- markdown says the answer aloud so the founder does not have to read
+  transcripts;
+- the run ends with an explicit done/blocked verdict;
+- mid-run visibility: `/cubicore:status` renders stage, per-associate state,
+  and the one next step.
+
+### Phase 2 — Integration slice done
+
+Plans can carry a top-level `integration` block ({command, timeoutMs?});
+the factory runs it after verification; run is not "done" until it passes;
+failure recorded in retrospect and ledger ship-blocking.
+
+---
+Kept verbatim + summary of what shipped, 2026-11-10.

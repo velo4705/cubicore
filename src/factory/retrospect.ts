@@ -21,6 +21,7 @@ export type Retrospective = {
   workers: number;
   passed: number;
   flagged: number;
+  blocked: number;
   deferred: number;
   totalTokens: number;
   verdict: string;
@@ -39,7 +40,8 @@ export function buildRetrospective(opts: {
   const totalTokens =
     opts.usage.input + opts.usage.output + opts.usage.cacheRead + opts.usage.cacheWrite + opts.usage.reasoning;
   const flagged = opts.artifacts.filter((a) => a.status === "flagged").length;
-  const passed = opts.artifacts.length - flagged;
+  const blocked = opts.artifacts.filter((a) => a.status === "blocked").length;
+  const passed = opts.artifacts.length - flagged - blocked;
 
   const fit = opts.fit;
   let verdict: string;
@@ -54,6 +56,8 @@ export function buildRetrospective(opts: {
     verdict = `All ${passed} associates passed their own checks, and the merged tree FAILED the integration command (${integration.output.trim().slice(0, 120)}). The work is on disk but the build is broken — do not ship it as done.`;
   } else if (integration !== undefined && integration.passed) {
     verdict = `All ${passed} associates passed their own checks, and the merged tree passes its integration command. The factory kept its promise: pieces on paper, one working whole on disk.`;
+  } else if (blocked > 0) {
+    verdict = `${passed} of ${opts.artifacts.length} associates verified their checks on disk; ${blocked} could not be verified on this host (missing tool / offline dependency). Nothing was quietly waved through; install what's missing and re-run.`;
   } else if (flagged > 0) {
     verdict = `${passed} of ${opts.artifacts.length} associates produced verifiable work; ${flagged} left flagged. Work that passed was kept, work that did not was discarded — nothing landed unvetted.`;
   } else if (fit?.decision === "single-agent") {
@@ -67,6 +71,7 @@ export function buildRetrospective(opts: {
     workers: opts.artifacts.length,
     passed,
     flagged,
+    blocked,
     deferred: opts.deferred,
     totalTokens,
     verdict,
@@ -79,7 +84,7 @@ export function renderRetrospective(r: Retrospective): string {
     `**What the factory did**`,
     ``,
     r.fit ? `- Decision: ${r.fit.decision} · ${r.workers} associate${r.workers === 1 ? "" : "s"}` : `- Decision: (not recorded)`,
-    `- Passed: ${r.passed} · Flagged: ${r.flagged}${r.deferred > 0 ? ` · Deferred: ${r.deferred}` : ""}`,
+    `- Passed: ${r.passed} · Flagged: ${r.flagged}${r.blocked > 0 ? ` · Blocked: ${r.blocked}` : ""}${r.deferred > 0 ? ` · Deferred: ${r.deferred}` : ""}`,
     `- Tokens: ${r.totalTokens.toLocaleString()}`,
     r.fit ? `- Why this size: ${r.fit.why}` : ``,
     r.integration

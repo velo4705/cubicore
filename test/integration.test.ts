@@ -37,7 +37,7 @@ describe("integration block", () => {
 });
 
 describe("retrospect integration line", () => {
-  const artifacts = [{ contractId: "w0", status: "done", deliverable: "diff", changedFiles: [], unresolved: [] }];
+  const artifacts = [{ contractId: "w0", status: "done", deliverable: "diff", changedFiles: [], unresolved: [], unverified: false }];
   const usage = { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
   test("integration passed is acknowledged in the verdict", () => {
     const r = buildRetrospective({ fit: undefined, artifacts, unresolved: [], deferred: 0, usage, integration: { passed: true } });
@@ -47,5 +47,18 @@ describe("retrospect integration line", () => {
   test("integration failure produces a ship-blocking verdict", () => {
     const r = buildRetrospective({ fit: undefined, artifacts, unresolved: [], deferred: 0, usage, integration: { passed: false, output: "exit 1\nError: cannot find module" } });
     expect(r.verdict).toMatch(/FAILED/);
+  });
+});
+
+describe("unverified vs failed — distinction the founder sees", () => {
+  test("unverified work is labeled blocked in the artifact, not flagged", () => {
+    const artifacts = [
+      { contractId: "w0", status: "blocked", deliverable: "diff", changedFiles: [], unresolved: ["w0 — verify: check \"k\" could not run (exit 127):"], unverified: true },
+      { contractId: "w1", status: "done", deliverable: "diff", changedFiles: [], unresolved: [], unverified: false },
+    ];
+    const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+    const r = buildRetrospective({ fit: undefined, artifacts: artifacts as never, unresolved: [], deferred: 0, usage });
+    expect(r.blocked).toBe(1);
+    expect(r.verdict).toMatch(/could not be verified/i);
   });
 });

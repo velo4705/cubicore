@@ -2450,6 +2450,14 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Opinion:** Before writing the plan, think like a professional who just got this brief and fill in what the user did not say. Write ONE short paragraph (max two sentences, ~400 characters) as the plan's "opinion" field in the JSON: what the requested thing really is today, what an experienced builder would include by default, what you deliberately leave out, and why. Keep it honest — if the user's instinct is right for the problem, say so; do not invent sophistication. Do not widen or narrow the product; just state the best honest full version as it would be done properly *now*. If you would recommend a framework over what's listed, it goes in the plan (never the reply).
 
+**Size check (mandatory, before you write a contract):** Classify the request as one of:
+- **small** — one or two files, one sitting of work. Un-split is the right answer.
+- **medium** — a few files, coordinated with care. A handful of contracts.
+- **large** — many files, clear sub-systems. Expect 4–8 contracts.
+- **massive** — multi-crate, multi-engine, open-ended (a game, an OS, a compiler, a full SaaS). Expect 8+ contracts and staged refusals if the ambitious half is not yet buildable.
+
+Write the classification and your one-sentence reason as a top-level field in the plan (e.g. "scale": "large"), honestly chosen. If the founder gave a small wish that is arguably bigger than you feel comfortable with, say so in 'opinion'. Do not silently over-plan, and do not claim massive when something simpler would be right.
+
 **User request:** ${request}${extraNote}
 
 **2. Write the plan.** Build exactly what the user requested above. Do not
@@ -2457,6 +2465,8 @@ substitute, upgrade, or replace it with a project of your own choosing. Then
 produce the plan JSON and pass it to the plan tool, which writes
 CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
 CUBICORE_CONTEXT.md for team members who need to present the project in person.
+**Before you call the plan tool, walk the contracts once more.** For each contract that still looks like more than one sitting of work, re-read the repo and split it — child contracts may narrow scope but not widen it. Graph budget and edges must be recomputed after the split; the result is the plan you pass to the plan tool, not the draft you started with. Do **not** split a genuinely single-cognitive-unit contract — if you cannot tell where one is finished and the next has begun, it is not two contracts.
+
 The plan tool also prints the factory-fit decision — the recommended team
 size, topology and why — and on an accepted plan it sends the founder the
 factory-fit question as an opencode form, the same mechanism as the deploy
