@@ -424,7 +424,7 @@ The done and the rest, same format as the twelve.
 
 #### Area 2 — Real Agent-Factory Behaviour
 
-Done (2026-11-09, updated 2026-11-10):
+Done (2026-11-09, updated 2026-11-11):
 
 - factory-fit decision is dispatched before the work starts and recorded
   verbatim in the markdown, the fit record and the ledger;
@@ -444,6 +444,31 @@ Done (2026-11-09, updated 2026-11-10):
   `blocked`, distinct from `flagged` (ran and failed). The retrospect now
   prints both verdicts — "N could not be verified on this host" does not
   get hidden behind a generic failure.
+- Research by default (2026-11-11): dispatched associates now carry
+  `webfetch` + `websearch` in their default tool whitelist (everything else
+  stays wildcard-denied, per contract). The plan prompt carries a mandatory
+  Research clause — webfetch the official docs for the exact version being
+  used, cite the URL. Motivation: the RL-into-the-browser plan guessed its
+  physics (restitution 0.85, invented boost rates) with no sanctioned way to
+  consult the rlbot-community corpus. Research does not make a plan correct;
+  it stops silent guesses from passing the same gates as real work.
+  Caveat honestly recorded: `toolsForContract()` permits the tools; whether
+  the host grants them to an associate is the host's call — denial there is
+  visible, not silent.
+- Browser-smoke dispatch gate (2026-11-11): a UI-capable plan (contract not
+  marked `ui: true` *or* writes a screen-facing extension) with no blocking
+  check whose command matches Playwright/Cypress/Puppeteer is rejected
+  before dispatch with `missing-ui-smoke` — the same pre-dispatch rejection
+  mechanism as `missing-design`. Unit tests, `tsc` and `vitest` do not
+  satisfy it. Verified 2026-11-11 against the founder's real plan on disk in
+  ~/Projects/random-project/project-3: the plan passes every other gate and
+  reports exactly one finding — `missing-ui-smoke`. The gate catches
+  "the build compiled but the button does nothing"; it cannot catch
+  wrong physics constants — that remains human-sign-off territory and was
+  said as such to the founder.
+  Limit recorded: Playwright must exist where the check runs; on a host
+  without it the check records `unverified`, not `failed` — honest, not a
+  false alarm.
 
 Missing:
 
@@ -511,6 +536,13 @@ Missing:
   next action — without reading tool-call transcripts. **Done (2026-11-10):**
   `describe()` prints the stage, per-associate state and writes, and the one
   next action; `/cubicore:status` surfaces it.
+- preview preflight: **Done (2026-11-11):** `previewIt` now runs a dependency
+  preflight before launching (`src/plan/preview-lang.ts`) — when the
+  interpreter or runtime a command needs is not on PATH, the founder gets a
+  clean sentence naming the missing binary and the exact install command,
+  not a cryptic shell error. 27 binary families mapped (node, bun, python,
+  cargo, go, java, dotnet, ruby, php, …). Best-effort heuristic: it reads the
+  command and reports what it can see; it does not guess.
 - collision/scope-violation surfaced to the founder, not buried in
   `unresolved[]`;
 - archive of plan-and-run context across runs — decisions, amendments,
@@ -655,11 +687,14 @@ primary cause and it has not yet been measured.
    associate and for the Main agent. Cheap and decisive — it either confirms
    the hypothesis or kills it before any optimisation happens.
 2. **Restrict the associate's tools.** Keep `read, write, edit, bash, grep,
-   glob, list, patch`; deny `webfetch, websearch, task` and wildcard-deny the
-   MCP servers. opencode 1.18.29 supports per-agent `tools` with server
+   glob, list, patch, webfetch, websearch`; deny `task` and wildcard-deny the
+   MCP servers. opencode 2.1.3 supports per-agent `tools` with server
    wildcards, so `"rea*": false` is the shape. The associate needs no MCP
-   server, but the host hands it every one. *Verify the wildcard matches; a
-   miss is silent.*
+   server, but the host hands it every one.
+   *Updated 2026-11-11:* `webfetch`/`websearch` are now granted by default,
+   not denied — research is mandatory for any real build and a planner with
+   no sanctioned web access guesses. `task` stays denied and the MCP wildcard
+   stays. *Verify the wildcard matches; a miss is silent.*
 3. **Lean the brief.** Every read is a turn and every turn re-reads the
    prefix. Give the worker its exact file list, its exact check command and
    its exact report format, to do read → edit → verify → report in the fewest
@@ -792,7 +827,10 @@ after.
 - Disjoint writes verified by digest on a real four-associate run
 - Executable checks caught two defective planner fixtures
 - UI-capable plans require a design block (direction, palette 2–4 hex, typeface, notDoing, ambition); a UI plan without one is rejected before dispatch. `gateStyle` rejects every hex in the diff that is not in the declared palette. A contrast ≥ 4.5:1 check guards body text.
+- UI-capable plans require a browser smoke contract: a blocking check that launches the built app/preview and walks the core user flow with a browser driver (Playwright/Cypress/Puppeteer). A plan with unit tests and typecheck but no browser walk is rejected before dispatch (`missing-ui-smoke`). Unit tests do not prove the button works; the plan prompts (`renderPlanPrompt` and `PLANNER_PROMPT`) tell the planner the requirement. Missing Playwright on a host surfaces as an unverified check, not a false failure — the gate already distinguishes could-not-run from wrong-code.
 - Factory-fit pre-dispatch decision is computed at plan time, printed to the founder, attached to the plan, and enforced at execute time: a `single-agent` decision dispatches one associate, not N. `.cubicore-factory-fit.json` records the decision; `.cubicore-factory-ledger.json` records what happened (fit, outcome, tokens, cost).
+- Associates dispatched by Cubicore carry `webfetch` + `websearch` by default (2026-11-11); `task` and all MCP servers stay wildcard-denied. The plan prompts require webfetching the official docs for the exact version before writing any contract that names an unfamiliar library or compiler flag, with the URL cited in the plan.
+- Preview preflight (2026-11-11): when the interpreter/runtime a command needs is not on PATH, the founder gets the missing binary's name and the exact install command, not a cryptic shell error.
 - Factory-fit assessment is shipped; lifecycle state machine, dashboard and host adapters are product work, not shipped behaviour
 - Factory-fit verified live (2-associate smoke, 2026-11-09): form delivered to the founder's session, founder answered via the form, dispatch honored the recorded decision, both doneWhen checks passed on disk, scope gate green, ledger recorded 51,735 tokens. OpenCode v2 cannot place an associate session in a per-worker worktree (directory is silently ignored), so the scope gate now judges the run against the union of declared writes; per-worker collisions are a documented gap on this host
 - Known defect: every associate reports `budget-exhausted` — the observer never sees session idle events on this host (same unverified-event-shape family as file.edited). Gates do not read that field, so green runs say green; the artifact lines look wrong until the observer is fixed

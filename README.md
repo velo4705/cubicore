@@ -19,7 +19,7 @@ Cubicore is a Dynamic Multi-Agentic Factory of Sub-agents tasked to make a proje
 `npx cubicore@latest setup`
 
 <p align="center">
-  <img src="docs/assets/Multi-agent-factory.png" alt="Cubicore">
+  <img src="docs/assets/Multi-agent-factory.png" alt="Building Rocket League using Cubicore">
 </p>
 
 </div>

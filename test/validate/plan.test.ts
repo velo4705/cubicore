@@ -178,6 +178,73 @@ describe("validatePlan", () => {
   });
 });
 
+function uiSmokeContract(overrides: Partial<Contract> = {}): Contract {
+  return contract({
+    id: "ui-smoke",
+    objective: "launch the built app and walk the core flow in a browser",
+    reads: [],
+    writes: ["e2e/flow.spec.ts"],
+    checks: [
+      blockingCheck({
+        id: "smoke",
+        command: "npx playwright test",
+        expectation: "exit code 0",
+      }),
+    ],
+    ...overrides,
+  });
+}
+
+describe("ui smoke — the built app is walked, not just compiled", () => {
+  test("a UI plan with no browser smoke is rejected", () => {
+    const result = validatePlan(
+      plan({ contracts: [contract({ ui: true })] }),
+    );
+    expect(codes(result)).toContain("missing-ui-smoke");
+  });
+
+  test("a UI plan whose only gate is unit tests is still rejected", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [
+          contract({ ui: true, checks: [blockingCheck({ command: "npm test -- src/app" })] }),
+        ],
+      }),
+    );
+    expect(codes(result)).toContain("missing-ui-smoke");
+  });
+
+  test("a UI plan with a smoke contract is not flagged", () => {
+    const result = validatePlan(
+      plan({ contracts: [contract({ ui: true }), uiSmokeContract()] }),
+    );
+    expect(codes(result)).not.toContain("missing-ui-smoke");
+  });
+
+  test("cypress also satisfies the gate", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [
+          contract({ ui: true }),
+          uiSmokeContract({
+            checks: [
+              blockingCheck({ id: "e2e", command: "npx cypress run" }),
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-ui-smoke");
+  });
+
+  test("a back-end plan needs no browser smoke", () => {
+    const result = validatePlan(
+      plan({ contracts: [contract({ writes: ["src/api.ts"] })] }),
+    );
+    expect(codes(result)).not.toContain("missing-ui-smoke");
+  });
+});
+
 describe("design elevation — UI-capable plans", () => {
   test("a UI contract without a design block is rejected", () => {
     const result = validatePlan(plan({
@@ -193,9 +260,9 @@ describe("design elevation — UI-capable plans", () => {
     expect(codes(result)).toContain("missing-design");
   });
 
-  test("a UI plan with a complete design block passes", () => {
+  test("a UI plan with a complete design block and a smoke contract passes", () => {
     const result = validatePlan(plan({
-      contracts: [contract({ ui: true })],
+      contracts: [contract({ ui: true, id: "app" }), uiSmokeContract()],
       design: {
         direction: "terminal",
         palette: ["#0f0f0f", "#e6e6e6", "#3b82f6"],

@@ -24,6 +24,12 @@ import { sessionIdleStatus } from "./session-db-idle";
  * `"*"` denies everything not explicitly allowed.
  */
 function toolsForContract(contract: Contract): Record<string, boolean> {
+  // Research is a must for any real build — the planner hands you context, but
+  // the associates building the product need to verify versions, functions and
+  // libraries against their current docs, and real implementation reference
+  // for physics/UI/etc. before writing. Give them the two research tools by
+  // default; everything else stays deny-by-default, per contract via
+  // `tools: [...]`.
   const tools: Record<string, boolean> = {
     read: true,
     write: true,
@@ -33,8 +39,8 @@ function toolsForContract(contract: Contract): Record<string, boolean> {
     glob: true,
     list: true,
     patch: true,
-    // Deny everything else by default — catches MCP servers, webfetch,
-    // websearch, task, and anything else the contract did not declare.
+    webfetch: true,
+    websearch: true,
     "*": false,
   };
   for (const tool of contract.tools ?? []) {

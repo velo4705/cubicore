@@ -387,6 +387,14 @@ Rules:
   decides — if the founder named a mood that maps to a direction, use it.
   If nothing matches, invent a SPECIFIC direction with a name you'd be proud
   to explain, not a generic tag.
+- UI-capable plans MUST also carry one browser-smoke contract: a contract
+  (e.g. id "ui-smoke", kind "intent") whose blocking check launches the
+  built app (or the preview server) and walks the core user flow with a
+  browser driver — e.g. 'npx playwright test'. A blocking check named
+  'tsc'/'vitest'/unit tests does NOT satisfy this. A plan with a UI
+  contract but no browser smoke is REJECTED by the validator before
+  dispatch, the same as a missing design block — a dead button must fail
+  the gate, not the founder.
 - design.notDoing is the load-bearing list — small, specific prohibitions
   the frontend must never cross ("no scrolljacking", "no second typeface"),
   not general aspirations.

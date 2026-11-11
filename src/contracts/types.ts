@@ -322,6 +322,7 @@ export interface WorkerResult {
 export type FindingCode =
   | "weak-contrast-palette"
   | "missing-design"
+  | "missing-ui-smoke"
   | "missing-objective"
   | "duplicate-id"
   | "duplicate-check-id"

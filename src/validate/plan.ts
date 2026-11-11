@@ -158,6 +158,39 @@ function checkDesign(plan: Plan): Finding[] {
   ];
 }
 
+/**
+ * A UI-capable plan must prove the app actually boots and its core flow works
+ * — not merely that it compiles and passes unit tests. Before this gate, the
+ * factory shipped visually polished apps whose buttons did nothing. The smoke
+ * contract is ordinary: one blocking, convergent check that launches the
+ * built app and walks the core flow with a browser driver. Playwright,
+ * Cypress and Puppeteer all count; unit tests and `tsc` do not.
+ */
+const SMOKE_COMMAND = /playwright|cypress|puppeteer/i;
+
+export function hasUiSmoke(plan: Plan): boolean {
+  return plan.contracts.some((contract) =>
+    (contract.checks ?? []).some((check) => SMOKE_COMMAND.test(check.command)),
+  );
+}
+
+function checkUiSmoke(plan: Plan): Finding[] {
+  if (!isUiCapable(plan)) return [];
+  if (hasUiSmoke(plan)) return [];
+  const ids = plan.contracts.map((c) => c.id);
+  return [
+    {
+      code: "missing-ui-smoke",
+      contractIds: ids,
+      message:
+        "plan is UI-capable but no contract exercises the built app in a browser; " +
+        "add one smoke contract (e.g. id \"ui-smoke\", kind \"intent\") whose blocking check " +
+        "launches the app (or the preview server) and walks the core user flow with a browser driver, " +
+        "e.g. `npx playwright test`. Without it, a dead button ships as \"done\"",
+    },
+  ];
+}
+
 function checkGraphBudget(plan: Plan): Finding[] {
   const findings: Finding[] = [];
   const ids = plan.contracts.map((c) => c.id);
@@ -241,6 +274,7 @@ export function validatePlan(
   }
 
   findings.push(...checkDesign(plan));
+  findings.push(...checkUiSmoke(plan));
   findings.push(...checkGraphBudget(plan));
 
   return { ok: findings.length === 0, findings };
