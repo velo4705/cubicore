@@ -23,7 +23,8 @@ import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
-import { buildRetrospective, renderRetrospective } from "../factory/retrospect";
+import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
+import { recordEscalations, clearEscalations, escalatedLedger, escalatedLine } from "../factory/escalations";
 import { enterFactoryLifecycle, completeFactoryLifecycle, factoryLifecycleStatusLine, blockFactoryLifecycle } from "../factory/lifecycle";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
 import {
@@ -738,17 +739,18 @@ async function runToCompletion(
         passed: integrationOutcome.passed,
         output: integrationOutcome.passed ? "" : integrationOutcome.output.slice(0, 600),
       } : null,
+      usageMethod: "session — measured from host session rows",
+      escalations: escalatedLedger(dir),
       recorded: new Date().toISOString(),
     };
-    writeFileSync(`${dir}/.cubicore-factory-ledger.json`, JSON.stringify(ledger, null, 2));
 
-    // Append-only archive. The latest run is a fresh read; every past run
-    // stays on disk as history. The ledger used to be overwritten on every
-    // execute, which destroyed the audit trail it exists to carry.
+    // Append-only archive. The ledger is the latest read; the history file
+    // keeps every past run — overwriting the ledger used to destroy the audit
+    // trail it exists to carry.
     try {
-      appendFileSync(`${dir}/.cubicore-factory-history.jsonl`, JSON.stringify(ledger) + "\n");
-    enterFactoryLifecycle(dir, "archive", "ledger appended to history.jsonl");
-    completeFactoryLifecycle(dir, "run logged and archived");
+      writeRunLedger(dir, ledger);
+      enterFactoryLifecycle(dir, "archive", "ledger appended to history.jsonl");
+      completeFactoryLifecycle(dir, "run logged and archived");
     } catch {
       // History is a nicety; the latest ledger is the authoritative one.
     }
@@ -799,6 +801,148 @@ async function runToCompletion(
  * looks exactly like a hang. Returning a handle makes that unrepresentable:
  * there is nothing left to time out, and the caller decides how long to wait.
  */
+/**
+ * Write the factory ledger (latest read) and append it to the append-only
+ * history archive. The history file is the aggregated audit trail across runs;
+ * the ledger is the fast read for the latest one.
+ */
+function writeRunLedger(dir: string, ledger: unknown): void {
+  writeFileSync(`${dir}/.cubicore-factory-ledger.json`, JSON.stringify(ledger, null, 2));
+  appendFileSync(`${dir}/.cubicore-factory-history.jsonl`, JSON.stringify(ledger) + "\n");
+}
+
+/**
+ * Accept the host's own report of a finished inline run and record it.
+ *
+ * Inline dispatch means Cubicore never sees the work happen — it did not
+ * spawn sessions, it emitted briefs and the host called the host's sub-agent
+ * tool. The passes/flags are re-derived here from the disk (the same
+ * blocking checks the execute path re-runs), never from the host's claim that
+ * it is done, and the token spend is recorded as either what the host handed
+ * back or the explicit literal "unknown (inline dispatch — host tokens not
+ * collected)". A zero printed as if measured is the one thing this tool
+ * refuses to do.
+ */
+async function recordInlineRun(args: {
+  directory?: string;
+  usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
+  note?: string;
+}): Promise<ToolResult> {
+  const dir = args.directory ?? process.cwd();
+  let raw: string;
+  try {
+    raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+  } catch {
+    return text(`No ${PLAN_JSON} in ${dir}. The inline run has no plan on disk to record.`, true);
+  }
+  const loaded = loadPlan(raw);
+  if (!loaded.ok) return text(`Refusing to record: ${loaded.reason}`, true);
+
+  const validation = validatePlan(loaded.plan, deriveBaseline(dir));
+  if (!validation.ok) {
+    return text(
+      [
+        "Refusing to record: the plan no longer validates.",
+        ...validation.findings.map((finding) => `- [${finding.code}] ${finding.message}`),
+      ].join("\n"),
+      true,
+    );
+  }
+
+  // Disk truth, same definition as the execute path: each contract's blocking
+  // checks are re-run right here. The host saying "it went well" is not evidence.
+  const verified = await verifyAndSyncPlan(loaded.plan, dir, validation);
+  const failures = verified.failures;
+  const artifacts = loaded.plan.contracts.map((contract) => {
+    const state = verified.progress.get(contract.id) ?? "pending";
+    const ours = failures.filter((f) => f.contractId === contract.id);
+    return {
+      contractId: contract.id,
+      status: state === "done" ? "done" : state === "blocked" ? "blocked" : "flagged",
+      deliverable: contract.deliverable,
+      changedFiles: [] as string[],
+      unresolved: ours.map((f) => `${contract.id} — ${f.checkId}: ${f.output.slice(0, 160)}`),
+      unverified: state === "blocked",
+    };
+  });
+  const unresolved = failures.map((f) => `${f.contractId} — ${f.checkId}: ${f.output.slice(0, 160)}`);
+
+  let usage: RetroUsage | null = null;
+  let usageMethod: string;
+  if (args.usage == null) {
+    usageMethod = "inline — host tokens not collected";
+  } else {
+    const reported = args.usage;
+    const keys = ["input", "output", "cacheRead", "cacheWrite", "reasoning"] as const;
+    for (const key of keys) {
+      const value = reported[key];
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        return text(`usage.${key} must be a finite number ≥ 0; got ${JSON.stringify(value)}`, true);
+      }
+    }
+    usage = { input: reported.input, output: reported.output, cacheRead: reported.cacheRead, cacheWrite: reported.cacheWrite, reasoning: reported.reasoning };
+    // The host's own session totals include its plan-writing, its chat and its
+    // thinking — they overcount the run, but they are the only numbers it has.
+    usageMethod = "inline — host-reported parent-session totals; includes the host's own work; upper bound";
+  }
+
+  const retrospective = buildRetrospective({
+    fit: loaded.plan.factoryFit,
+    artifacts,
+    unresolved,
+    deferred: 0,
+    usage,
+  });
+  const fit = loaded.plan.factoryFit;
+  const passed = retrospective.passed;
+  const ledger = {
+    retrospective: {
+      verdict: retrospective.verdict,
+      passed: retrospective.passed,
+      flagged: retrospective.flagged,
+      blocked: retrospective.blocked,
+      deferred: retrospective.deferred,
+      totalTokens: retrospective.totalTokens,
+    },
+    version: 1,
+    topology: loaded.plan.topology,
+    fit: fit ?? null,
+    team: loaded.plan.contracts.length,
+    outcome: {
+      accepted: passed,
+      failed: retrospective.flagged + retrospective.blocked,
+      deferred: 0,
+    },
+    usage,
+    usageMethod,
+    escalations: escalatedLedger(dir),
+    integration: null,
+    recorded: new Date().toISOString(),
+    note: args.note ?? null,
+  };
+  try {
+    writeRunLedger(dir, ledger);
+    enterFactoryLifecycle(dir, "retrospect", `inline ledger — usageMethod: ${usageMethod}`);
+    enterFactoryLifecycle(dir, "archive", "inline ledger appended to history.jsonl");
+    completeFactoryLifecycle(dir, `inline verified: ${retrospective.passed}/${retrospective.workers} on disk`);
+  } catch (error) {
+    // A run that cannot record itself is not a recorded run — say so, loudly.
+    return text(
+      `The ledger could not be written (${error instanceof Error ? error.message : String(error)}). ` +
+        `The run is NOT recorded; the retrospective below is accurate but nothing persisted it.\n\n${renderRetrospective(retrospective)}`,
+      true,
+    );
+  }
+  return text(
+    [
+      renderRetrospective(retrospective),
+      "",
+      `usageMethod: ${usageMethod}`,
+      `Ledger written to .cubicore-factory-ledger.json and appended to .cubicore-factory-history.jsonl.`,
+    ].join("\n"),
+  );
+}
+
 async function execute(raw: string, parentSessionID?: string, dir = process.cwd()): Promise<ToolResult> {
   let parsed: Plan;
   try {
@@ -921,7 +1065,8 @@ async function status(runId: string, waitMs = 0, directory?: string): Promise<To
 
   const run = getRun(runId, where)!;
   const lifecycleLine = factoryLifecycleStatusLine(where);
-  return text(`${describe(run)}\n\n${lifecycleLine}`);
+  const escalations = escalatedLine(where);
+  return text(`${describe(run)}\n\n${lifecycleLine}${escalations ? `\n${escalations}` : ""}`);
 }
 
 /**
@@ -1319,6 +1464,23 @@ async function verifyAndSyncPlan(
   validation: { ok: boolean; findings: { code: string; message: string }[] },
 ): Promise<ReturnType<typeof refreshPlanProgress>> {
   const verified = await refreshPlanProgress(parsed, directory);
+  // Record escalations from the authoritative blocked state — never from a
+  // failure-text guess. Empty set clears the snapshot; the absence of the
+  // file is the absence of escalations.
+  {
+    const blocked = parsed.contracts
+      .filter((c) => verified.progress.get(c.id) === "blocked")
+      .map((c) => {
+        const firstFailure = verified.failures.find((f) => f.contractId === c.id);
+        return {
+          contractId: c.id,
+          checkId: firstFailure?.checkId ?? "(blocked, no blocking check recorded)",
+          reason: firstFailure?.output.trim() || "check could not run",
+        };
+      });
+    if (blocked.length === 0) clearEscalations(directory);
+    else recordEscalations(directory, blocked);
+  }
   const steps = new Map<string, Map<string, ContractState>>();
   for (const contract of parsed.contracts) {
     if (!contract.steps?.length) continue;
@@ -1691,7 +1853,9 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
       "",
       `An associate reads exactly one file and starts building.`,
       "",
-      `When they return, run each contract's blocking checks and record the results with the debug tool.`,
+      `When they return, run each contract's blocking checks. Then call the record_inline_run tool — pass your host's own token totals as usage if the host exposes them (they upper-bound the run: they include your plan-writing and everything else on this session, so say nothing more precise than that), or omit usage entirely and the tool writes "unknown (inline dispatch — host tokens not collected)" into the ledger. Never estimate numbers you do not actually see.`,
+      "",
+      `The record_inline_run tool re-verifies every blocking check on disk itself, writes .cubicore-factory-ledger.json, appends the .cubicore-factory-history.jsonl line, and prints the verdict. A run it cannot record — no plan on disk, an unwritable ledger — is reported as not recorded, never as a green number.`,
       "",
     ].join("\n"),
   );
@@ -2110,6 +2274,41 @@ export const TOOLS = [
         ].join("\n"),
       );
     },
+  },
+  {
+    name: "record_inline_run",
+    description:
+      WHEN +
+      "Used when the associates were dispatched inline (the host's own sub-agent tool) and" +
+      " are back with their reports. Re-verifies every blocking check on disk, writes" +
+      " .cubicore-factory-ledger.json, appends the history line, and prints the verdict." +
+      " Pass usage with the host's own token totals if the host exposes them (they" +
+      " upper-bound the run); otherwise omit usage and the ledger records" +
+      " \"unknown (inline dispatch — host tokens not collected)\" instead of a fake zero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        directory: { type: "string", description: "Working directory" },
+        note: { type: "string", description: "Optional note recorded in the ledger (e.g. the host's own comment about the run)" },
+        usage: {
+          type: "object",
+          description: "Host-reported token totals for the run, e.g. the parent session's usage. Numbers only, ≥ 0. Omit entirely if the host cannot or will not report them — do not estimate.",
+          properties: {
+            input: { type: "number" },
+            output: { type: "number" },
+            cacheRead: { type: "number" },
+            cacheWrite: { type: "number" },
+            reasoning: { type: "number" },
+          },
+          required: ["input", "output", "cacheRead", "cacheWrite", "reasoning"],
+        },
+      },
+    },
+    handler: async (args: {
+      directory?: string;
+      note?: string;
+      usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
+    }) => recordInlineRun(args),
   },
   {
     name: "dispatch_blueprint",

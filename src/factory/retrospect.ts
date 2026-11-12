@@ -23,9 +23,22 @@ export type Retrospective = {
   flagged: number;
   blocked: number;
   deferred: number;
-  totalTokens: number;
+  /**
+   * Measured tokens, or null when nothing measured the run. A bare 0 would
+   * read as "the run was free" — it is not a measurement, it is the absence
+   * of one, so it is rendered as unknown, never as zero.
+   */
+  totalTokens: number | null;
   verdict: string;
   integration?: IntegrationOutcome;
+};
+
+export type RetroUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
 };
 
 /** The agent-side artifact, written per run and surfaced in the reply. */
@@ -34,11 +47,12 @@ export function buildRetrospective(opts: {
   artifacts: AggregatedArtifact[];
   unresolved: string[];
   deferred: number;
-  usage: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
+  usage: RetroUsage | null;
   integration?: IntegrationOutcome | null;
 }): Retrospective {
-  const totalTokens =
-    opts.usage.input + opts.usage.output + opts.usage.cacheRead + opts.usage.cacheWrite + opts.usage.reasoning;
+  const totalTokens = opts.usage === null
+    ? null
+    : opts.usage.input + opts.usage.output + opts.usage.cacheRead + opts.usage.cacheWrite + opts.usage.reasoning;
   const flagged = opts.artifacts.filter((a) => a.status === "flagged").length;
   const blocked = opts.artifacts.filter((a) => a.status === "blocked").length;
   const passed = opts.artifacts.length - flagged - blocked;
@@ -85,7 +99,7 @@ export function renderRetrospective(r: Retrospective): string {
     ``,
     r.fit ? `- Decision: ${r.fit.decision} · ${r.workers} associate${r.workers === 1 ? "" : "s"}` : `- Decision: (not recorded)`,
     `- Passed: ${r.passed} · Flagged: ${r.flagged}${r.blocked > 0 ? ` · Blocked: ${r.blocked}` : ""}${r.deferred > 0 ? ` · Deferred: ${r.deferred}` : ""}`,
-    `- Tokens: ${r.totalTokens.toLocaleString()}`,
+    `- Tokens: ${r.totalTokens === null ? "unknown (inline dispatch — host tokens not collected)" : r.totalTokens.toLocaleString()}`,
     r.fit ? `- Why this size: ${r.fit.why}` : ``,
     r.integration
       ? r.integration.passed

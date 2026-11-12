@@ -168,8 +168,16 @@ full roles (name required, empty capability list rejected). Tool policy is
 advisory **on opencode 2.1.3** — the host does not attribute tool or file
 events to sessions, so the policy cannot be enforced post-hoc; the gate reports
 "advisory only, not enforceable here" honestly rather than claiming otherwise.
-**Left undone here (no second host):** runtime enforcement; roles are the
-authority a founder can see and check before dispatch, not a run-time lock.
+**Shipped (2026-11-12):** the role's authority now reaches the worker and is a
+real wall where the host can hold one. `renderPrompt` emits a `# Your role
+authority` block (name, capabilities, tool allow/deny, exclusions, handoff,
+escalation words); `toolsForContract()` passes role `deny` (wildcards included,
+e.g. `webfetch`, `rea*`) to the spawned agent's config deny map — deny wins
+over the research default; role `allow` can grant beyond the base whitelist.
+Verified by rendering Voxelstead's real `Scaffold & Interface Engineer` role —
+its `webfetch` deny now reaches the wire. **Left undone here (no second host):**
+per-session attribution of file/tool events mid-run; granting a capability
+beyond the agent config's wall; enforcement of role budgets past spawn time.
 **Needs:** a second host with event attribution to close the gap between the
 contract and a running worker.
 
@@ -475,7 +483,16 @@ Missing:
 - lifecycle states beyond the dispatch loop — `intent → fit → plan → team
   proposal → dispatch → observe → integrate → verify → retrospect → archive`
   — with durable per-state records and legal transitions (a worker reporting
-  blocked moves to `escalated`, never an unbounded retry);
+  blocked moves to `escalated`, never an unbounded retry). **Done (2026-11-12), bounded slice:**
+  contracts whose blocking check could not run are now recorded in
+  `.cubicore-escalations.json` (contract, check, reason, one next action,
+  attempts — counted across verify cycles) by the one verify path used by both
+  `execute` and inline runs; `/cubicore:status` prints the escalation line;
+  both ledgers carry the escalation list into `.cubicore-factory-history.jsonl`.
+  A demo blocked contract shows: cycle 1 → attempts 1, cycle 2 → attempts 2;
+  absence of the file is the absence of escalations. What remains open:
+  narrowing the revision a factory should name when a gate fails (needs
+  judgement, not a counter), and adaptive split/merge/skip/escalate decisions.
 - a contract that fails a gate moves to a narrower revision, explicitly named
   by the factory — not "merge whatever changed";
 - handoff artifacts verified when passed between waves — not a promise;
@@ -494,7 +511,13 @@ Exit criteria:
 
 - an integration failure is caught before hand-off (shipped);
 - a blocked contract moves to a defined `escalated` state with bounded retries
-  and a recorded reason;
+  and a recorded reason. **Done (2026-11-12):** `recordEscalations()` persists
+  contract / check / reason / one-next-action / attempts (counted across verify
+  cycles — the honest bound, since attempt counters do not stop a factory
+  that decides to dispatch again; they stop the silence). Verified live: a
+  blocked contract shows attempts 1 → 2 across two verify cycles, `.cubicore-escalations.json`
+  deleted to the empty state when blockers clear, and both ledgers archive the
+  list into `.cubicore-factory-history.jsonl`.
 - no two associates own the same file in the run, or if they do, the founder is
   told by name;
 - a run can be cancelled, resumed and audited (partially: resume works; the
@@ -686,6 +709,24 @@ primary cause and it has not yet been measured.
 1. **Instrument the context.** Print the tool-schema block size for the
    associate and for the Main agent. Cheap and decisive — it either confirms
    the hypothesis or kills it before any optimisation happens.
+   **Done (2026-11-12):** `scripts/measure-tool-surface.mjs` handshakes every MCP server
+   in the live host config (`~/.var/app/ai.opencode.opencode/config/opencode/opencode.json`)
+   and prints tools, schema bytes and approximate tokens, per server, for the Main agent;
+   the Cubicore associate counts 0 (wildcard-deny, verified in `toolsForContract()`).
+   **Measured 2026-11-12 on this host:**
+   - `rea` 139 tools — 1,826.7 KB (~468k tok) — **90% of the surface; the doc guessed ~80**
+   - `github` 49 tools — 133.0 KB (~34k tok) — doc guessed ~30
+   - `playwright` 25 — 20.7 KB (~5.3k) · `cubicore` 17 — 13.9 KB (~3.6k)
+   - `hf-mcp-server` 4 — 19.4 KB · `context7` 2 — 5.1 KB · `gsd` 3 — 1.0 KB · `magicuidesign-mcp` 3 — 2.5 KB
+   - **Main agent: 242 tools, 2,022.4 KB (~518k tok) per tier re-read, every turn. Associate: 0.**
+   Caveats recorded honestly: "≈ tokens" is JSON bytes ÷ 4, crude; this is a static
+   inventory of what the host *offers*, not a token count of any real session; opencode may
+   filter further per-agent in a real request; **builtins are NOT measured** (not reliably
+   extractable from the minified CLI bundle — the MCP half dominates the numbers either
+   way); plugins (`opencode-supermemory`, `opencode-websearch-cited`) may add tools and are
+   not in the table; the run that motivated the doc measured 2.2M tokens with ~2,200× fewer
+   input/cache split — the hypothesis is confirmed in magnitude. The real numbers for the
+   *Main agent on this box* now exist; the earlier "~80 rea tools" guess was low by 74%.
 2. **Restrict the associate's tools.** Keep `read, write, edit, bash, grep,
    glob, list, patch, webfetch, websearch`; deny `task` and wildcard-deny the
    MCP servers. opencode 2.1.3 supports per-agent `tools` with server
@@ -819,6 +860,48 @@ constant, and they are the most invasive.
 None of this is worth measuring before the cheap wins land. Measure once,
 after.
 
+## 2026-11-12 — Ledger parity for inline dispatch (or honest unknown)
+
+Status: **implemented and verified live (2026-11-12).** Size: small.
+
+Verified against the real Voxelstead run (`~/Projects/random-project/project-6`, approved by the founder): `record_inline_run` re-verified all 10 contracts' blocking checks on disk (vitest, `npm run build`, headless Playwright smoke) — all green — wrote `.cubicore-factory-ledger.json` (10 passed, 0 flagged, `usage: null`, `usageMethod: "inline — host tokens not collected"`, `recorded: 2026-11-12T13:54:54Z`) and appended the first line to `.cubicore-factory-history.jsonl`. Caveat recorded honestly: the ledger reflects the disk as verified on 2026-11-12; the token cost of the original 21:50 run on 2026-11-11 remains permanently unknown — no instrument ever held it.
+
+What changed:
+
+- New MCP tool `record_inline_run`: re-verifies every contract's blocking checks on disk itself (the same verifier the execute path uses — the host's say-so is never trusted), then writes `.cubicore-factory-ledger.json`, appends to `.cubicore-factory-history.jsonl`, enters the retrospect/archive lifecycle stages, and prints the retrospective. If the ledger cannot be written (no plan on disk, unwritable path) the tool returns an error and says the run is NOT recorded — it never prints a green number it did not persist.
+- Usage semantics: `usage` argument accepts the host's own token totals if and only if the host actually sees them (validated as finite ≥ 0; a negative/NaN is refused); recorded with method `usageMethod: "inline — host-reported parent-session totals; includes the host's own work; upper bound"`. Omitted → `usage: null` and `usageMethod: "inline — host tokens not collected"`. Never an estimated number; never a fake zero.
+- The inline dispatch blueprint now instructs the host: after the associates return and the blocking checks run, call `record_inline_run`, pass usage only if genuinely visible, otherwise omit it.
+- `buildRetrospective` takes `usage: RetroUsage | null`. `Retrospective.totalTokens` is `number | null`. `renderRetrospective` prints `Tokens: unknown (inline dispatch — host tokens not collected)` for a null. No surface prints measured zero for an unmeasured run.
+- `execute` (session path) records `usageMethod: "session — measured from host session rows"` in the ledger so the two paths are distinguishable on disk.
+- Tests: `test/factory/retrospect.test.ts` pins both renderings; `test/record-inline-run.test.ts` pins tool registration, no-args → unknown-in-ledger, host-numbers → 600 and upper-bound method, negative numbers refused, missing plan refused. 546 tests pass; typecheck clean apart from the pre-existing `test/inline-dispatch.test.ts` noise.
+
+Why now: the Voxelstead run (2026-11-11, on 1.0.7, `~/Projects/random-project/project-6`) was the only real large-project build in the repository's history, and it produced **no ledger and no history line**. The one run capable of breaking any cost claim had nothing readable for the cost of the run. That gap is what this milestone closes.
+
+What is true today (verified in source):
+
+- The session path writes `.cubicore-factory-ledger.json` and appends to `.cubicore-factory-history.jsonl` on completion (`src/mcp/server.ts`, execute path). Usage is summed from each accepted associate's `settledUsage()` reading of the host's session rows.
+- The inline path — the host's own sub-agents, which is what the Voxelstead run used — reaches none of that code. The host owns the tokens; Cubicore spawns no Cubicore sessions; there is nothing to sum. The one in-tree admission is the comment near `src/mcp/server.ts:1484` ("the ledger may be empty when inline dispatch happened").
+- On the inline path the retrospective prints `Tokens: 0` as if it were a measurement. It is not a measurement; it is a rendering of "none collected."
+
+Scope (bounded; no new features, no second host, nothing touching dispatch semantics):
+
+1. The retrospective, the ledger, the history append, `describe()` and `/cubicore:status` carry usage as either *measured* (session path, as today) or the explicit literal `"unknown (inline dispatch)"`. Bare `0` is never printed as a fact for an unmeasured run.
+2. The inline dispatch blueprint tells the host: if the host can see the parent session's own usage at the end of the run, hand it back (it overcounts — it includes plan-writing and everything else on that session — but it is a defensible upper bound if its method is stated next to the number); otherwise skip, and the ledger records the skip. Either way, the field is *filled*, never silently absent.
+3. The retrospect for an inline run with no usage data says exactly: `Tokens: unknown (inline dispatch)`. The ledger writes `usage: null, usageMethod: "inline — host tokens not collected"`. The history line carries the same fields.
+4. No surface that the founder reads may distinguish "free" from "unknown" — that distinction is what the Voxelstead run was allowed to hide.
+
+Not in scope: Phase 0's benchmark arm and `src/index.ts` — that remains its own decision. This milestone makes live runs honest about what they spent; it does not make cost claims true by itself. It does not touch dispatch, gates, budgets or the scope union.
+
+Exit criteria:
+
+- ~~nothing on disk or in the terminal prints tokens-measured-zero for an unmeasured run~~ **met** — pinned by `test/factory/retrospect.test.ts` and `test/record-inline-run.test.ts`.
+- ~~a unit test pins the unknown rendering; the inline path has the same test contract as the session path~~ **met** — inline path now has its own handler-level test (not via the session spawner).
+- ~~a run on this host, dispatched inline, produces `.cubicore-factory-history.jsonl` with a truthful usage field (measured number or the explicit unknown) on the first completion~~ **met** — the Voxelstead run was recorded on 2026-11-12: `Tokens: unknown (inline dispatch — host tokens not collected)`, 10/10 passing on a fresh disk re-verification, history.jsonl has its first line. The cost was unknowable after the fact; the artifact chain now makes that visible instead of silent.
+
+What this unblocks: the Voxelstead-class build stops being an anecdote. With usage honest in the ledger, a live X/Y statement from real runs is possible — Phase 0's decision (benchmark vs measured-live) can be made on evidence rather than on principle.
+
+---
+
 ## Known state
 
 - Plugin and MCP front-ends dispatch, gate and report a verdict
@@ -829,6 +912,7 @@ after.
 - UI-capable plans require a design block (direction, palette 2–4 hex, typeface, notDoing, ambition); a UI plan without one is rejected before dispatch. `gateStyle` rejects every hex in the diff that is not in the declared palette. A contrast ≥ 4.5:1 check guards body text.
 - UI-capable plans require a browser smoke contract: a blocking check that launches the built app/preview and walks the core user flow with a browser driver (Playwright/Cypress/Puppeteer). A plan with unit tests and typecheck but no browser walk is rejected before dispatch (`missing-ui-smoke`). Unit tests do not prove the button works; the plan prompts (`renderPlanPrompt` and `PLANNER_PROMPT`) tell the planner the requirement. Missing Playwright on a host surfaces as an unverified check, not a false failure — the gate already distinguishes could-not-run from wrong-code.
 - Factory-fit pre-dispatch decision is computed at plan time, printed to the founder, attached to the plan, and enforced at execute time: a `single-agent` decision dispatches one associate, not N. `.cubicore-factory-fit.json` records the decision; `.cubicore-factory-ledger.json` records what happened (fit, outcome, tokens, cost).
+- 1.0.7 published to npm as `latest` (2026-11-11); the working tree is clean at version 1.0.7. First full-cycle run on 1.0.7 (~2026-11-11 21:34→21:50, `~/Projects/random-project/project-6`): "Voxelstead" — a clean-room voxel survival sandbox built via `plan-full` (10-contract pipeline, factory-fit decision `pipeline/10 workers/high confidence`, 5.00 dependency ratio). Tooling: Three.js + TypeScript, custom seeded worldgen/chunk mesher, TS strict, vitest + headless Playwright; zero Mojang assets/trademarks by construction (code-painted textures, OFL fonts, synthesized Web Audio SFX, original name, "not affiliated" disclaimer in README + title screen) — that, not a waiver, is what keeps the run IP-safe. Debug cycle 0 recorded 2 blocking findings (both check-vs-objective self-contradictions on the not-affiliated disclaimer greps, fixed by exempting those lines and re-verified) and 2 advisory (typescript@latest 7.0.2 breaks `interface-compiles`; foundation pinned ^5.9.3). All 10 contracts incl. `ui-smoke` marked done in `.cubicore-progress.json`; `playwright-smoke` boots the built game headless and walks title → play → HUD → pause → resume, failing on any console error. Founder rates the result ~8/10 on gameplay — **founder-assessed, single sample, no rubric; 8/10 is not a measured benchmark**. Wall time "28 minutes" is the founder's report; file mtimes span ~16 minutes; **no token ledger was written for this run** (`.cubicore-factory-ledger.json` absent from the project) — cost is unknown. The `missing-ui-smoke` gate shipped in 1.0.7 did not exist when the RL plan was written; Voxelstead's plan satisfied it by construction.
 - Associates dispatched by Cubicore carry `webfetch` + `websearch` by default (2026-11-11); `task` and all MCP servers stay wildcard-denied. The plan prompts require webfetching the official docs for the exact version before writing any contract that names an unfamiliar library or compiler flag, with the URL cited in the plan.
 - Preview preflight (2026-11-11): when the interpreter/runtime a command needs is not on PATH, the founder gets the missing binary's name and the exact install command, not a cryptic shell error.
 - Factory-fit assessment is shipped; lifecycle state machine, dashboard and host adapters are product work, not shipped behaviour

@@ -56,7 +56,7 @@ describe("gateRole — honest advisory on this host", () => {
     expect(r.detail).toMatch(/no role declared/i);
   });
 
-  test("role declared — advisory states the denies and names the host limitation", () => {
+  test("role declared — advisory states the denies go to the agent config and names the host limitation", () => {
     const contract = {
       ...VALID.contracts[0],
       role: role("owner_of_ast"),
@@ -64,6 +64,7 @@ describe("gateRole — honest advisory on this host", () => {
     const r = gateRole({ artifact, contract });
     expect(r.passed).toBe(true);
     expect(r.detail).toMatch(/webfetch/);
-    expect(r.detail).toMatch(/not enforceable here/i);
+    expect(r.detail).toMatch(/agent config/i);
+    expect(r.detail).toMatch(/attribution/i);
   });
 });

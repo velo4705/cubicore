@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderPrompt } from "../../src/dispatch/prompt";
 import { agentDefinition, agentDefinitions, agentId } from "../../src/dispatch/agent";
+import { toolsForContract } from "../../src/dispatch/spawn";
 import { RunObserver } from "../../src/dispatch/observe";
 import type { Check, Contract } from "../../src/contracts/types";
 
@@ -131,6 +132,61 @@ describe("agentDefinition", () => {
       (c) => `prompt for ${c.id}`,
     );
     expect(defs.map((d) => d.name)).toEqual(["cubicore-a", "cubicore-b"]);
+  });
+});
+
+describe("roles — authority is in the worker's hands", () => {
+  const role = {
+    name: "owner-of-types",
+    capabilities: ["src/**/*.ts"],
+    tools: { allow: ["rea*"], deny: ["bash"] },
+    exclusions: ["src/secrets.ts", "tests/**"],
+    escalation: "blocked, cannot locate the type registry",
+    handoff: { deliverable: "src/types/index.ts with the barrel export", audience: "owner-of-api" },
+  };
+
+  test("a role renders its authority into the brief — name, capabilities, exclusions", () => {
+    const prompt = renderPrompt(contract({ role }));
+    expect(prompt).toContain("# Your role authority");
+    expect(prompt).toContain("`owner-of-types`");
+    expect(prompt).toContain("src/**/*.ts");
+    expect(prompt).toContain("src/secrets.ts");
+    expect(prompt).toContain("tests/**");
+  });
+
+  test("the role's handoff is stated for the next role to read", () => {
+    expect(renderPrompt(contract({ role }))).toContain("barrel export");
+    expect(renderPrompt(contract({ role }))).toContain("owner-of-api");
+  });
+
+  test("the role's escalation words are the ones the worker must report", () => {
+    expect(renderPrompt(contract({ role }))).toContain("cannot locate the type registry");
+  });
+
+  test("deny tool names are not granted by the allow list — deny wins", () => {
+    const c = contract({
+      role: { name: "locked", capabilities: [], tools: { allow: ["bash", "rea*"], deny: ["bash"] } },
+    });
+    expect(toolsForContract(c).bash).toBe(false);
+    expect(toolsForContract(c)["rea*"]).toBe(true);
+  });
+
+  test("a role can grant an MCP server beyond the base whitelist", () => {
+    const baseline = toolsForContract(contract());
+    const withRole = toolsForContract(
+      contract({ role: { name: "researcher", capabilities: [], tools: { allow: ["rea*"] } } }),
+    );
+    expect(baseline["rea*"]).toBeUndefined();
+    expect(withRole["rea*"]).toBe(true);
+  });
+
+  test("denying a base tool removes it from the agent config map", () => {
+    expect(toolsForContract(contract()).bash).toBe(true);
+    expect(toolsForContract(contract({ role: { name: "ro", capabilities: [], tools: { deny: ["bash"] } } })).bash).toBe(false);
+  });
+
+  test("no role renders no authority block — backwards compatible", () => {
+    expect(renderPrompt(contract())).not.toContain("# Your role authority");
   });
 });
 

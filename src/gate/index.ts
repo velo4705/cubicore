@@ -348,7 +348,7 @@ export function gateRole(input: GateInput, _options?: GateOptions): GateResult {
     passed: true,
     detail: [
       `role "${role.name}" — advisory only on this host (no file or tool events are attributed to sessions).`,
-      deny ? `declared tool deny: ${(role.tools?.deny ?? []).join(", ")} — not enforceable here.` : "no tool deny declared.",
+      deny ? `declared tool deny: ${(role.tools?.deny ?? []).join(", ")} — passed to the agent config as a wall; per-event attribution is still impossible here.` : "no tool deny declared.",
       handoff ? `handoff owes ${role.handoff!.deliverable} for ${role.handoff!.audience} — checked only by the plan author before dispatch.` : "no handoff artifact declared.",
     ].join(" "),
     retryable: false,

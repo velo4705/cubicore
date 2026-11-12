@@ -23,7 +23,7 @@ import { sessionIdleStatus } from "./session-db-idle";
  * opencode 1.18.29 supports per-agent `tools` with server wildcards, so
  * `"*"` denies everything not explicitly allowed.
  */
-function toolsForContract(contract: Contract): Record<string, boolean> {
+export function toolsForContract(contract: Contract): Record<string, boolean> {
   // Research is a must for any real build — the planner hands you context, but
   // the associates building the product need to verify versions, functions and
   // libraries against their current docs, and real implementation reference
@@ -45,6 +45,16 @@ function toolsForContract(contract: Contract): Record<string, boolean> {
   };
   for (const tool of contract.tools ?? []) {
     tools[tool] = true;
+  }
+  // The role's tool policy is a wall, not prose: allow grants beyond the base
+  // (MCP wildcards namespaced by server name, e.g. "rea*"), deny removes.
+  // Applied deny-last so a deny always wins — the deny is also passed to the
+  // host as an agent-config `false`, which opencode 2.x honours.
+  for (const tool of contract.role?.tools?.allow ?? []) {
+    tools[tool] = true;
+  }
+  for (const tool of contract.role?.tools?.deny ?? []) {
+    tools[tool] = false;
   }
   return tools;
 }

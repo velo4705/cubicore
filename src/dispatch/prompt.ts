@@ -32,6 +32,10 @@ export function renderPrompt(contract: Contract, options: PromptOptions = {}): s
 
   sections.push(`# Objective\n\n${contract.objective}`);
 
+  if (contract.role) {
+    sections.push(renderRoleAuthority(contract.role));
+  }
+
   if (contract.tools && contract.tools.length > 0) {
     const tools = contract.tools;
     sections.push(
@@ -127,6 +131,64 @@ export function renderPrompt(contract: Contract, options: PromptOptions = {}): s
   sections.push(deliverableInstruction(contract.deliverable));
 
   return sections.join("\n\n");
+}
+
+/**
+ * The role's authority, rendered for the worker.
+ *
+ * A role that never reaches the worker is a label, not a contract. Every line
+ * here is written to be true on this host, not to be impressive: what can be
+ * enforced is enforced at the agent config (the deny is passed to the host),
+ * what cannot is stated honestly as comprehension, not compliance.
+ */
+function renderRoleAuthority(role: NonNullable<Contract["role"]>): string {
+  const sections: string[] = ["# Your role authority", `You are the \`${role.name}\`.`, ""];
+
+  if (role.capabilities.length > 0) {
+    sections.push("Capabilities you exercise:");
+    sections.push(...role.capabilities.map((c) => `- ${c}`));
+  } else {
+    sections.push("Capabilities: none declared — do the minimum this contract names.");
+  }
+  sections.push("");
+
+  const deny = role.tools?.deny ?? [];
+  const allow = role.tools?.allow ?? [];
+  sections.push("Tool policy for this role:");
+  sections.push(
+    deny.length > 0
+      ? `- You must not use (also passed to your agent config as a wall): ${deny.map((t) => `\`${t}\``).join(", ")}`
+      : "- No tool deny declared.",
+  );
+  sections.push(
+    allow.length > 0
+      ? `- You may use, beyond your base: ${allow.map((t) => `\`${t}\``).join(", ")}`
+      : "- Nothing beyond your base tool kit.",
+  );
+  sections.push("");
+
+  if (role.exclusions && role.exclusions.length > 0) {
+    sections.push("Role exclusions (contractual, not preferences):");
+    sections.push(...role.exclusions.map((e) => `- ${e}`));
+    sections.push("");
+  }
+
+  if (role.handoff) {
+    sections.push(
+      `Handoff you owe the integration wave: ${role.handoff.deliverable} for ${role.handoff.audience}. ` +
+        "The next role reads what you ship, not your reasoning — shape the artifact for it.",
+    );
+    sections.push("");
+  }
+
+  if (role.escalation) {
+    sections.push(
+      `If you cannot do this job: ${role.escalation} — stop work, report blocked with those words, ` +
+        "and do not mark it done. One revision attempt, then it goes to the factory.",
+    );
+  }
+
+  return sections.join("\n");
 }
 
 /**
