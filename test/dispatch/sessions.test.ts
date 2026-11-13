@@ -51,6 +51,57 @@ function autoIdleSpawner(sessionId = "ses_1", onPrompt?: () => void) {
   return { sessions, spawner, calls };
 }
 
+describe("the idle race — the event/DB split in opencode 2.x", () => {
+  test("the DB answer alone resolves without waiting for an event", async () => {
+    const sessions = new WorkerSessions(
+      {
+        async create() { return { sessionId: "ses_1" }; },
+        async prompt() { /* host never publishes idle */ },
+        async changedFiles() { return []; },
+      },
+      undefined, undefined, undefined, undefined, process.cwd(), undefined, false,
+      () => ({ idle: true, outcome: "succeeded" }),
+    );
+    const result = await sessions.run(contract());
+    expect(result.status).toBe("accepted");
+  });
+
+  test("a silent host with a silent DB still reports budget-exhausted", async () => {
+    const sessions = new WorkerSessions(
+      {
+        async create() { return { sessionId: "ses_1" }; },
+        async prompt() { /* never idles */ },
+        async changedFiles() { return []; },
+      },
+      undefined, undefined, undefined, undefined, process.cwd(), undefined, false,
+      () => ({ idle: false, outcome: null }),
+    );
+    const result = await sessions.run(contract({ budget: { tokens: 100, toolCalls: 5, wallMs: 50 } }));
+    expect(result.status).toBe("budget-exhausted");
+  });
+
+  test("the 2.x execution.succeeded event resolves without waiting for the DB", async () => {
+    const sessions = new WorkerSessions(
+      {
+        async create() { return { sessionId: "ses_1" }; },
+        async prompt() {
+          setTimeout(
+            () => sessions.onEvent({ type: "session.execution.succeeded", properties: { sessionID: "ses_1" } }),
+            25,
+          );
+        },
+        async changedFiles() { return []; },
+      },
+      undefined, undefined, undefined, undefined, process.cwd(), undefined, false,
+      () => ({ idle: false, outcome: null }),
+    );
+    const t0 = Date.now();
+    const result = await sessions.run(contract({ budget: { tokens: 100, toolCalls: 5, wallMs: 600 } }));
+    expect(result.status).toBe("accepted");
+    expect(Date.now() - t0).toBeLessThan(600);
+  });
+});
+
 describe("WorkerSessions", () => {
   test("accepts a run that reaches idle", async () => {
     const { sessions } = autoIdleSpawner();

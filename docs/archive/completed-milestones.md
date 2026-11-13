@@ -278,3 +278,146 @@ failure recorded in retrospect and ledger ship-blocking.
 
 ---
 Kept verbatim + summary of what shipped, 2026-11-10.
+
+## 2026-11-12 — Consolidation: completed work moved out of MILESTONE.md
+
+Moved from `MILESTONE.md` on 2026-11-12 so that file carries only open
+work. Records preserved verbatim or summarised where wording was updated.
+
+### Roles — shipped
+
+- Role schema on contracts (name, capabilities, tool allow/deny, handoff,
+  exclusions, escalation, budget); parse-time validation; role gate wired
+  into the gate chain; the plan prompt tells the planner to use full roles.
+  Tool policy is advisory on opencode 2.1.3 — no per-session attribution.
+  (2026-11-10)
+- Role authority reaches the worker (2026-11-12): `renderPrompt` emits
+  `# Your role authority` (name, capabilities, allow/deny, exclusions,
+  handoff, escalation words); `toolsForContract()` applies role deny
+  (wildcards, e.g. `rea*`, `webfetch`) to the spawned agent config deny map —
+  deny wins over the research default; role allow can grant beyond the base
+  whitelist. Verified by rendering Voxelstead's `Scaffold & Interface Engineer`
+  — its `webfetch` deny reaches the agent config.
+
+### Factory behaviour — shipped after the 2026-11-09/10 consolidation
+
+- Integration wave (2026-11-10): a top-level `integration` block on the plan
+  is run against the merged tree after verification — pieces that compose
+  into a broken build are not reported done.
+- Integration failure is caught before hand-off. (Phase-2 exit criterion,
+  met; the exit criteria list moved along with it.)
+- Research by default (2026-11-11): dispatched associates carry `webfetch` +
+  `websearch` in the default tool whitelist; `task` stays denied and the MCP
+  wildcard stays. Plan prompts carry a mandatory Research clause — webfetch
+  the official docs at the exact version, cite the URL. Motivation: the RL
+  plan guessed restitution 0.85 with no sanctioned way to consult the
+  reference. Research does not make a plan correct; it stops silent guesses.
+- Browser-smoke dispatch gate (2026-11-11): UI-capable plans (contract not
+  `ui: true` or writes a screen-facing extension) without a blocking check
+  whose command matches Playwright/Cypress/Puppeteer are rejected before
+  dispatch with `missing-ui-smoke` — the same pre-dispatch mechanism as
+  `missing-design`. Unit tests, `tsc` and `vitest` do not satisfy it. Verified
+  against the founder's real plan on disk in
+  `~/Projects/random-project/project-3`: the plan passes every other gate and
+  reports exactly one finding — `missing-ui-smoke`. Missing Playwright
+  surfaces as an unverified check, not a false failure.
+- Preview preflight (2026-11-11): `previewIt` runs a dependency preflight
+  (`src/plan/preview-lang.ts`) — a missing interpreter/runtime yields a
+  clean sentence naming the binary and the install command, not a cryptic
+  shell error. 27 binary families mapped; best-effort heuristic; it reads
+  what it sees, it does not guess.
+- Blocked→escalated, bounded slice (2026-11-12): contracts whose blocking
+  check could not run are recorded in `.cubicore-escalations.json`
+  (contract, check, reason, one next action, attempts counted across verify
+  cycles). Both `execute` and inline-dispatch runs reach the same verify
+  path; `/cubicore:status` prints the escalation line; both ledgers carry
+  the list into `.cubicore-factory-history.jsonl`. Verified live: a blocked
+  contract shows attempts 1 → 2 across cycles; absence of the file is the
+  absence of escalations.
+- Ledger parity for inline dispatch (2026-11-12): `record_inline_run`
+  re-verifies every contract's blocking checks on disk (same verifier as
+  the execute path), then writes
+  `.cubicore-factory-ledger.json`, appends the `history.jsonl` line, enters
+  retrospect/archive lifecycle stages and prints the retrospective. Usage is
+  recorded as measured (session path), host-reported parent-session totals as
+  a stated upper bound, or the literal `"unknown (inline dispatch — host
+  tokens not collected)"` — never as a measured zero. Verified live on the
+  Voxelstead project (10/10 green on disk re-verification; recorded
+  2026-11-12T13:54:54Z, `usage: null`); the original 2026-11-11 build's cost
+  remains permanently unknown — no instrument held it.
+- Tool-schema block measured (2026-11-12): `scripts/measure-tool-surface.mjs`
+  handshakes every MCP server in the live host config and prints tools,
+  bytes, approx tokens. Main agent on this host: 242 tools, 2,022.4 KB
+  (~518k tok) per tier re-read, every turn; `rea` is 139 tools / ~468k tok
+  (90% of the surface — the 2026-11-10 doc guessed ~80). The Cubicore
+  associate counted 0 MCP tools **in the measurement script** — since then,
+  the installed associate was verified to build with `allow *` on this host
+  (opencode 2.1.3 matches tool permissions per tool name; wildcard `*`, not
+  the tools field, is the enforcement point). The installer now writes a
+  deny-all `permission` block, see Status 2026-11-13 note in MILESTONE.md.
+  ≈tokens is JSON bytes ÷ 4. Builtins were not measured. Two disagreements
+  resolved by measurement, not theory; the 2.2M-token end-to-end run was
+  gated on exactly this price.
+
+### Exit criteria closed (Phase 2)
+
+- An integration failure is caught before hand-off — shipped (see
+  integration wave above).
+- A blocked contract changes the plan safely; **done (slice)** — a check
+  that could not *run* (missing binary, permission denied, offline
+  dependency) marks the contract blocked, not failed; `describe()` renders
+  `⚠️`; persistence and status carry the blocked state; refine still
+  refuses on an invalid plan; union-scope still stops colliding writes.
+- A bad check is distinguished from bad code; **done (slice)** — unverified
+  vs flagged through the full path; the retrospective says which is which.
+
+### Known state moved verbatim
+
+- Disjoint writes verified by digest on a real four-associate run.
+- Executable checks caught two defective planner fixtures.
+- `1.0.7` published to npm as `latest` (2026-11-11); the working tree is
+  clean at version 1.0.7. First full-cycle run on 1.0.7 (~21:34→21:50
+  2026-11-11, `~/Projects/random-project/project-6`): "Voxelstead", a
+  clean-room voxel survival sandbox planned via `plan-full`
+  (10-contract pipeline; factory-fit pipeline/10 high confidence; 5.00
+  dependency ratio). Tooling: Three.js + TypeScript, custom seeded
+  worldgen/chunk mesher; OFL fonts; synthesized SFX; original name;
+  "not affiliated" disclaimer in README and title screen. Debug cycle 0:
+  2 blocking (check-vs-objective self-contradictions on the not-affiliated
+  greps, fixed by exclusion, re-verified) + 2 advisory (typescript@7.0.2
+  breaks `interface-compiles`; foundation pinned ^5.9.3). All 10 contracts
+  incl. `ui-smoke` recorded done in `.cubicore-progress.json`. ~8/10 on
+  gameplay is the founder's rating — single sample, no rubric, not a
+  benchmark. The wall time of 28 minutes is the founder's report; file
+  mtimes span ~16 min and no token ledger was written for that run — cost
+  unknown, permanently.
+- 2026-11-10 lifecycle + ledger behaviour (union-scope, history.jsonl,
+  factory-fit enforced at execute, retrospect verdict, blocked-vs-flagged):
+  recorded earlier in this archive.
+
+### The first complete run — recorded
+
+A seven-contract plan ran to completion in two waves, and the result was
+verified three ways: the contract's own checks (21/21), the full suite (54
+tests), and a script written independently of the associates' test files to
+confirm the founder's stated behaviours. Proofs from the run:
+
+- Inline sub-tasks render in the host's own UI: five `Cubicore-Associate`
+  entries appeared in the conversation, each with its brief, via a
+  config-registered agent rather than a plugin hook.
+- Stage ordering is real. Foundation landed, then the five route modules
+  together, then the dispatcher, which had to wait because it imports the
+  route descriptors at runtime.
+- The plan's own checks were not enough, and the associates said so. The
+  health contract's "uptime is non-decreasing" assertion passes against a
+  `Date.now()` implementation, because a real clock does not move backwards
+  in an ordinary run. An associate added a test that swaps in a
+  backwards-jumping clock, and that is the assertion that actually pins
+  monotonicity.
+- Negative testing found a real hang. Removing the 204 rule made the HTTP
+  client wait forever rather than fail, because an exception while writing
+  the response left the connection open with no body.
+
+Two defects were Cubicore's, not the associates': the brief could
+contradict itself about the files it owns, and the graph budget's edge
+ceiling was never checked against the number of edges the plan needed.

@@ -112,6 +112,39 @@ describe("the research sub-agent", () => {
     expect(permission.external_directory).toBe("deny");
   });
 
+  it("ships the deny-all permission wall — MCP wildcards match and lose", () => {
+    const path = fixture();
+    installAgent(path);
+    const config = JSON.parse(readFileSync(path, "utf8"));
+    const permission = config.agent[ASSOCIATE_AGENT_ID].permission as Record<string, string>;
+    expect(permission["*"]).toBe("deny");
+    expect(permission.rea_hub_repo_search).toBeUndefined(); // matched by */wildcard, not named
+    expect(permission.read).toBe("allow");
+    expect(permission.edit).toBe("allow");
+    expect(permission.bash).toBe("allow");
+    expect(permission.webfetch).toBe("allow");
+    expect(permission.websearch).toBe("allow");
+    expect(permission.task).toBe("deny");
+    expect(permission.external_directory).toBe("deny");
+  });
+
+  it("the research agent is deny-all beyond the tools it needs", () => {
+    const config = researchAgentConfig();
+    const permission = config.permission as Record<string, string>;
+    expect(permission["*"]).toBe("deny");
+    expect(permission.read).toBe("allow");
+    expect(permission.edit).toBe("deny");
+    expect(permission.bash).toBe("deny");
+    expect(permission.task).toBe("deny");
+    expect(permission.external_directory).toBe("deny");
+    expect(permission.doom_loop).toBe("deny");
+  });
+
+  it("is hidden as an internal subagent, not a mention candidate", () => {
+    const config = researchAgentConfig();
+    expect(config.mode).toBe("subagent");
+  });
+
   it("is bounded, so it cannot wander", () => {
     expect(researchAgentConfig().maxSteps).toBe(RESEARCH_MAX_STEPS);
   });

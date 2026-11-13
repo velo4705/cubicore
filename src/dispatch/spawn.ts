@@ -133,6 +133,12 @@ export class WorkerSessions {
     private readonly baseline?: string,
     /** Give each associate its own worktree. Off means they share the tree. */
     private readonly isolate = true,
+    /**
+     * How to ask the host's session database whether this session idled.
+     * Injected so tests can drive the race without a live DB; production
+     * defaults to the probe in `session-db-idle.ts`.
+     */
+    private readonly idleProbe: (sessionId: string) => { idle: boolean; outcome: string | null } = (id) => sessionIdleStatus(id),
   ) {}
 
   /** Wire this to the plugin's `event` hook, once. */
@@ -178,11 +184,11 @@ export class WorkerSessions {
       // opencode 2.1.3 may terminate the agent but never publish session.idle
       // to the MCP's event pump. The session database is ground truth for
       // termination. Poll it as the fallback when the event path misses.
-      const settled = await waitFor(
-        () => observer.snapshot().idle,
-        contract.budget.wallMs,
-      );
-      const terminalIdle = settled || await pollIdle(sessionId, contract.budget.wallMs);
+      // Two senses of "idled", raced concurrently — the event stream (when it
+      // delivers) resolves first and cheaply; the DB probe is the fallback and
+      // races alongside instead of after, so the wall budget is never burned
+      // waiting for an event the host never emits.
+      const terminalIdle = await waitForIdle(this.idleProbe, observer, sessionId, contract.budget.wallMs);
 
       // Reaching here without an idle session means the worker blew its wall
       // budget. Ask the host to cancel; whether that actually stops the spend
@@ -197,7 +203,7 @@ export class WorkerSessions {
         }
       }
 
-      this.trace?.("worker.idle", { contractId: contract.id, settled });
+      this.trace?.("worker.idle", { contractId: contract.id, idle: terminalIdle });
       const snapshot = observer.snapshot();
 
       // Per-worker attribution comes from the event stream: `file.edited`
@@ -291,33 +297,38 @@ export class WorkerSessions {
   }
 }
 
-/** Poll the session database until it sees the terminal-idle flag set. */
-async function pollIdle(sessionId: string, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const res = sessionIdleStatus(sessionId);
-    if (res.idle) return true;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return false;
-}
-
-/** Resolves true when the condition holds, false when the budget runs out. */
-async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
-  if (condition()) return true;
+/**
+ * Resolves true as soon as either the event stream says the session idled
+ * or the session database shows the terminal idle flag — whichever happens
+ * first. Opencode 2.x splits idle into execution.succeeded/interrupted/failed
+ * events that may or may not reach the pump; the DB is always written, so
+ * it races alongside rather than after a full wall-budget wait. False only
+ * when nothing idles inside the wall budget.
+ */
+async function waitForIdle(probe: (sessionId: string) => { idle: boolean; outcome: string | null }, observer: RunObserver, sessionId: string, wallMs: number): Promise<boolean> {
+  if (observer.snapshot().idle) return true;
+  const immediate = probe(sessionId);
+  if (immediate.idle) return true;
 
   return new Promise((resolve) => {
-    const deadline = setTimeout(() => {
+    const poll = setInterval(() => {
+      if (observer.snapshot().idle) {
+        clearInterval(poll);
+        clearTimeout(timer);
+        resolve(true);
+        return;
+      }
+      const res = probe(sessionId);
+      if (res.idle) {
+        clearInterval(poll);
+        clearTimeout(timer);
+        resolve(true);
+      }
+    }, 250);
+    const timer = setTimeout(() => {
       clearInterval(poll);
       resolve(false);
-    }, timeoutMs);
-
-    const poll = setInterval(() => {
-      if (!condition()) return;
-      clearInterval(poll);
-      clearTimeout(deadline);
-      resolve(true);
-    }, 25);
+    }, wallMs);
   });
 }
 

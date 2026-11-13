@@ -322,7 +322,7 @@ async function pumpEvents(
   while (!signal.aborted) {
     try {
       const response = await fetch(
-        `http://127.0.0.1:${runtime.port}/event?directory=${encodeURIComponent(runtime.directory)}`,
+        `http://127.0.0.1:${runtime.port}/api/event?directory=${encodeURIComponent(runtime.directory)}`,
         { headers: { Authorization: auth, Accept: "text/event-stream" }, signal },
       );
       const body = response.body;

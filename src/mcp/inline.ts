@@ -43,6 +43,31 @@ export function associateAgentConfig(): Record<string, unknown> {
       "never reads another associate's brief, and never edits outside the files it was given.",
     mode: "subagent",
     temperature: 0,
+    // The agent config is the tool wall — opencode 2.x drops any per-prompt
+    // `tools` field, so restriction must live here. Deny-all, then allow
+    // exactly the base tool kit. Wildcards address MCP tools by server
+    // prefix; `cubicore_plan_mark` / `plan_mark` belt-and-suspenders allow
+    // Cubicore's own tool under either namespace spelling.
+    permission: {
+      "*": "deny",
+      read: "allow",
+      edit: "allow",
+      glob: "allow",
+      grep: "allow",
+      list: "allow",
+      bash: "allow",
+      webfetch: "allow",
+      websearch: "allow",
+      lsp: "allow",
+      skill: "allow",
+      question: "ask",
+      task: "deny",
+      external_directory: "deny",
+      doom_loop: "deny",
+      browser: "deny",
+      plan_mark: "allow",
+      cubicore_plan_mark: "allow",
+    },
     prompt: [
       "You are a Cubicore associate. One brief, nothing else.",
       "",

@@ -27,13 +27,25 @@ export function researchAgentConfig(): Record<string, unknown> {
       "half-finished. Never edits anything.",
     mode: "subagent",
     temperature: 0,
-    // Read-only by construction. No edit, no shell, no directory escape.
+    // Read-only by construction, deny-all beyond the tools it needs.
+    // opencode 2.x matches permission keys as wildcards against tool names,
+    // so `*: deny` removes every MCP server's schema from the associate's
+    // reach too — the point of the wildcard-deny line, now real.
     permission: {
+      "*": "deny",
+      read: "allow",
+      glob: "allow",
+      grep: "allow",
+      list: "allow",
+      webfetch: "allow",
+      lsp: "allow",
+      skill: "allow",
       edit: "deny",
       bash: "deny",
-      webfetch: "allow",
+      task: "deny",
       external_directory: "deny",
       doom_loop: "deny",
+      browser: "deny",
     },
     maxSteps: RESEARCH_MAX_STEPS,
     prompt: [
