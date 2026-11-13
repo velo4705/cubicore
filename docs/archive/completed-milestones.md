@@ -421,3 +421,59 @@ confirm the founder's stated behaviours. Proofs from the run:
 Two defects were Cubicore's, not the associates': the brief could
 contradict itself about the files it owns, and the graph budget's edge
 ceiling was never checked against the number of edges the plan needed.
+
+## 2026-11-13 — Consolidation: done work moved out of MILESTONE.md (again)
+
+Moved from `MILESTONE.md` on 2026-11-13 so that file carries only open work.
+
+### 2026-11-13 — Idle observer fix
+
+Status: code fixed, packed and smoke-verified; live dispatch not re-tested.
+
+- `dispatch`'s worker loop waited for `observer.snapshot().idle`, driven by
+  the MCP pump subscribed to `/event?directory=...`; on opencode 2.x that
+  route serves the UI shell HTML, not an event stream — MCP had been blind to
+  idle since launch and ran every dispatch to `budget-exhausted`.
+- The fallback `pollIdle` ran only after the wall budget was already spent —
+  useless by construction.
+- Fix: pump URL `/event` → `/api/event`; `waitFor` + `pollIdle` replaced by
+  `waitForIdle` — event and DB race every 250 ms. Optional `idleProbe`
+  injection added so tests can verify race semantics. Tests: three new race
+  cases pin DB-only answer, silent-host/silent-DB distinction, and 2.x
+  `session.execution.succeeded`. 565 pass; typecheck clean. Smoke: packed
+  1.0.8 tarball contains the fix; scratch install + MCP handshake OK.
+- Not yet live on the founder's host — the 1.0.7 bundle serves until
+  `npx cubicore@latest setup` is run.
+
+### Context: MCP wildcard and install-time denial
+
+- 2026-11-13 morning: confirmed via `opencode-cli api GET /api/agent` that
+  the installed Cubicore agents on this host showed `allow *` — i.e., zero
+  tool restriction, contrary to the earlier 1.0.7 claim. Fix landed in
+  `src/mcp/agents.ts` / `inline.ts` / `research-agent.ts`: deny-all
+  permission blocks with base allow lists (read/edit/glob/grep/list/bash/
+  webfetch/websearch/lsp/skill), `task`/`external_directory`/`doom_loop`/
+  `browser` denied. Verified at config-build layer — scratch standalone
+  instance builds the rulesets with agent rules appended after global rules
+  (last match wins), and the wildcard deny survived migration.
+- The 2026-11-11 "associate counts 0 MCP tools" figure was false for the
+  installed agents; it was true of `toolsForContract()` only — i.e., of the
+  measurement script's own setup. Corrected 2026-11-13 in both places.
+
+### Deferred plan instrument step 1 — done earlier
+
+### Deferred plan instrument step 2 — done
+
+- Tools restricted in install config; wildcard glob matching live (see
+  above). Founder-side note: extension instructions for the Main agent's
+  own tool surface remain open ("One thing this exposes about the product")
+  — not done.
+
+## 2026-11-13 — Milestone-consolidation pass
+
+MILESTONE.md was pared back to carry only unfinished work: the idle observer
+fix and the 2-step cost plan were removed after their code landed (test suite
+and live smoke honoured); shipped bullets from Phase 2, Area 2/3/4 exit
+criteria, and intro paragraphs describing finished work moved here or were
+collapsed to pointers. The file's purpose going forward is to empty itself by
+completing each item, the same rule as the rest of the archive split.

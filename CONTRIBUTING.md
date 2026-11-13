@@ -77,7 +77,7 @@ Common shape:
 ## Adding an AI agent / host
 
 **The whole point of a host adapter is that the MCP doesn't have to know
-what you added it for.** Read `MILESTONE.md` Phase 3 for the contract: the
+what you added it for.** Read `TODO.md` Area 3 — Phase 3 — for the contract: the
 adapter must let Cubicore plan → dispatch → gate → integrate without the MCP
 caring which host runs the parts.
 
