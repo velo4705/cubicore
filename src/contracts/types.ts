@@ -223,6 +223,13 @@ export interface Plan {
   /** Design direction for UI-capable projects. Absent for back-end/library work. */
   design?: Design;
   /**
+   * One concrete reference the plan inherits from — a named image/site the
+   * founder chose, or one Cubicore proposed and the founder approved. UI-
+   * capable plans without one can only default to the set-piece; the plan
+   * cannot look like anything else first.
+   */
+  reference?: string;
+  /**
    * "Planner's opinion" — the planner's short argument for what this build
    * should be in full, what is deliberately left out, and why.
    *
@@ -323,6 +330,7 @@ export type FindingCode =
   | "weak-contrast-palette"
   | "missing-design"
   | "missing-ui-smoke"
+  | "missing-reference"
   | "missing-objective"
   | "duplicate-id"
   | "duplicate-check-id"

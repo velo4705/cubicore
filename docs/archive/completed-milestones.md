@@ -477,3 +477,67 @@ and live smoke honoured); shipped bullets from Phase 2, Area 2/3/4 exit
 criteria, and intro paragraphs describing finished work moved here or were
 collapsed to pointers. The file's purpose going forward is to empty itself by
 completing each item, the same rule as the rest of the archive split.
+
+## 2026-11-14 — Stage-scoped quality bar in the brief
+
+Status: shipped in this tree; not dispatched (no agent invoked).
+
+Briefs produced by Cubicore now carry a "Do the job properly, not minimally"
+block — production-grade code, no stubs, no dead code, names that mean what
+they are, edge cases (empty/long/unmount/missing-network/race), accessibility
+minimums for UI, no TODO/FIXME. Six bullets, no persona names, no new agents.
+Motivation: the 16-persona ask, removed after accounting showed it re-reads
+~500+ tokens against the hot cache on every turn with zero measurable benefit;
+the missing fix was absence of a quality bar on the *executor* side, not the
+absence of supervisor personas.
+
+Verified by rendering Voxelstead's real contracts (PROJECT/PLAN) with the new
+brief; output lands inline between objective and write-scope. 565 tests pass.
+What remains open: stage-scoped instructions for the planner and reviewer, and
+whether this block makes any measurable difference on a real build.
+
+## 2026-11-14 — Phase A of the design-intake idea (founder-approved first shot)
+
+Status: shipped in this tree.
+
+UI-capable plans now require a `reference` field — a named URL the founder
+named (or approved after Cubicore proposed two) — enforced by the validator
+as `missing-reference`, the same pre-dispatch mechanism as `missing-design`.
+The plan prompts (PLANNER_PROMPT and renderPlanPrompt) carry the intake
+question: pick ONE named look, your own ask before anything else. Palette
+must derive from the reference. PLANNER_PROMPT and renderPlanPrompt updated.
+Schema, parser and validator round-trip `reference`. Tests: 3 new pin the
+absent/present/back-end cases; 568 pass. Phase B (variants), Phase C
+(fetch-and-quote) and Phase D (founder picking builds) remain open.
+
+## 2026-11-14 — Phase B of the design-intake idea (founder sees three variants)
+
+Status: shipped in this tree; not invoked on any project (founder's call).
+
+New module `src/plan/variants.ts` renders three structurally different pages
+(editorial / full accent / calm list) from the plan's design block and
+`reference`. Refuses without design or without reference — variants would
+default to the genre mean, the exact failure the intake phase exists to kill.
+New MCP tools: `variants` renders and lists the three HTML files with the
+serve/open instruction; `variant_pick --variant <a|b|c> [--note]` records the
+pick into `.cubicore-factory-state.json` (`plan` stage entry). The execute
+prompt says: if UI-capable with design and no pick recorded, stop and ask —
+no dispatch until a pick exists. All palette-derived output uses only declared
+palette hexes (gateStyle still passes). Tests: 6 pin refusal-without-design,
+refusal-without-reference, 3×render + palette-consistency-on-output, pick
+recording, pick-unrendered refused. 574 pass. Ready for the founder to look
+at a real plan's three directions before any UI dispatch happens in anger.
+
+## 2026-11-14 — Domain-tool hints (moved the brief→tools bridge beyond game engines)
+
+Status: shipped in this tree.
+
+Widened `src/plan/engine-hint.ts` from the original three engines to the
+domain tools the founder actually named: Godot, Unity, Unreal, Blender,
+Arduino (incl. ESP32/ESP8266), FreeCAD, Fusion 360 (in-app MCP since May
+2026), GIMP, ImageMagick, Photoshop (community bridge — no first-party Dec
+2026), Figma. All hint→tool pairs are installable MCP servers, not wishes.
+`renderEngineNotice` prints the miss in plan_write; the planner prompt tells
+the founder to declare the matching server under `tools` on each contract
+that needs one. 582 tests pass; bundle rebuilt. Maintenance note: the list
+is hand-maintained and will decay — new tools land by PR, not by wish.

@@ -29,6 +29,41 @@ describe("retrospective — tokens are measured or honestly unknown", () => {
     expect(rendered).not.toContain("Tokens: 0");
   });
 
+  test("scope escapes are surfaced by name — union-scope evidence stays visible", () => {
+    const artifact = {
+      contractId: "w1",
+      status: "flagged",
+      deliverable: "diff",
+      changedFiles: ["src/hidden.ts"],
+      unresolved: ["w1 — scope: worker modified undeclared path(s): src/hidden.ts"],
+      unverified: false,
+    };
+    const r = buildRetrospective({
+      fit: undefined,
+      artifacts: [artifact],
+      unresolved: ["w1 — scope: worker modified undeclared path(s): src/hidden.ts"],
+      deferred: 0,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+    });
+    expect(r.escapes).toHaveLength(1);
+    expect(r.escapes[0].contractId).toBe("w1");
+    expect(r.escapes[0].files).toEqual(["src/hidden.ts"]);
+    expect(renderRetrospective(r)).toContain("Scope escapes:");
+    expect(renderRetrospective(r)).toContain("src/hidden.ts");
+  });
+
+  test("a clean run renders no escapes section", () => {
+    const r = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+    });
+    expect(r.escapes).toEqual([]);
+    expect(renderRetrospective(r)).not.toContain("Scope escapes:");
+  });
+
   test("a measured usage sums every billable class — cache counts", () => {
     const r = buildRetrospective({
       fit: undefined,

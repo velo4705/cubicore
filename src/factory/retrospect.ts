@@ -30,6 +30,8 @@ export type Retrospective = {
    */
   totalTokens: number | null;
   verdict: string;
+  /** Every contract that wrote outside the union of declared writes — named files, so the founder sees the leak, not "sometimes someone drifts". */
+  escapes: Array<{ contractId: string; files: string[] }>;
   integration?: IntegrationOutcome;
 };
 
@@ -56,6 +58,21 @@ export function buildRetrospective(opts: {
   const flagged = opts.artifacts.filter((a) => a.status === "flagged").length;
   const blocked = opts.artifacts.filter((a) => a.status === "blocked").length;
   const passed = opts.artifacts.length - flagged - blocked;
+
+  /** Every contract whose writes escaped the declared union, with the files named. */
+  let escapes = (() => {
+    const found: Array<{ contractId: string; files: string[] }> = [];
+    for (const a of opts.artifacts) {
+      for (const line of opts.unresolved) {
+        if (!line.startsWith(`${a.contractId} — scope: `)) continue;
+        const m = /undeclared path\(s\): (.+)$/.exec(line);
+        if (m) {
+          found.push({ contractId: a.contractId, files: m[1].split(/,\s*/).map((f) => f.trim()) });
+        }
+      }
+    }
+    return found;
+  })();
 
   const fit = opts.fit;
   let verdict: string;
@@ -89,6 +106,7 @@ export function buildRetrospective(opts: {
     deferred: opts.deferred,
     totalTokens,
     verdict,
+    escapes: escapes,
     ...(integration !== undefined ? { integration } : {}),
   };
 }
@@ -105,6 +123,9 @@ export function renderRetrospective(r: Retrospective): string {
       ? r.integration.passed
         ? `- Integration: passed`
         : `- Integration: FAILED — ${r.integration.output.trim().slice(0, 120)}`
+      : ``,
+    r.escapes.length > 0
+      ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,
     `- Verdict: ${r.verdict}`,
   ];

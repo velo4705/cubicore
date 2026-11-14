@@ -542,7 +542,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale"].includes(key)) {
+    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -631,6 +631,23 @@ export function parsePlan(raw: string): Plan {
     }
   }
 
+  const referenceRaw = json.reference;
+  let reference: string | undefined;
+  if (referenceRaw !== undefined && referenceRaw !== null) {
+    if (typeof referenceRaw !== "string" || referenceRaw.trim().length === 0) {
+      problems.push("reference must be a non-empty string");
+    } else {
+      const trimmed = referenceRaw.trim();
+      if (!/^https?:\/\//i.test(trimmed)) {
+        problems.push("reference must start with http:// or https://");
+      } else if (trimmed.length > 500) {
+        problems.push("reference must be at most 500 characters");
+      } else {
+        reference = trimmed;
+      }
+    }
+  }
+
   const design = parseDesign(json.design, problems);
   const integration = parseIntegration(json.integration, problems);
   const factoryFit = parseFactoryFit(json.factoryFit, problems);
@@ -661,6 +678,7 @@ export function parsePlan(raw: string): Plan {
     preview: parsePreview(json.preview, problems),
     ...(integration === undefined ? {} : { integration }),
     ...(design === undefined ? {} : { design }),
+    ...(reference === undefined ? {} : { reference }),
     ...(factoryFit === undefined ? {} : { factoryFit }),
     ...(scale === undefined ? {} : { scale }),
   };

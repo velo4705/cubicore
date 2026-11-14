@@ -127,6 +127,29 @@ export function isUiCapable(plan: Plan): boolean {
 
 import { bestPairContrast } from "./luminance";
 
+/**
+ * UI-capable plans carry the founder's taste already, as one named thing they
+ * approved — not a mood word, not a genre default. Without a reference, the
+ * plan can only produce the dataset mean: polished, generic, thrown away.
+ */
+function checkReference(plan: Plan): Finding[] {
+  if (!isUiCapable(plan)) return [];
+  const ref = (plan as Plan & { reference?: string }).reference;
+  if (typeof ref === "string" && ref.trim().length > 0) return [];
+  const ids = plan.contracts.map((c) => c.id);
+  return [
+    {
+      code: "missing-reference",
+      contractIds: ids,
+      message:
+        "plan is UI-capable but carries no reference; the planner must ask the founder " +
+        "for ONE concrete reference (URL, image or work — never a mood word), " +
+        "get approval, and record it as the plan's top-level \"reference\" field. " +
+        "A plan without one produces exactly the average of everything you already know",
+    },
+  ];
+}
+
 function checkDesign(plan: Plan): Finding[] {
   if (!isUiCapable(plan)) return [];
   if (plan.design && plan.design.palette.length >= 2 && plan.design.notDoing.length > 0) {
@@ -274,6 +297,7 @@ export function validatePlan(
   }
 
   findings.push(...checkDesign(plan));
+  findings.push(...checkReference(plan));
   findings.push(...checkUiSmoke(plan));
   findings.push(...checkGraphBudget(plan));
 

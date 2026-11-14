@@ -52,7 +52,7 @@ done there.
 
 ## Area 4 — User-Visible Value (Phase 2 remaining)
 
-- [ ] Collision/scope-violation surfaced to founder (not buried in `unresolved[]`)
+- [x] Collision/scope-violation surfaced to founder (not buried in `unresolved[]`) — 2026-11-14: `renderRetrospective` prints `Scope escapes: <contractId> (…)`, and both ledgers carry the escapes list. Files named: the founder now sees *which* file leaked which scope.
 - [ ] Archive of plan-and-run context across runs — one place, not `CUBICORE_PLAN*.md` archaeology
 - [ ] Tight summary after run: done / not done, what to do next, one line
 - [ ] Exit: the founder can answer "what is Cubicore doing right now?" via one command (largely true — keep)

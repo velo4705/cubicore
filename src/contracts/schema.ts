@@ -276,6 +276,7 @@ export const planSchema = {
         },
       },
     },
+    reference: { type: "string", minLength: 1 },
     design: {
       type: "object",
       additionalProperties: false,
@@ -364,6 +365,16 @@ Rules:
 - "steps" within a contract are ordered sub-tasks. Each step writes its own
   files and can be tracked independently so an interrupted run can resume
   from completed steps rather than restarting the whole contract.
+- **Reference (mandatory for any UI-capable plan):** before writing the
+  plan, ask the founder one question: "Name one existing piece of work this
+  product is closest to in look — an image, a site, a game, a campaign, an
+  era — and why." A URL or link is required; a mood word like "sunset" is not
+  a reference. Carry the founder's answer verbatim into the plan's top-level
+  'reference' field ("reference": "<https://...>"). If they cannot name one,
+  propose TWO concrete candidates you would pick for this brief and ask them
+  to approve one — that approval becomes 'reference'. The palette, type and
+  signature MUST derive from the reference, not from the genre mean; the
+  plan inherits its look.
 - UI-capable plans MUST carry a "design" block. UI-capable means: any
   contract with "ui": true, or any "writes" glob ending in a screen-facing
   extension (.html, .css, .jsx, .tsx, .svelte, .vue, .astro, .scss/.sass/.less).

@@ -245,6 +245,32 @@ describe("ui smoke — the built app is walked, not just compiled", () => {
   });
 });
 
+describe("reference — UI-capable plans inherit a specific look", () => {
+  test("a UI plan without a reference is rejected", () => {
+    const result = validatePlan(
+      plan({ contracts: [contract({ ui: true })] }),
+    );
+    expect(codes(result)).toContain("missing-reference");
+  });
+
+  test("a UI plan with a reference is not rejected for absence of reference", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true }), uiSmokeContract()],
+        reference: "https://example.com/artwork",
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-reference");
+  });
+
+  test("a back-end plan needs no reference", () => {
+    const result = validatePlan(
+      plan({ contracts: [contract({ writes: ["src/api.ts"] })] }),
+    );
+    expect(codes(result)).not.toContain("missing-reference");
+  });
+});
+
 describe("design elevation — UI-capable plans", () => {
   test("a UI contract without a design block is rejected", () => {
     const result = validatePlan(plan({
@@ -263,6 +289,7 @@ describe("design elevation — UI-capable plans", () => {
   test("a UI plan with a complete design block and a smoke contract passes", () => {
     const result = validatePlan(plan({
       contracts: [contract({ ui: true, id: "app" }), uiSmokeContract()],
+      reference: "https://no-country-can-build-that.art/",
       design: {
         direction: "terminal",
         palette: ["#0f0f0f", "#e6e6e6", "#3b82f6"],

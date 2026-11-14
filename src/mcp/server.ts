@@ -17,11 +17,14 @@ import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { nodePathEnv, previewIt } from "../plan/preview";
+import { generateVariants, recordVariantPick } from "../plan/variants";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { nextLine } from "./next";
 import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
+import { toolHints, renderToolHint } from "../plan/tool-hint";
+import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
 import { recordEscalations, clearEscalations, escalatedLedger, escalatedLine } from "../factory/escalations";
@@ -712,6 +715,7 @@ async function runToCompletion(
         flagged: retrospective.flagged,
         deferred: retrospective.deferred,
         totalTokens: retrospective.totalTokens,
+        escapes: retrospective.escapes,
       },
       version: 1,
       topology: parsed.topology,
@@ -903,6 +907,7 @@ async function recordInlineRun(args: {
       blocked: retrospective.blocked,
       deferred: retrospective.deferred,
       totalTokens: retrospective.totalTokens,
+      escapes: retrospective.escapes,
     },
     version: 1,
     topology: loaded.plan.topology,
@@ -1211,6 +1216,7 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   }
 
   const askedFactory = await askFounderFactoryFit(fit, parsed.contracts.length);
+  const toolCheck = renderToolHint(toolHints(parsed));
   return text(
     [
       `Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
@@ -1219,6 +1225,7 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
       renderFit(fit),
       "",
       "Nothing has run.",
+      ...(toolCheck.length > 0 ? ["", ...toolCheck] : []),
       ...askedFactory,
     ].join("\n"),
   );
@@ -2247,6 +2254,32 @@ export const TOOLS = [
       markPlanContract(args),
   },
   {
+    name: "host_tools",
+    description:
+      WHEN +
+      "Lists the MCP servers declared in this host's opencode config, read-only. " +
+      "Use this before declaring 'tools' in a plan — do not guess names. Returns the " +
+      "exact server ids the host would accept.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    handler: async () => {
+      const tools = readHostTools();
+      if (tools.length === 0) {
+        return text(
+          "No MCPs declared in this host's config (or the config could not be read). " +
+            "Declare servers under your opencode.json `mcp:` or `servers:` blocks.",
+          true,
+        );
+      }
+      return text([
+        `${tools.length} MCP server(s) declared:`,
+        ...tools.map((t) => `- \`${t.name}\` (${t.type}) → ${t.commandOrUrl.slice(0, 120)}`),
+      ].join("\n"));
+    },
+  },
+  {
     name: "install",
     description:
       WHEN +
@@ -2353,6 +2386,83 @@ export const TOOLS = [
       },
     },
     handler: async (args: { directory?: string; projectKind?: string }) => research(args.directory ?? process.cwd()),
+  },
+  {
+    name: "variants",
+    description:
+      WHEN +
+      "Renders three candidate pages from the plan's design block and reference — " +
+      "editorial / full accent / calm list — so the founder can see a direction before " +
+      "the build starts. Returns the three file paths and the serve command. The pick " +
+      "is recorded via variant_pick; that pick becomes the constraint for the build.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        plan: { type: "string", description: "Plan JSON; omit to use CUBICORE_PLAN.json" },
+        directory: { type: "string", description: "Working directory" },
+      },
+    },
+    handler: async (args: { plan?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      let raw = args.plan;
+      if (!raw) {
+        try {
+          raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+        } catch {
+          return text(`No ${PLAN_JSON} in ${dir}. Plan first, or pass the plan.`, true);
+        }
+      }
+      const loaded = loadPlan(raw);
+      if (!loaded.ok) return text(`Refusing: ${loaded.reason}`, true);
+      if (!loaded.plan.design) {
+        return text(
+          "This plan has no `design` block. Variants exist to compare directions — add the " +
+            "block first (with a reference the founder approved), then call variants.",
+          true,
+        );
+      }
+      if (!loaded.plan.reference) {
+        return text(
+          "This plan has no `reference`. Variants would default to the genre mean; the " +
+            "founder would pick what this whole exercise exists to avoid. Pick one, record it, then call variants.",
+          true,
+        );
+      }
+
+      const out = generateVariants(loaded.plan, dir);
+      if (!out.ok) return text(out.error ?? "Could not render variants.", true);
+      return text([
+        `Rendered 3 directions in ${dir}/CUBICORE_VARIANTS/:`,
+        ...out.paths.map((p) => `  ${p.id.toUpperCase()}  ${p.path}  — ${p.headline}`),
+        "",
+        "Open them in a browser. Pick ONE — call `variant_pick` with that id (a/b/c).",
+        "The pick becomes the constraint for the build. No pick → no dispatch.",
+      ].join("\n"));
+    },
+  },
+  {
+    name: "variant_pick",
+    description:
+      WHEN +
+      "Records which variant the founder picked (a/b/c). Writes the pick into the project's " +
+      ".cubicore-factory-state.json so the ledger and status know which direction was chosen. " +
+      "The build inherits that design block; changing it is a refine, not a variant_pick.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        variant: { type: "string", description: "Which variant was picked: a, b or c" },
+        note: { type: "string", description: "Optional founder note recorded alongside the pick" },
+        directory: { type: "string", description: "Working directory" },
+      },
+      required: ["variant"],
+    },
+    handler: async (args: { variant?: string; note?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      const variant = args.variant?.trim().toLowerCase();
+      if (!variant) return text("Pass `variant` with a/b/c.", true);
+      const out = recordVariantPick(dir, variant, args.note);
+      return text(out.message, !out.ok);
+    },
   },
   {
     name: "estimate",
@@ -2660,6 +2770,10 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, build with the best *current-trend* stack for this domain and say so — not merely the most popular one from two years ago. Name the chosen combo and a one-sentence reason. Do not ask — decide and state.
 
+**Reference (mandatory for any UI-capable plan):** before writing the plan, ask the founder: "Name one existing piece of work this is closest to in look — an image, a site, a game, a campaign, an era — and why." A URL or link is required; a mood word like "sunset" is not a reference. Record the answer verbatim as the plan's top-level "reference" field ("reference": "<https://...>"). If they cannot name one, propose TWO concrete candidates you would pick for this brief and ask them to approve one — that approval becomes 'reference'. Palette, typeface and signature MUST derive from the reference, not from the genre mean; the plan inherits its look.
+
+**External tools — use what is installed:** if the brief mentions any external tool (an engine, editor, CAD, firmware toolchain, image or design tool — anything the host can plug in), the plan MUST declare the matching MCP server in the contracts that use it. Call the 'host_tools' MCP tool first to see what this host actually has installed — do NOT guess names and do NOT assume anything is present. If the tool you need has no MCP declared, say so plainly and suggest the install line; do NOT invent a server name, do NOT propose a substitute engine, do NOT tell the founder you can drive it when you cannot. Associates are denied every tool by default; the tool reaches them only through a declared 'tools' entry in the plan. A plan that names an external tool without the MCP declared in a 'tools' list is a plan that will not build.
+
 **Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Pick a direction by NAME, not by guesswork — "editorial porcelain", "dark editorial", "terminal-first monospace", "maximalist pop", "hand-drawn warmth", or a SPECIFIC invented direction with a name you would defend. Never fall back to "rounded corners, system font, blue accent" — that is the failure mode, not the default. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <specific pick> — good?" If "anything", take your proposal. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing from the matching direction. notDoing: 3 short prohibitions. ambition: "bold" for marketing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards — never lower than the founder's known bar.
 
 **UI smoke (mandatory when the result is visual):** the plan MUST include exactly one smoke contract (id "ui-smoke", kind "intent") whose blocking check launches the built app or preview server and walks the core user flow in a real browser with Playwright — e.g. 'npx playwright test'. Unit tests and typecheck do not count. The plan is rejected by the validator before dispatch without it, the same as a missing design block.
@@ -2831,6 +2945,7 @@ export function promptFor(name: string, args: Record<string, string>) {
 Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Pass planNumber for CUBICORE_PLAN_N.json.
 
 1. Call \`dispatch_blueprint\` with the project kind.
+   If the plan is UI-capable with a \`design\` block and no pick has been recorded yet, call \`variants\` first — render the three directions, point the founder at the files, and wait for them to call \`variant_pick\` (a/b/c). Do not dispatch until the pick exists.
 2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.
 3. Wait for every report separately. Never merge them.
 4. Run every blocking check and fix failures in a tight loop. Record results with the debug tool.
