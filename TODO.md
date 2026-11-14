@@ -117,13 +117,12 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] Brief quality bar in the dispatched brief — 2026-11-14
 - [x] Reference field required on UI plans; validator rejects without one — 2026-11-14
 - [x] `host_tools` MCP tool: live read-back of what this host declares — 2026-11-14
-- [x] 1.0.9 packed & smoke-verified (20 tools, all handshakes green) — 2026-11-14
+- [x] 1.0.9 packed & smoke-verified by me — 2026-11-14 — but **1.0.9 (2026-11-13T16:45Z) on npm contains 17 tools and none of the work referenced above; local tree runs ahead, unpublished**
 
 ## Decisions to make
 
-- [ ] 1.0.9 shipped on npm or held for smoke+dispatch — **1.0.9 packed and smoke-verified (20 tools, record_inline_run / dispatch_blueprint / host_tools all present) but not published; founder's call**
-- [ ] Publish 1.0.9 now or wait for the founder to re-run `cubicore setup`? — founder's call; observer fix is live-verified only at the config-build layer, never via opencode.run dispatch
-- [ ] 1.0.9 vs 1.1.0 — semver: 1.1.0 recommended (UI plans now require `reference`; new tools shipped)
+- [x] 1.0.9 vs 1.1.0 — **1.0.9 published 2026-11-13T16:45Z.** Verified 2026-11-14: the npm artifact contains the 17-tool surface, **not** today's additions. Today's additions (`host_tools`, `variants`, `variant_pick`, `reference`-gate on UI plans, scope-escapes in the ledger, brief quality bar) are in the tree only and ship in the next release — semver says that release is 1.1.0, not 1.0.10
+- [ ] Next release numbering — decide: 1.1.0 (breaking behavior on UI plans) or hold to a smoke dispatch?
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
 - [ ] File claims of speed/cost in README before measurement? No.
 - [ ] Fold any of the 2026-11-13 ideas into phases now, or leave parked?
@@ -132,4 +131,4 @@ None of these is committed as work, just tracked here so they are not lost:
 
 - [ ] Live dispatch of the observer fix on the founder's host — founder's call (requires re-running `setup`; the stdio handshake only validates the wire, not a live dispatch)
 - [ ] Wildcard deny on wire-level on this host — scratch-verified at config-build layer; never dispatched
-- [ ] Budget-exhausted fix — packed & smoke-verified, install still needs founder to re-run setup for it to load
+- [ ] Budget-exhausted fix — shipped in **1.0.9** on npm; live install on the founder's host still behind setup's pending restart

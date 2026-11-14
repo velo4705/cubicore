@@ -541,3 +541,11 @@ Arduino (incl. ESP32/ESP8266), FreeCAD, Fusion 360 (in-app MCP since May
 the founder to declare the matching server under `tools` on each contract
 that needs one. 582 tests pass; bundle rebuilt. Maintenance note: the list
 is hand-maintained and will decay — new tools land by PR, not by wish.
+
+## 2026-11-13 — 1.0.9 published (2026-11-13T16:45Z) — scope correction
+
+`1.0.9` is on npm as latest. verified 2026-11-14: the packed artifact ships **17 tools** (`continue, debug, deploy_stack, dispatch_blueprint, estimate, execute, install, plan, plan_mark, plan_write, prepare, preview, record_factory_fit, record_inline_run, research, status, undo`) — `host_tools`, `variants` and `variant_pick` are absent, as are today's validator reference-gate and retrospective scope-escape surfacing.
+
+Today's additions live in the working tree **unpublished**. The Flatpak host likely runs whatever ran before — install state here is founder's call (`setup` refresh).
+
+Shipped in 1.0.9: the observer fix (`/api/event` pump + `waitForIdle` race — the 2.x host correctly emits `session.idle`), `record_inline_run` ledger tooling, `.cubicore-escalations.json` (2026-11-12), deny-all wildcard MCP deny in the installer (landed before publish), `1.0.9` version bump (founder-authored).
