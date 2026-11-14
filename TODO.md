@@ -121,8 +121,7 @@ None of these is committed as work, just tracked here so they are not lost:
 
 ## Decisions to make
 
-- [x] 1.0.9 vs 1.1.0 — **1.0.9 published 2026-11-13T16:45Z.** Verified 2026-11-14: the npm artifact contains the 17-tool surface, **not** today's additions. Today's additions (`host_tools`, `variants`, `variant_pick`, `reference`-gate on UI plans, scope-escapes in the ledger, brief quality bar) are in the tree only and ship in the next release — semver says that release is 1.1.0, not 1.0.10
-- [ ] Next release numbering — decide: 1.1.0 (breaking behavior on UI plans) or hold to a smoke dispatch?
+- [x] 1.1.0 is published on npm (2026-11-14T13:24Z) — contains everything shipped today (observer fix, `/api/event` pump, `waitForIdle` race, reference gate, variants/variant_pick, host_tools, scope escapes, role walls, brief quality)
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
 - [ ] File claims of speed/cost in README before measurement? No.
 - [ ] Fold any of the 2026-11-13 ideas into phases now, or leave parked?

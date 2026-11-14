@@ -542,6 +542,10 @@ the founder to declare the matching server under `tools` on each contract
 that needs one. 582 tests pass; bundle rebuilt. Maintenance note: the list
 is hand-maintained and will decay — new tools land by PR, not by wish.
 
+## 2026-11-14 — 1.1.0 published (2026-11-14T13:24Z)
+
+1.1.0 published to npm. Verified: tarball contains 20 tools including host_tools, variants, variant_pick. supersedes 1.0.9 (published 2026-11-13) — 1.0.9 contained the observer fix only; today's additions are in this release. Bump descriptor moved to package.json 1.1.0.
+
 ## 2026-11-13 — 1.0.9 published (2026-11-13T16:45Z) — scope correction
 
 `1.0.9` is on npm as latest. verified 2026-11-14: the packed artifact ships **17 tools** (`continue, debug, deploy_stack, dispatch_blueprint, estimate, execute, install, plan, plan_mark, plan_write, prepare, preview, record_factory_fit, record_inline_run, research, status, undo`) — `host_tools`, `variants` and `variant_pick` are absent, as are today's validator reference-gate and retrospective scope-escape surfacing.

@@ -2945,7 +2945,6 @@ export function promptFor(name: string, args: Record<string, string>) {
 Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Pass planNumber for CUBICORE_PLAN_N.json.
 
 1. Call \`dispatch_blueprint\` with the project kind.
-   If the plan is UI-capable with a \`design\` block and no pick has been recorded yet, call \`variants\` first — render the three directions, point the founder at the files, and wait for them to call \`variant_pick\` (a/b/c). Do not dispatch until the pick exists.
 2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.
 3. Wait for every report separately. Never merge them.
 4. Run every blocking check and fix failures in a tight loop. Record results with the debug tool.
