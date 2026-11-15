@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PLAN_JSON, DEBUG_MD } from "./protocol";
+import { PLAN_JSON, DEBUG_MD, memberPlanName } from "./protocol";
 import { loadRuns } from "./runs";
 
 /**
@@ -77,7 +77,12 @@ export function blockingFindings(directory: string): number {
  * guidance.
  */
 export function nextOptions(directory: string): Option[] {
-  const planned = existsSync(join(directory, PLAN_JSON));
+  // A directory may hold only member files (CUBICORE_PLAN_1.json … _N.json)
+  // when the plan was split across people — that still counts as planned.
+  const basePlan = join(directory, PLAN_JSON);
+  const memberPlan = join(directory, memberPlanName(1, "json"));
+  const teamOnly = !existsSync(basePlan) && existsSync(memberPlan);
+  const planned = existsSync(basePlan) || teamOnly;
   const runs = loadRuns(directory);
   const latest = runs[0];
 
@@ -87,7 +92,13 @@ export function nextOptions(directory: string): Option[] {
 
 if (!latest) {
     return [
-      { step: "execute", note: "Run the plan (/cubicore:execute)", recommended: true },
+      {
+        step: "execute",
+        note: teamOnly
+          ? "Run your member plan (/cubicore:execute <your number> — the leader is 1)"
+          : "Run the plan (/cubicore:execute)",
+        recommended: true,
+      },
       { step: "estimate", note: "See what it will cost first (/cubicore:estimate)" },
       { step: "refine", note: "Adjust the plan (/cubicore:refine)" },
     ];

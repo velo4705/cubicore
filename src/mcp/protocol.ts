@@ -38,6 +38,11 @@ export const DEFAULT_MAX_CYCLES = 3;
 
 export const PLAN_MD = "CUBICORE_PLAN.md";
 export const PLAN_JSON = "CUBICORE_PLAN.json";
+
+/** File name for a numbered member plan, e.g. memberPlanName(2, "json") -> "CUBICORE_PLAN_2.json". */
+export function memberPlanName(planNumber: number, ext: "json" | "md"): string {
+  return PLAN_JSON.replace(/\.json$/, `_${planNumber}.${ext}`);
+}
 export const DEBUG_MD = "CUBICORE_DEBUG.md";
 export const CONTEXT_MD = "CUBICORE_CONTEXT.md";
 
@@ -104,6 +109,10 @@ export function renderPlanMd(
   plan: Plan,
   validation: { ok: boolean; findings: { code: string; message: string }[] },
   progress?: { contracts?: Map<string, ContractState>; steps?: Map<string, Map<string, ContractState>> },
+  /** Rendered directly under the title — used to mark numbered member files. */
+  header?: string,
+  /** Basename of the dispatchable plan file; defaults to the base plan name. */
+  dispatchable?: string,
 ): string {
   const workers = plan.contracts.length;
   const size =
@@ -121,6 +130,7 @@ export function renderPlanMd(
   const md = [
     `# Cubicore plan`,
     ``,
+    ...(header ? [`> ${header}`, ``] : []),
   ];
 
   if (plan.summary) {
@@ -213,7 +223,7 @@ export function renderPlanMd(
     }),
     `## Machine-readable`,
     ``,
-    `The dispatchable plan is \`${PLAN_JSON}\`. Execute reads that file, never this one.`,
+    `The dispatchable plan is \`${dispatchable ?? PLAN_JSON}\`. Execute reads that file, never this one.`,
     ``,
   );
 

@@ -117,13 +117,16 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] Brief quality bar in the dispatched brief — 2026-11-14
 - [x] Reference field required on UI plans; validator rejects without one — 2026-11-14
 - [x] `host_tools` MCP tool: live read-back of what this host declares — 2026-11-14
-- [x] 1.0.9 packed & smoke-verified by me — 2026-11-14 — but **1.0.9 (2026-11-13T16:45Z) on npm contains 17 tools and none of the work referenced above; local tree runs ahead, unpublished**
+- [x] 1.0.9 packed & smoke-verified by me — 2026-11-14 — superseded by 1.1.0 (2026-11-14T13:24Z), which carries that work plus this cycle's remainder where noted; everything since 1.1.0 (2026-11-14) remains unpublished in this tree
 
 ## Decisions to make
 
 - [x] 1.1.0 is published on npm (2026-11-14T13:24Z) — contains everything shipped today (observer fix, `/api/event` pump, `waitForIdle` race, reference gate, variants/variant_pick, host_tools, scope escapes, role walls, brief quality)
 - [x] Visual first-shot loop wired: screenshotCheck + retrospective + ledger carry verdict — flat never fails, but is unmistakably reported
 - [x] Asset kits required (keywords trigger `missing-assets` in validator); gateStyle accepts palette ∪ asset hexes
+- [x] Planner hand-writing hardening — plan prompt forbids writing plan JSON to disk; dispatch already refuses a missing plan file — 2026-11-16
+- [x] `plan_coverage` tool + module — mechanical token-overlap coverage of brief-vs-plan, named unaddressed asks, no oracle claims — 2026-11-16
+- [x] Team-based prompting — brief mentioning a team/members → N numbered plans (leader takes `CUBICORE_PLAN_1`), self-describing member files, plan-time cross-plan surfacing, team-aware next-step — 2026-11-16
 - [x] Planner no longer asks about direction if not specified
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
 - [ ] File claims of speed/cost in README before measurement? No.
@@ -134,3 +137,10 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] Live dispatch of the observer fix on the founder's host — founder's call (requires re-running `setup`; the stdio handshake only validates the wire, not a live dispatch)
 - [ ] Wildcard deny on wire-level on this host — scratch-verified at config-build layer; never dispatched
 - [ ] Budget-exhausted fix — shipped in **1.0.9** on npm; live install on the founder's host still behind setup's pending restart
+
+## Team mode (2026-11-16) — sharp edges found during the build
+
+- [ ] Bare `/cubicore:execute` in a team directory (no base `CUBICORE_PLAN.json`) silently falls back to `CUBICORE_PLAN_1.json` — member 2 running it redrives the leader's slice instead of being told "pass your number". Decide: refuse when no base file exists and numbered files do, or warn loudly. `next.ts` already steers the suggestion, but the fallback itself remains.
+- [ ] Cross-plan validator scans only `CUBICORE_PLAN_*.json` — a directory with both a base file and member files goes unchecked; mixed directories are ambiguous and should either be rejected or validated, not ignored.
+- [ ] Contract ids are only unique within a member file — two member plans may reuse the same contract id (e.g. both ship a `scaffold`), and the progress markers in the member MDs would cross-contaminate. Cosmetic; the per-run ledger is unaffected. Enforce unique ids across member plans, or scope progress by file.
+- [ ] Team-mode note on "Archive of plan-and-run context" above: member files (`CUBICORE_PLAN_N.md` × N, `CONTEXT_N.md` × N) multiply the archaeology problem — the archive item matters more after 2026-11-16, not less.

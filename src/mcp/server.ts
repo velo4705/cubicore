@@ -25,6 +25,7 @@ import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { toolHints, renderToolHint } from "../plan/tool-hint";
+import { assessCoverage, renderCoverage } from "../validate/coverage";
 import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
@@ -1145,6 +1146,9 @@ function attemptCount(directory: string): number {
 async function planWrite(raw: string, directory: string, planNumber?: number): Promise<ToolResult> {
   const dir = directory;
   const resolved = resolvePlanFile(dir, planNumber);
+  const numbered = planNumber !== undefined && planNumber !== null;
+  const planBase = resolved.planPath.split("/").pop() ?? PLAN_JSON;
+  const mdBase = resolved.mdPath.split("/").pop() ?? PLAN_MD;
   let parsed: Plan;
   try {
     parsed = parsePlan(raw) as Plan;
@@ -1168,7 +1172,11 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   const topology = checkTopology(parsed);
   const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
   parsed.factoryFit = fit;
-  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(fit, null, 2));
+  // Numbered member files each get their own fit record so member slices
+  // don't overwrite each other (or the leader's base-file assessment).
+  writeFileSync(
+    numbered ? `${dir}/.cubicore-factory-fit_${planNumber}.json` : `${dir}/.cubicore-factory-fit.json`,
+    JSON.stringify(fit, null, 2));
 
   // Lifecycle: factory-fit assessment happens next — record it as the project's stage.
   enterFactoryLifecycle(dir, "fit", `topology=${parsed.topology}`);
@@ -1191,9 +1199,14 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   writeFileSync(resolved.planPath, JSON.stringify(parsed, null, 2));
 
   const progress = progressFromDisk(directory, parsed.contracts);
+  const memberHeader = numbered
+    ? planNumber === 1
+      ? `Member 1 — you are the team leader. This is your slice. Dispatch it with \`/cubicore:execute 1\`. The rest of the team dispatches theirs with their own numbers.`
+      : `Member ${planNumber} — one file per team member; the leader took CUBICORE_PLAN_1. This file is yours. Dispatch it with \`/cubicore:execute ${planNumber}\`. Do not dispatch another member's file.`
+    : undefined;
   writeFileSync(
     resolved.mdPath,
-    renderPlanMd(parsed, validation, { contracts: progress.contracts, steps: progress.steps }),
+    renderPlanMd(parsed, validation, { contracts: progress.contracts, steps: progress.steps }, memberHeader, planBase),
   );
 
   // CUBICORE_CONTEXT.md is for humans who need to present the project in
@@ -1206,7 +1219,12 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
 
   // Lifecycle: plan written and delivered to founder.
   enterFactoryLifecycle(dir, "plan", `contracts=${parsed.contracts.length}`);
-  completeFactoryLifecycle(dir, `plan written to CUBICORE_PLAN.json`);
+  completeFactoryLifecycle(dir, `plan written to ${planBase}`);
+
+  // Member slices are written one per tool call; surface cross-plan problems
+  // as soon as they are visible so the leader learns about a collision
+  // before handing out the files, not at dispatch time.
+  const crossPlan = numbered ? validateCrossPlan(dir) : [];
 
   if (problems.length === 0) {
     // A good plan clears the budget. Without this a refine would start at
@@ -1234,7 +1252,9 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
     );
 
     if (exhausted && unsafe.length === 0) {
-      const askedFactory = await askFounderFactoryFit(fit, parsed.contracts.length);
+      // Member slices don't re-ask the single-vs-team question — the leader
+      // already answered it once when the team was formed.
+      const askedFactory = numbered ? [] : await askFounderFactoryFit(fit, parsed.contracts.length);
       return text(
         [
           `Plan accepted after ${attempts} attempts, with findings recorded rather than blocking.`,
@@ -1243,34 +1263,53 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
           "",
           "These are preferences, not safety problems, and the plan was not reworked for them.",
           ...askedFactory,
+          ...(crossPlan.length > 0
+            ? ["", "Cross-plan problems (fix before any member dispatches):", ...crossPlan.map((c) => `- ${c}`)]
+            : []),
         ].join("\n"),
       );
     }
 
     return text(
       [
-        `Plan rejected -- ${PLAN_MD} and ${PLAN_JSON} written for inspection, but nothing will dispatch.`,
+        `Plan rejected -- ${mdBase} and ${planBase} written for inspection, but nothing will dispatch.`,
         exhausted
           ? `Attempt ${attempts} of ${PLAN_ATTEMPTS}. The remaining problems are not preferences, and they will keep being rejected until they are fixed.`
           : `Attempt ${attempts} of ${PLAN_ATTEMPTS}.`,
         "",
         ...problems.map((p) => `- ${p}`),
+        ...(crossPlan.length > 0
+          ? ["", "Cross-plan problems (fix before any member dispatches):", ...crossPlan.map((c) => `- ${c}`)]
+          : []),
       ].join("\n"),
       true,
     );
   }
 
-  const askedFactory = await askFounderFactoryFit(fit, parsed.contracts.length);
+  // Member slices don't re-ask the leader's single-vs-team question; they
+  // get the dispatch instruction instead.
+  const askedFactory = numbered ? [] : await askFounderFactoryFit(fit, parsed.contracts.length);
   const toolCheck = renderToolHint(toolHints(parsed));
+  const wroteLines = numbered
+    ? [
+        `Wrote ${mdBase} (member ${planNumber}) and ${planBase} (dispatchable).`,
+        `Member ${planNumber} dispatches with: /cubicore:execute ${planNumber}`,
+      ]
+    : [
+        `Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
+      ];
   return text(
     [
-      `Wrote ${PLAN_MD} (for you) and ${PLAN_JSON} (dispatchable).`,
+      ...wroteLines,
       `Associates: ${parsed.contracts.length}, topology ${parsed.topology}.`,
       "",
       renderFit(fit),
       "",
       "Nothing has run.",
       ...(toolCheck.length > 0 ? ["", ...toolCheck] : []),
+      ...(crossPlan.length > 0
+        ? ["", "Cross-plan problems (fix before any member dispatches):", ...crossPlan.map((c) => `- ${c}`)]
+        : []),
       ...askedFactory,
     ].join("\n"),
   );
@@ -1307,12 +1346,26 @@ async function recordFactoryFit(
   const nextFit = applyFounderFactoryChoice(current, contractCount, choice, note);
   const next: Plan = { ...parsed, factoryFit: nextFit };
   writeFileSync(resolved.planPath, JSON.stringify(next, null, 2));
-  writeFileSync(`${dir}/.cubicore-factory-fit.json`, JSON.stringify(nextFit, null, 2));
+  writeFileSync(
+    planNumber !== undefined && planNumber !== null
+      ? `${dir}/.cubicore-factory-fit_${planNumber}.json`
+      : `${dir}/.cubicore-factory-fit.json`,
+    JSON.stringify(nextFit, null, 2));
   const validation = validatePlan(next, deriveBaseline(dir));
   const progress = progressFromDisk(dir, next.contracts);
+  const fitHeader =
+    planNumber !== undefined && planNumber !== null
+      ? `Member ${planNumber} — dispatch this slice with \`/cubicore:execute ${planNumber}\`.`
+      : undefined;
   writeFileSync(
     resolved.mdPath,
-    renderPlanMd(next, validation, { contracts: progress.contracts, steps: progress.steps }),
+    renderPlanMd(
+      next,
+      validation,
+      { contracts: progress.contracts, steps: progress.steps },
+      fitHeader,
+      resolved.planPath.split("/").pop(),
+    ),
   );
   const tail =
     choice === "single-agent"
@@ -2486,6 +2539,37 @@ export const TOOLS = [
     },
   },
   {
+    name: "plan_coverage",
+    description:
+      WHEN +
+      "Compares the founder's brief against the validated plan, and reports which " +
+      "asks map to contracts and which were ignored. Deterministic token overlap, not " +
+      "an LLM oracle. Returns a summary line plus a per-item breakdown. " +
+      "Does not approve the plan; only reports where it stands against the brief.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        brief: { type: "string", description: "The founder's original brief, verbatim. Long is fine." },
+        directory: { type: "string", description: "Working directory" },
+      },
+      required: ["brief"],
+    },
+    handler: async (args: { brief?: string; directory?: string }) => {
+      const dir = args.directory ?? process.cwd();
+      if (!args.brief) return text("Pass the brief as `brief` — required here.", true);
+      let raw: string;
+      try {
+        raw = await Bun.file(`${dir}/${PLAN_JSON}`).text();
+      } catch {
+        return text(`No ${PLAN_JSON} in ${dir}. Run the plan tool first.`, true);
+      }
+      const loaded = loadPlan(raw);
+      if (!loaded.ok) return text(`Plan did not load: ${loaded.reason}`, true);
+      const report = assessCoverage(args.brief, loaded.plan);
+      return text(renderCoverage(report));
+    },
+  },
+  {
     name: "variant_pick",
     description:
       WHEN +
@@ -2840,10 +2924,37 @@ Write the classification and your one-sentence reason as a top-level field in th
 **User request:** ${request}${extraNote}
 
 **2. Write the plan.** Build exactly what the user requested above. Do not
-substitute, upgrade, or replace it with a project of your own choosing. Then
-produce the plan JSON and pass it to the plan tool, which writes
+substitute, upgrade, or replace it with a project of your own choosing.
+
+Produce the plan as a JSON object and pass it to the plan tool — that is the only
+way you may create the plan file. Do NOT write the plan JSON yourself directly
+to disk, not even for drafting. The tool validates, parses, and emits
 CUBICORE_PLAN.md for the founder, CUBICORE_PLAN.json for the dispatcher, and
 CUBICORE_CONTEXT.md for team members who need to present the project in person.
+Do not save any version of the plan outside the tool's output — the only files
+on disk after you run the tool are the three it produces.
+
+**Team briefs — split by person.** If the request mentions more than one
+person — a team, a group, a club, "we are N people", members by name, with or
+without roles — do not write one plan. Split the work into N slices, one per
+member, and call the plan tool once per member with planNumber 1, 2, ... N.
+Rules:
+- The person talking to you is member 1, the team leader. They take
+  CUBICORE_PLAN_1.
+- Every member's plan covers exactly that member's slice. The union of the
+  member plans is the whole project; no contract appears in two plans.
+- Each member plan's summary must start with the member's name and role,
+  e.g. "Member 2 — Alice (renderer): ...".
+- Writes across member plans stay disjoint; the dispatcher refuses to run any
+  of them if two member plans write the same file. Reads may overlap.
+- Cross-person dependencies are expressed as reads on the shared interface,
+  never as a shared write.
+- Members dispatch their own slice with /cubicore:execute <their number>.
+- In your final reply, relay the factory-fit answer verbatim if one appears,
+  then list every member → file → command so the leader can hand the files
+  out. Do not tell any member to run anything else.
+- If the brief names no team, write exactly one plan and pass no planNumber.
+
 **Before you call the plan tool, walk the contracts once more.** For each contract that still looks like more than one sitting of work, re-read the repo and split it — child contracts may narrow scope but not widen it. Graph budget and edges must be recomputed after the split; the result is the plan you pass to the plan tool, not the draft you started with. Do **not** split a genuinely single-cognitive-unit contract — if you cannot tell where one is finished and the next has begun, it is not two contracts.
 
 The plan tool also prints the factory-fit decision — the recommended team

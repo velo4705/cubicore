@@ -612,3 +612,27 @@ Validator and parser now accept three kinds of `reference`: http(s), `file://`, 
 ## 2026-11-15 — UI-capable planners no longer ask about direction
 
 The design direction, if unspecified, is suggested by the agent via research; no founder MCQ. The plan-full prompt no longer asks "Direction: <specific pick> — good?" — the agent picks and says why.
+
+
+## 2026-11-16 — coverage tool (did the plan actually hear you)
+
+Status: shipped in this tree.
+
+New MCP tool `plan_coverage` plus module `src/validate/coverage.ts`. Splits the brief into sentence-level asks, mechanically matches each against contract `objective`, `doneWhen`, `writes` and `checks.command` via token overlap — no LLM, no oracle. The output lists each ask and which contracts answer it, marks unaddressed asks with names, and surfaces a summary like `Coverage: 2/11 (18%) — missing` — not a beauty rating, just honest fact. Not a guarantee, just a signal.
+
+Tests: 5 pin items split, refuses trivial coverage, matches explicit asks, reports misc claims disjoint, renders the breakdown. 600 tests pass; bundle rebuilt; `plan_coverage` ships in the packed artifact.
+
+
+## 2026-11-16 — Team-based prompting (split by person)
+
+Status: shipped in this tree. 610 tests pass; bundle rebuilt; `Team briefs` section ships in the packed MCP prompt.
+
+When the founder's brief mentions more than one person (a team, a group, members by name), the plan prompt now instructs the planner to split the work into N slices and call the plan tool N times with planNumber 1..N. The person talking is member 1, the team leader, and takes CUBICORE_PLAN_1. Each member file (CUBICORE_PLAN_N.md/.json) is self-describing: a header under the title names the member and the exact dispatch command (/cubicore:execute N), the dispatchable footer names the numbered file, and the reply lists member → file → command. Solo briefs still produce the base CUBICORE_PLAN.md/.json untouched.
+
+Mechanics wired end-to-end:
+- plan_write with planNumber writes member files, their own .cubicore-factory-fit_N.json (members never clobber the leader's fit record or re-ask the single-vs-team question), and CONTEXT_N.md when a context block exists.
+- Member plan writes surface cross-plan problems at plan time (write collisions, orphan reads) as non-blocking warnings; execute/continue already refuse to dispatch a numbered plan whose writes collide, and do not need the base file present.
+- /cubicore:next (nextOptions) now counts a directory holding only CUBICORE_PLAN_1.json as planned and steers the leader to /cubicore:execute <your number>.
+- Cross-plan validation runs at dispatch, unchanged.
+
+Honest limits: contract ids are only unique within a plan file, so shared ids across member files would cross-contaminate progress markers in CUBICORE_PLAN_N.md (cosmetic; the ledger is per-run). Cross-plan checks ignore the base CUBICORE_PLAN.json; mixed base+numbered directories are ambiguous and should not be hand-created. The split itself is prompt-driven — the tooling cannot force a model that ignores the instruction to split; it can only make the member path first-class when taken.
