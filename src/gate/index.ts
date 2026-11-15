@@ -310,7 +310,7 @@ export function gateUnionScope(
     return {
       gate: "scope",
       passed: true,
-      detail: `all ${options.changedFiles.length} changed file(s) inside the plan's declared scopes`,
+      detail: `all ${options.changedFiles.length} changed file(s) inside the plan's declared scopes (union verdict — this host cannot attribute changes to individual workers)`,
       retryable: false,
     };
   }

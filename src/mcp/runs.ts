@@ -240,6 +240,10 @@ export function describe(run: Run): string {
     ...contractLines,
   ];
 
+  if (run.plan.contracts.length > 1) {
+    lines.push(`Attribution: union — this host cannot say which worker changed which file; verdicts are per-gate on the merged tree, not per-worker.`);
+  }
+
   if (run.state === "paused") {
     lines.push("Next: /cubicore:continue resumes the run from where it stopped.");
   } else if (run.state === "running") {

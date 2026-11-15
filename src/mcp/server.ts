@@ -620,6 +620,7 @@ async function runToCompletion(
   cleanOrphanedWorktrees(dir, parsed.contracts.map((c) => c.id));
 
   const unionWrites = [...new Set(parsed.contracts.flatMap((c) => c.writes))];
+  const reusedIds = satisfiedOverride ?? satisfiedContracts(dir, parsed);
   enterFactoryLifecycle(dir, "dispatch", `topology=${parsed.topology}; contracts=${parsed.contracts.length}`);
   const outcome = await dispatch(
     parsed,
@@ -645,7 +646,7 @@ async function runToCompletion(
       collect: (contractId) => workers.collect(contractId),
       discard: (contractId) => workers.discard(contractId),
       // Contracts an earlier run already satisfied, unchanged, are not re-run.
-      satisfiedContracts: satisfiedOverride ?? satisfiedContracts(dir, parsed),
+      satisfiedContracts: reusedIds,
       root: dir,
       unionWrites,
       // Contracts whose worktrees should be preserved (not wiped) on resume.
@@ -769,6 +770,8 @@ async function runToCompletion(
       } : null,
       usageMethod: "session — measured from host session rows",
       escalations: escalatedLedger(dir),
+      contracts: ledgerContracts(aggregated.artifacts, { deferred: outcome.deferred, reused: reusedIds }),
+      attribution: "union — per-worker file attribution is not available on this host; verdicts are the union of declared writes",
       recorded: new Date().toISOString(),
     };
 
@@ -834,6 +837,38 @@ async function runToCompletion(
  * history archive. The history file is the aggregated audit trail across runs;
  * the ledger is the fast read for the latest one.
  */
+/**
+ * Per-contract verdict for the ledger — every contract lands somewhere, even
+ * when the answer is "nobody ran it". The aggregate counts (passed/flagged)
+ * are not an audit; the founder asking "did MY contract X pass, and what
+ * evidence says so" needs the per-contract line.
+ */
+function ledgerContracts(
+  artifacts: Array<{
+    contractId: string;
+    status: string;
+    changedFiles: string[];
+    unresolved: string[];
+    unverified: boolean;
+  }>,
+  extra: { deferred?: readonly string[]; reused?: readonly string[] } = {},
+): Array<Record<string, unknown>> {
+  const entries = artifacts.map((a) => ({
+    id: a.contractId,
+    verdict: a.status, // done | blocked | flagged (or WorkerResult.status when not flagged)
+    unverified: a.unverified,
+    files: a.changedFiles.length,
+    unresolved: a.unresolved.length,
+  }));
+  for (const id of extra.deferred ?? []) {
+    entries.push({ id, verdict: "deferred", unverified: false, files: 0, unresolved: 0 });
+  }
+  for (const id of extra.reused ?? []) {
+    entries.push({ id, verdict: "reused", unverified: false, files: 0, unresolved: 0 });
+  }
+  return entries;
+}
+
 function writeRunLedger(dir: string, ledger: unknown): void {
   writeFileSync(`${dir}/.cubicore-factory-ledger.json`, JSON.stringify(ledger, null, 2));
   appendFileSync(`${dir}/.cubicore-factory-history.jsonl`, JSON.stringify(ledger) + "\n");
@@ -968,6 +1003,8 @@ async function recordInlineRun(args: {
     usageMethod,
     escalations: escalatedLedger(dir),
     integration: null,
+    contracts: ledgerContracts(artifacts),
+    attribution: "union — per-worker file attribution is not available on this host; verdicts are the union of declared writes",
     recorded: new Date().toISOString(),
     note: args.note ?? null,
   };

@@ -92,6 +92,43 @@ describe("record_inline_run — the inline run always records, honestly", () => 
     expect(result.content?.[0]?.text).toContain("usage.input");
   });
 
+  test("the ledger carries a per-contract verdict line, not just aggregate counts", async () => {
+    const plan = structuredClone(PLAN) as typeof PLAN & { contracts: Array<Record<string, unknown>> };
+    plan.contracts = [
+      ...plan.contracts,
+      {
+        ...plan.contracts[0],
+        id: "w2",
+        objective: "Fails its own check",
+        writes: ["src/w2.ts"],
+        doneWhen: "never",
+        checks: [
+          {
+            id: "w2-check",
+            kind: "baseline",
+            command: "false",
+            expectation: "exit 0",
+            gating: "blocking",
+            convergent: true,
+          },
+        ],
+      },
+    ];
+    plan.graphBudget = { nodes: 2, edges: 0, tokens: 20, wallMs: 10_000 };
+    writeFileSync(join(dir, "CUBICORE_PLAN.json"), JSON.stringify(plan));
+
+    const result = await handler({ directory: dir });
+    expect(result.isError).not.toBe(true);
+    const ledger = JSON.parse(readFileSync(join(dir, ".cubicore-factory-ledger.json"), "utf8"));
+    expect(Array.isArray(ledger.contracts)).toBe(true);
+    const w1 = ledger.contracts.find((c: { id: string }) => c.id === "w1");
+    const w2 = ledger.contracts.find((c: { id: string }) => c.id === "w2");
+    expect(w1).toMatchObject({ verdict: "done" });
+    expect(w2).toMatchObject({ verdict: "flagged" });
+    expect(ledger.attribution).toContain("union");
+    expect(result.content?.[0]?.text).toContain("not attributable");
+  });
+
   test("missing plan on disk is refused, not silently faked", async () => {
     rmSync(join(dir, "CUBICORE_PLAN.json"));
     const result = await handler({ directory: dir });

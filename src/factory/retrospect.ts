@@ -32,6 +32,12 @@ export type Retrospective = {
   verdict: string;
   /** Every contract that wrote outside the union of declared writes — named files, so the founder sees the leak, not "sometimes someone drifts". */
   escapes: Array<{ contractId: string; files: string[] }>;
+  /**
+   * What kind of evidence the verdicts rest on. This host cannot say which
+   * worker changed which file, so scope verdicts are the union of declared
+   * writes — the founder gets the union and a clear "not attributable" line.
+   */
+  attribution: string;
   /** The post-integration screenshot verdict — set only when the plan had a UI preview path. */
   visual?: RetroVisual | null;
   integration?: IntegrationOutcome;
@@ -115,6 +121,7 @@ export function buildRetrospective(opts: {
     totalTokens,
     verdict,
     escapes: escapes,
+    attribution: "union — per-worker file attribution is not available on this host; verdicts are the union of declared writes",
     ...(opts.visual ? { visual: opts.visual } : {}),
     ...(integration !== undefined ? { integration } : {}),
   };
@@ -137,6 +144,7 @@ export function renderRetrospective(r: Retrospective): string {
       ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,
     r.visual ? `- Visual: ${r.visual.verdict} — ${r.visual.detail}` : ``,
+    `- Attribution: not attributable — verdicts rest on the union of declared writes, not per-worker evidence`,
     `- Verdict: ${r.verdict}`,
   ];
   return lines.filter(Boolean).join("\n");

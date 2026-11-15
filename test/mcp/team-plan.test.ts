@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,6 +46,21 @@ const handler = () => {
   ) => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
 };
 
+/**
+ * The solo path in plan_write posts the factory-fit question to the live
+ * host before returning. Tests must never POST forms to the founder's
+ * machine — point the runtime at a dead port so the ask fails closed (it
+ * prints the failure and returns no lines) instead of reaching the host.
+ */
+let savedPort: string | undefined;
+let savedServerPort: string | undefined;
+beforeEach(() => {
+  savedPort = process.env.OPENCODE_PORT;
+  savedServerPort = process.env.OPENCODE_SERVER_PORT;
+  process.env.OPENCODE_PORT = "1";
+  delete process.env.OPENCODE_SERVER_PORT;
+});
+
 const roots: string[] = [];
 const root = () => {
   const directory = mkdtempSync(join(tmpdir(), "cubicore-team-plan-"));
@@ -57,6 +72,10 @@ const out = (r: { content: Array<{ text: string }> }) =>
   r.content.map((p) => p.text).join("\n");
 
 afterEach(() => {
+  if (savedPort === undefined) delete process.env.OPENCODE_PORT;
+  else process.env.OPENCODE_PORT = savedPort;
+  if (savedServerPort === undefined) delete process.env.OPENCODE_SERVER_PORT;
+  else process.env.OPENCODE_SERVER_PORT = savedServerPort;
   for (const directory of roots.splice(0)) {
     try { rmSync(directory, { recursive: true, force: true }); } catch { /* already gone */ }
   }

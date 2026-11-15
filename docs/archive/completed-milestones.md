@@ -636,3 +636,17 @@ Mechanics wired end-to-end:
 - Cross-plan validation runs at dispatch, unchanged.
 
 Honest limits: contract ids are only unique within a plan file, so shared ids across member files would cross-contaminate progress markers in CUBICORE_PLAN_N.md (cosmetic; the ledger is per-run). Cross-plan checks ignore the base CUBICORE_PLAN.json; mixed base+numbered directories are ambiguous and should not be hand-created. The split itself is prompt-driven — the tooling cannot force a model that ignores the instruction to split; it can only make the member path first-class when taken.
+
+
+## 2026-11-16 — Phase 2 reporting surfaces (dispatch semantics untouched)
+
+Founder constraint: Phase 2 without touching the current build. The three items that qualify were shipped; the ones that change dispatch/gate/retry behaviour were deliberately left alone.
+
+- Ledger carries a per-contract verdict line (`contracts: [{ id, verdict, unverified, files, unresolved }]`) in both the execute path and `record_inline_run`, plus `attribution: "union — …"` — the aggregate counts were never an audit, and reused contracts (unchanged, already verified) are named `reused` instead of vanishing. `outcome.deferred` is `string[]`; deferred entries are recorded too.
+- "Not attributable, union is the evidence" now appears in three places instead of being implied only: the scope gate's pass detail, a retrospective line (`renderRetrospective` prints `Attribution: not attributable` unconditionally), and the `/cubicore:status` path (describe() prints it for multi-worker runs).
+- `/cubicore:status` already rendered all worker states (icons, writes, counts, stage, escalations with next moves); the honest gap — per-worker in-flight elapsed/budget — does not exist on this host and was not fabricated.
+- Fixed a leak my earlier team-plan test introduced: the solo path in `plan_write` posts the factory-fit form to the live host from inside tests. `test/mcp/team-plan.test.ts` now points the runtime at a dead port (ECONNREFUSED fails closed) so tests never POST to the founder's machine. No other test reaches the host form.
+
+Excluded by the founder's constraint: the handoff-artifact gate before dispatching a consumer, narrowed revision on gate failure, adaptive split/merge/skip. Those need the dispatch path open on purpose, not as a side effect.
+
+Tests: 611 pass, 3 consecutive runs; bundle rebuilt.

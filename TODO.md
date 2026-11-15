@@ -127,6 +127,8 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] Planner hand-writing hardening — plan prompt forbids writing plan JSON to disk; dispatch already refuses a missing plan file — 2026-11-16
 - [x] `plan_coverage` tool + module — mechanical token-overlap coverage of brief-vs-plan, named unaddressed asks, no oracle claims — 2026-11-16
 - [x] Team-based prompting — brief mentioning a team/members → N numbered plans (leader takes `CUBICORE_PLAN_1`), self-describing member files, plan-time cross-plan surfacing, team-aware next-step — 2026-11-16
+- [x] Factory ledger carries per-contract verdicts (`done`/`flagged`/`blocked`/`deferred`/`reused`) with an `attribution: "union"` marker, in both execute and inline paths — 2026-11-16
+- [x] "Not attributable — verdicts rest on the union of declared writes" line in scope gate detail, retrospective, and `/cubicore:status` (multi-worker) — 2026-11-16; per-file attribution remains host-blocked
 - [x] Planner no longer asks about direction if not specified
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
 - [ ] File claims of speed/cost in README before measurement? No.
