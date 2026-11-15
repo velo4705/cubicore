@@ -553,3 +553,62 @@ is hand-maintained and will decay — new tools land by PR, not by wish.
 Today's additions live in the working tree **unpublished**. The Flatpak host likely runs whatever ran before — install state here is founder's call (`setup` refresh).
 
 Shipped in 1.0.9: the observer fix (`/api/event` pump + `waitForIdle` race — the 2.x host correctly emits `session.idle`), `record_inline_run` ledger tooling, `.cubicore-escalations.json` (2026-11-12), deny-all wildcard MCP deny in the installer (landed before publish), `1.0.9` version bump (founder-authored).
+
+## 2026-11-15 — Brief-first reference, local file refs accepted
+
+Status: shipped in this tree.
+
+The validator and parser now accept three kinds of `reference`:
+- http(s):// — the classic case
+- file:// — local file references (e.g., an image the founder attaches)
+- absolute path / — plain filesystem path, no spaces, not starting with //
+
+The planner prompt (in both rendered surfaces) now instructs: read the brief
+first — if a reference is present in it (URL, file path, attached image
+described in the conversation, or an explicit style/direction), use it, skip
+the question, and record it verbatim as the plan's `reference` field. The
+founder is asked only when the brief carries nothing. 585 tests pass;
+typecheck clean apart from the pre-existing noise.
+
+## 2026-11-15 — Asset kits required on asset-presenting plans
+
+Status: shipped in this tree.
+
+`design.assets` — each entry { name, kind, hex, note } where kind ∈ texture|
+sprite|glyph|icon|sfx. The validator now rejects plans whose text mentions
+texture/sprite/asset/voxel/block/pixel but declare no assets block
+(code: `missing-assets`). gateStyle accepts palette ∪ asset hexes; every hex
+in a shipped diff must live in one of those two sets — nothing else. Both
+planner prompt (server.ts renderPlanPrompt and schema.ts PLANNER_PROMPT) carry
+the rule. Tests: 3 pin reject-unmatched, accept-with-kit, no-kit-no-keywords;
+588 pass. Bundle rebuilt. No live dispatch.
+
+
+## 2026-11-15 — Visual first-shot loop wired end-to-end
+
+Status: shipped in this tree.
+
+- `src/screenshot/check.ts` — `screenshotCheck()` function boots the preview if needed, navigates a 1280×720 Playwright capture, samples saturation/uniformity/luma, and emits a verdict: good / ok / flat / blocked. Writes `.cubicore-screenshot-check.json`.
+- Wired post-integration in the execute path (session) and post-wire in the inline dispatch path. Only fires when the plan carries `design` + `preview.url`.
+- A flat visual verdict is pushed into `unresolved[]` — never a hard block; the founder sees the screenshot verdict in the ledger as `visual`.
+- `.cubicore-factory-ledger.json` and `.cubicore-factory-history.jsonl` now carry a `visual` block through the retrospective (both paths).
+- `renderRetrospective` prints `Visual: verdict — detail` as a line item.
+- A 6-test pin checks verdict thresholds; screenshot entry itself never run live yet on this host.
+- Bundle rebuilt; 595 tests pass; typecheck clean (excluding pre-existing noise).
+- Nothing published, nothing dispatched on this host — the receipt of today's parallel rig showed Artifact loss vs native single-agent (29min Cubicore vs 23min single-agent, unpolished Flat UI).
+
+## 2026-11-15 — Asset kits required on asset-presenting plans
+
+Status: shipped in this tree.
+
+`design.assets` — each entry { name, kind, hex, note } where kind ∈ texture|sprite|glyph|icon|sfx. The validator now rejects plans whose text mentions those words but declare no assets block (code: `missing-assets`). gateStyle previously restricted palette to design.palette. New: gateStyle accepts palette ∪ asset hexes; every hex in a shipped diff must live in one of those two sets. Planner prompt updated accordingly. Tests: 3 pin reject-unmatched, accept-with-kit, no kit when no keyword; 588 pass; bundle rebuilt.
+
+## 2026-11-15 — Phase A rework: brief-first reference recorder
+
+Status: shipped in this tree.
+
+Validator and parser now accept three kinds of `reference`: http(s), `file://`, and a plain absolute path. The planner prompt no longer asks the founder for a reference — it instructs the agent to either find one already present in the brief, or to research one via webfetch itself; never to ask. The validator no longer mentions "only if the brief carries no reference should the founder be asked". Bundle rebuilt; local state of reference-gate is unchanged.
+
+## 2026-11-15 — UI-capable planners no longer ask about direction
+
+The design direction, if unspecified, is suggested by the agent via research; no founder MCQ. The plan-full prompt no longer asks "Direction: <specific pick> — good?" — the agent picks and says why.

@@ -246,11 +246,94 @@ describe("ui smoke — the built app is walked, not just compiled", () => {
 });
 
 describe("reference — UI-capable plans inherit a specific look", () => {
+  test("a UI plan with textures but no asset kit is rejected", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true, objective: "Paint the grass texture in code" }), uiSmokeContract()],
+        design: {
+          direction: "warm",
+          palette: ["#0f0f0f", "#e6e6e6", "#527f3a", "#f4f0e6"],
+          typeface: "JetBrains Mono",
+          notDoing: ["no second typeface"],
+          ambition: "calm",
+        },
+        reference: "file:///ref.png",
+      }),
+    );
+    expect(codes(result)).toContain("missing-assets");
+  });
+
+  test("a UI plan with an asset kit naming textures passes missing-assets", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true, objective: "Paint the grass texture in code" }), uiSmokeContract()],
+        design: {
+          direction: "warm",
+          palette: ["#0f0f0f", "#e6e6e6", "#527f3a", "#f4f0e6"],
+          typeface: "JetBrains Mono",
+          notDoing: ["no second typeface"],
+          ambition: "calm",
+          assets: [
+            { name: "grass-top", kind: "texture", hex: "#527f3a", note: "Main solve — code-painted with noise clamp" },
+            { name: "stone-face", kind: "texture", hex: "#a0988c", note: "Blocky faces via 4×4 p" },
+          ],
+        },
+        reference: "file:///ref.png",
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-assets");
+  });
+
+  test("a UI plan without any texture/sprite keyword needs no assets block", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true }), uiSmokeContract()],
+        design: {
+          direction: "terminal",
+          palette: ["#0f0f0f", "#e6e6e6", "#3b82f6"],
+          typeface: "JetBrains Mono",
+          notDoing: ["no second typeface"],
+          ambition: "calm",
+        },
+        reference: "https://example.com/",
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-assets");
+  });
+
   test("a UI plan without a reference is rejected", () => {
     const result = validatePlan(
       plan({ contracts: [contract({ ui: true })] }),
     );
     expect(codes(result)).toContain("missing-reference");
+  });
+
+  test("a UI plan with a file:// reference passes", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true }), uiSmokeContract()],
+        reference: "file:///home/nix/Projects/art/ref.png",
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-reference");
+  });
+
+  test("a UI plan with an absolute filesystem reference passes", () => {
+    const result = validatePlan(
+      plan({
+        contracts: [contract({ ui: true }), uiSmokeContract()],
+        reference: "/home/nix/Projects/art/ref.png",
+      }),
+    );
+    expect(codes(result)).not.toContain("missing-reference");
+  });
+
+  test("a UI plan with a network reference (//host/path) is rejected", () => {
+    const plan2 = plan({
+      contracts: [contract({ ui: true }), uiSmokeContract()],
+      reference: "//nfs-share/ref.png",
+    });
+    expect(codes(validatePlan(plan2))).toContain("missing-reference");
   });
 
   test("a UI plan with a reference is not rejected for absence of reference", () => {

@@ -17,6 +17,7 @@ import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { nodePathEnv, previewIt } from "../plan/preview";
+import { screenshotCheck } from "../screenshot/check";
 import { generateVariants, recordVariantPick } from "../plan/variants";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
 import { nextLine } from "./next";
@@ -677,7 +678,27 @@ async function runToCompletion(
     integrationOutcome = await runIntegration(parsed.integration, dir);
   }
 
-  // observe → integrate → verify transitions, recorded in .cubicore-factory-state.json
+  // Visual check — the founder complained single-agent looks alive at the screen while ours passed gates silently broken to the eye. Close the sensory loop: render the build through Playwright, record the verdict, feed it into the ledger.
+  let visual: import("../factory/retrospect").RetroVisual | undefined;
+  if (parsed.design && parsed.preview?.url) {
+    try {
+      const result = await screenshotCheck({
+        command: String(parsed.preview.command),
+        url: String(parsed.preview.url),
+        projectRoot: dir,
+        outFile: ".cubicore-screenshot.png",
+      });
+      if (result.verdict === "flat") {
+        outcome.unresolved.push(
+          `visual: build reads flat (${result.detail}) — no visual regression will be accepted without the founder looking at it`,
+        );
+      }
+      visual = { verdict: result.verdict, detail: result.detail };
+    } catch (error) {
+      outcome.unresolved.push(`visual: screenshot check threw — ${String(error).slice(0, 200)}`);
+    }
+  }
+
   enterFactoryLifecycle(dir, "observe", `accepted=${outcome.accepted.length}; failed=${outcome.failed.length}; deferred=${outcome.deferred.length}`);
   completeFactoryLifecycle(dir, "workers done or failed");
   enterFactoryLifecycle(dir, "integrate", "worktrees collected / copied back");
@@ -699,6 +720,7 @@ async function runToCompletion(
     deferred: outcome.deferred.length,
     usage,
     integration: integrationOutcome,
+    visual,
   });
   // Factory ledger — one page (.cubicore-factory-ledger.json) that says
   // what this run decided, what it cost, what it got, and why it wasn't a
@@ -716,6 +738,7 @@ async function runToCompletion(
         deferred: retrospective.deferred,
         totalTokens: retrospective.totalTokens,
         escapes: retrospective.escapes,
+        ...(visual ? { visual } : {}),
       },
       version: 1,
       topology: parsed.topology,
@@ -890,12 +913,33 @@ async function recordInlineRun(args: {
     usageMethod = "inline — host-reported parent-session totals; includes the host's own work; upper bound";
   }
 
+  let visual: import("../factory/retrospect").RetroVisual | undefined;
+  if (loaded.plan.design && loaded.plan.preview?.url) {
+    try {
+      const result = await screenshotCheck({
+        command: String(loaded.plan.preview.command),
+        url: String(loaded.plan.preview.url),
+        projectRoot: dir,
+        outFile: ".cubicore-screenshot.png",
+      });
+      if (result.verdict === "flat") {
+        unresolved.push(
+          `visual: build reads flat (${result.detail}) — no visual regression will be accepted without the founder looking at it`,
+        );
+      }
+      visual = { verdict: result.verdict, detail: result.detail };
+    } catch (error) {
+      unresolved.push(`visual: screenshot check threw — ${String(error).slice(0, 200)}`);
+    }
+  }
+
   const retrospective = buildRetrospective({
     fit: loaded.plan.factoryFit,
     artifacts,
     unresolved,
     deferred: 0,
     usage,
+    ...(visual ? { visual } : {}),
   });
   const fit = loaded.plan.factoryFit;
   const passed = retrospective.passed;
@@ -908,6 +952,7 @@ async function recordInlineRun(args: {
       deferred: retrospective.deferred,
       totalTokens: retrospective.totalTokens,
       escapes: retrospective.escapes,
+    ...(visual ? { visual } : {}),
     },
     version: 1,
     topology: loaded.plan.topology,
@@ -2770,11 +2815,13 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, build with the best *current-trend* stack for this domain and say so — not merely the most popular one from two years ago. Name the chosen combo and a one-sentence reason. Do not ask — decide and state.
 
-**Reference (mandatory for any UI-capable plan):** before writing the plan, ask the founder: "Name one existing piece of work this is closest to in look — an image, a site, a game, a campaign, an era — and why." A URL or link is required; a mood word like "sunset" is not a reference. Record the answer verbatim as the plan's top-level "reference" field ("reference": "<https://...>"). If they cannot name one, propose TWO concrete candidates you would pick for this brief and ask them to approve one — that approval becomes 'reference'. Palette, typeface and signature MUST derive from the reference, not from the genre mean; the plan inherits its look.
+**Reference (required for UI-capable plans — check the brief, then research):** Read the brief once. If the founder already named a reference in it — a URL, a local file path, an attached image shown in the conversation, or an explicit style/direction — treat THAT as the reference and skip ahead: record the source verbatim as the plan's top-level 'reference' field ("reference": "<reference>"). The plan inherits its look from the named reference.
+
+If the brief carries no reference, do NOT ask the founder. Research it yourself: webfetch a small, reputable, known-adjacent example — a game a blog post or platform page you actually fetched — a marketing site — a known release in the same genre — and use its URL as the reference. Record the URL you used verbatim as the plan's top-level 'reference' field. The palette, typeface and signature MUST derive from that reference, not from your guess of the genre mean. Do not proceed with an empty reference; if your research fails, fall back to the closest public image reference you can cite. All asset-painted-by-code or hand-resolved images must be declared in 'design.assets' as { name, kind, hex, note }: texture | sprite | glyph | icon | sfx — hex per asset. Undeclared assets the brief implies trigger 'missing-assets' at validate time.
 
 **External tools — use what is installed:** if the brief mentions any external tool (an engine, editor, CAD, firmware toolchain, image or design tool — anything the host can plug in), the plan MUST declare the matching MCP server in the contracts that use it. Call the 'host_tools' MCP tool first to see what this host actually has installed — do NOT guess names and do NOT assume anything is present. If the tool you need has no MCP declared, say so plainly and suggest the install line; do NOT invent a server name, do NOT propose a substitute engine, do NOT tell the founder you can drive it when you cannot. Associates are denied every tool by default; the tool reaches them only through a declared 'tools' entry in the plan. A plan that names an external tool without the MCP declared in a 'tools' list is a plan that will not build.
 
-**Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Pick a direction by NAME, not by guesswork — "editorial porcelain", "dark editorial", "terminal-first monospace", "maximalist pop", "hand-drawn warmth", or a SPECIFIC invented direction with a name you would defend. Never fall back to "rounded corners, system font, blue accent" — that is the failure mode, not the default. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not, propose ONE direction and ask "Direction: <specific pick> — good?" If "anything", take your proposal. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing from the matching direction. notDoing: 3 short prohibitions. ambition: "bold" for marketing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards — never lower than the founder's known bar.
+**Design (web and UI apps):** If the result is visual, the plan MUST carry a "design" block (direction, palette of 2–4 hex colors with the accent last, typeface, notDoing, ambition: calm | standard | bold). Pick a direction by NAME, not by guesswork — "editorial porcelain", "dark editorial", "terminal-first monospace", "maximalist pop", "hand-drawn warmth", or a SPECIFIC invented direction with a name you would defend. Never fall back to "rounded corners, system font, blue accent" — that is the failure mode, not the default. If the founder named a style (glassmorphism, cute, retro, dark), use exactly that and do not override. If they did not name one, choose one yourself and say why — do NOT ask the founder. Palette: 2–4 hex colors, accent last. Typeface: one strong face or one confident pairing from the matching direction. notDoing: 3 short prohibitions. ambition: "bold" for marketing pages/portfolio/brand tools, "standard" for product UIs, "calm" for dashboards — never lower than the founder's known bar.
 
 **UI smoke (mandatory when the result is visual):** the plan MUST include exactly one smoke contract (id "ui-smoke", kind "intent") whose blocking check launches the built app or preview server and walks the core user flow in a real browser with Playwright — e.g. 'npx playwright test'. Unit tests and typecheck do not count. The plan is rejected by the validator before dispatch without it, the same as a missing design block.
 

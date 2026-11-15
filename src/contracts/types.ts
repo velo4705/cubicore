@@ -214,6 +214,24 @@ export interface Design {
   notDoing: string[];
   /** How far from minimal the result may wander. */
   ambition: DesignAmbition;
+  /**
+   * Named, finished assets the plan produces — each is a pair of identity and
+   * hex, so gateStyle can pass the build when every hex in the diff matches
+   * either the palette or one of these assets. Stock voxel/block/cube art
+   * kept outside this list cannot ship.
+   */
+  assets?: AssetEntry[];
+}
+
+export interface AssetEntry {
+  /** What the asset is called. Names the hex, the game mechanic, the colour. Never "asset1". */
+  name: string;
+  /** texture | sprite | glyph | icon | sfx */
+  kind: "texture" | "sprite" | "glyph" | "icon" | "sfx";
+  /** Hex the asset emits, or "#00000000" for transparent-only assets. */
+  hex: string;
+  /** Why this hex — one short sentence the founder can challenge. */
+  note?: string;
 }
 
 export interface Plan {
@@ -330,6 +348,7 @@ export type FindingCode =
   | "weak-contrast-palette"
   | "missing-design"
   | "missing-ui-smoke"
+  | "missing-assets"
   | "missing-reference"
   | "missing-objective"
   | "duplicate-id"

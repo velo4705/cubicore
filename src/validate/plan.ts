@@ -135,17 +135,26 @@ import { bestPairContrast } from "./luminance";
 function checkReference(plan: Plan): Finding[] {
   if (!isUiCapable(plan)) return [];
   const ref = (plan as Plan & { reference?: string }).reference;
-  if (typeof ref === "string" && ref.trim().length > 0) return [];
+  const trimmed = typeof ref === "string" ? ref.trim() : "";
+  const ok = trimmed.length > 0 && (
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith("file://") ||
+    (trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes(" "))
+  );
+  if (ok) return [];
   const ids = plan.contracts.map((c) => c.id);
   return [
     {
       code: "missing-reference",
       contractIds: ids,
       message:
-        "plan is UI-capable but carries no reference; the planner must ask the founder " +
-        "for ONE concrete reference (URL, image or work — never a mood word), " +
-        "get approval, and record it as the plan's top-level \"reference\" field. " +
-        "A plan without one produces exactly the average of everything you already know",
+        "plan is UI-capable but carries no reference; the planner must record a " +
+        "reference verbatim as the plan's top-level 'reference' field — a URL, a " +
+        "file path (file:// or /abs/path), or an attached image described in the " +
+        "brief. If none is present in the brief, the planner must webfetch one. " +
+        "The planner must NOT ask the founder. " +
+        "A mood word like 'sunset' is not a reference. A plan without one produces " +
+        "exactly the average of everything you already know",
     },
   ];
 }
@@ -210,6 +219,39 @@ function checkUiSmoke(plan: Plan): Finding[] {
         "add one smoke contract (e.g. id \"ui-smoke\", kind \"intent\") whose blocking check " +
         "launches the app (or the preview server) and walks the core user flow with a browser driver, " +
         "e.g. `npx playwright test`. Without it, a dead button ships as \"done\"",
+    },
+  ];
+}
+
+function textsOf(plan: Plan): string[] {
+  const parts: string[] = [];
+  if (plan.summary) parts.push(plan.summary);
+  if (plan.context?.problem) parts.push(plan.context.problem);
+  if (plan.context?.ask) parts.push(...plan.context.ask);
+  for (const contract of plan.contracts) {
+    parts.push(contract.objective ?? "", contract.doneWhen ?? "");
+    if (contract.steps) for (const step of contract.steps) parts.push(step.description);
+  }
+  return parts;
+}
+
+const ASSET_KEYWORDS = /\b(?:texture|sprite|asset|voxel|block|pixel)\b/i;
+
+function checkAssets(plan: Plan): Finding[] {
+  if (!isUiCapable(plan)) return [];
+  if (!plan.design) return []; // missing-design covers that
+  if (plan.design.assets && plan.design.assets.length >= 1) return [];
+  const all = textsOf(plan);
+  if (!all.some((t) => ASSET_KEYWORDS.test(t))) return [];
+  const ids = plan.contracts.map((c) => c.id);
+  return [
+    {
+      code: "missing-assets",
+      contractIds: ids,
+      message:
+        "plan names textures/sprites/assets/voxels/blocks/pixels but declares no asset kit; " +
+        "every asset the build produces must appear in design.assets as { name, kind, hex, note }, " +
+        "so gateStyle can verify every hex in the diff appears in the palette or the assets list",
     },
   ];
 }
@@ -298,6 +340,7 @@ export function validatePlan(
 
   findings.push(...checkDesign(plan));
   findings.push(...checkReference(plan));
+  findings.push(...checkAssets(plan));
   findings.push(...checkUiSmoke(plan));
   findings.push(...checkGraphBudget(plan));
 

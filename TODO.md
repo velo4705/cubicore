@@ -122,6 +122,9 @@ None of these is committed as work, just tracked here so they are not lost:
 ## Decisions to make
 
 - [x] 1.1.0 is published on npm (2026-11-14T13:24Z) — contains everything shipped today (observer fix, `/api/event` pump, `waitForIdle` race, reference gate, variants/variant_pick, host_tools, scope escapes, role walls, brief quality)
+- [x] Visual first-shot loop wired: screenshotCheck + retrospective + ledger carry verdict — flat never fails, but is unmistakably reported
+- [x] Asset kits required (keywords trigger `missing-assets` in validator); gateStyle accepts palette ∪ asset hexes
+- [x] Planner no longer asks about direction if not specified
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
 - [ ] File claims of speed/cost in README before measurement? No.
 - [ ] Fold any of the 2026-11-13 ideas into phases now, or leave parked?

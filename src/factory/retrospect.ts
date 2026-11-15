@@ -32,6 +32,8 @@ export type Retrospective = {
   verdict: string;
   /** Every contract that wrote outside the union of declared writes — named files, so the founder sees the leak, not "sometimes someone drifts". */
   escapes: Array<{ contractId: string; files: string[] }>;
+  /** The post-integration screenshot verdict — set only when the plan had a UI preview path. */
+  visual?: RetroVisual | null;
   integration?: IntegrationOutcome;
 };
 
@@ -44,6 +46,10 @@ export type RetroUsage = {
 };
 
 /** The agent-side artifact, written per run and surfaced in the reply. */
+export interface RetroVisual {
+  verdict: "good" | "ok" | "flat" | "blocked";
+  detail: string;
+}
 export function buildRetrospective(opts: {
   fit: FactoryFit | undefined;
   artifacts: AggregatedArtifact[];
@@ -51,6 +57,8 @@ export function buildRetrospective(opts: {
   deferred: number;
   usage: RetroUsage | null;
   integration?: IntegrationOutcome | null;
+  /** Optional visual check outcome; absent means not attempted. */
+  visual?: RetroVisual | null;
 }): Retrospective {
   const totalTokens = opts.usage === null
     ? null
@@ -107,6 +115,7 @@ export function buildRetrospective(opts: {
     totalTokens,
     verdict,
     escapes: escapes,
+    ...(opts.visual ? { visual: opts.visual } : {}),
     ...(integration !== undefined ? { integration } : {}),
   };
 }
@@ -127,6 +136,7 @@ export function renderRetrospective(r: Retrospective): string {
     r.escapes.length > 0
       ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,
+    r.visual ? `- Visual: ${r.visual.verdict} — ${r.visual.detail}` : ``,
     `- Verdict: ${r.verdict}`,
   ];
   return lines.filter(Boolean).join("\n");

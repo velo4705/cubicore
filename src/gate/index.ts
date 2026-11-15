@@ -400,7 +400,12 @@ export function gateStyle(
     };
   }
 
-  const palette = new Set(design.palette.map(normalizeHex));
+  const palette = new Set((design.palette ?? []).map(normalizeHex));
+  for (const asset of design.assets ?? []) {
+    if (asset.hex && asset.hex.replace(/^#/, "").length > 0) {
+      palette.add(normalizeHex(asset.hex));
+    }
+  }
   const seen = new Map<string, string>(); // undeclared -> first file seen in
   for (const file of options.changedFiles) {
     const full = `${options.root.replace(/\/+$/, "")}/${file}`;

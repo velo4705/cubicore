@@ -396,10 +396,12 @@ function parseHexColor(value: unknown, problems: string[], label: string): strin
 }
 
 const DESIGN_AMBITIONS = new Set(["calm", "standard", "bold"]);
+const ASSET_KINDS = new Set(["texture", "sprite", "glyph", "icon", "sfx"]);
 
 function parseDesign(value: unknown, problems: string[], label = "design"): {
   direction: string; palette: string[]; typeface: string; typeScale?: number; spacing?: number;
   radii?: number[]; signature?: string; notDoing: string[]; ambition: "calm" | "standard" | "bold";
+  assets?: { name: string; kind: "texture" | "sprite" | "glyph" | "icon" | "sfx"; hex: string; note?: string }[];
 } | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) {
@@ -407,7 +409,7 @@ function parseDesign(value: unknown, problems: string[], label = "design"): {
     return undefined;
   }
   const v = value as Record<string, unknown>;
-  const allowed = ["direction", "palette", "typeface", "typeScale", "spacing", "radii", "signature", "notDoing", "ambition"];
+  const allowed = ["direction", "palette", "typeface", "typeScale", "spacing", "radii", "signature", "notDoing", "ambition", "assets"];
   for (const key of Object.keys(v)) {
     if (!allowed.includes(key)) problems.push(`${label} has unknown field "${key}"`);
   }
@@ -459,6 +461,33 @@ function parseDesign(value: unknown, problems: string[], label = "design"): {
     }).filter((x): x is string => typeof x === "string");
   }
 
+  let assets: { name: string; kind: "texture" | "sprite" | "glyph" | "icon" | "sfx"; hex: string; note?: string }[] | undefined;
+  const assetsRaw = v.assets;
+  if (assetsRaw !== undefined && assetsRaw !== null) {
+    if (!Array.isArray(assetsRaw)) {
+      problems.push(`${label}.assets must be an array`);
+    } else {
+      const parsedAssets = assetsRaw.map((raw, i) => {
+        if (!isRecord(raw)) {
+          problems.push(`${label}.assets[${i}] must be an object`);
+          return undefined;
+        }
+        const a = raw as Record<string, unknown>;
+        const name = typeof a.name === "string" && a.name.trim().length > 0 ? a.name.trim() : undefined;
+        const kind = typeof a.kind === "string" && ASSET_KINDS.has(a.kind) ? a.kind : undefined;
+        const hex = typeof a.hex === "string" ? parseHexColor(a.hex, problems, `${label}.assets[${i}].hex`) : undefined;
+        const note = typeof a.note === "string" && a.note.trim().length > 0 ? a.note.trim() : undefined;
+        if (!name) problems.push(`${label}.assets[${i}].name is required`);
+        if (!kind) problems.push(`${label}.assets[${i}].kind must be one of texture, sprite, glyph, icon, sfx`);
+        if (!hex) problems.push(`${label}.assets[${i}].hex must be a valid hex`);
+        if (!name || !kind || !hex) return undefined;
+        return { name, kind: kind as "texture" | "sprite" | "glyph" | "icon" | "sfx", hex, ...(note ? { note } : {}) };
+      }).filter((x): x is { name: string; kind: "texture" | "sprite" | "glyph" | "icon" | "sfx"; hex: string; note?: string } => x !== undefined);
+      if (parsedAssets.length > 0) assets = parsedAssets;
+      else problems.push(`${label}.assets — declare at least one asset, or omit the block entirely`);
+    }
+  }
+
   const ambition = typeof v.ambition === "string" && DESIGN_AMBITIONS.has(v.ambition)
     ? (v.ambition as "calm" | "standard" | "bold")
     : (problems.push(`${label}.ambition must be one of "calm", "standard", "bold"`), undefined);
@@ -466,7 +495,7 @@ function parseDesign(value: unknown, problems: string[], label = "design"): {
   if (!direction || !typeface || !ambition || palette.length < 2 || palette.length > 4 || notDoing.length === 0) {
     return undefined;
   }
-  return { direction, palette, typeface, typeScale, spacing, radii, signature, notDoing, ambition };
+  return { direction, palette, typeface, typeScale, spacing, radii, signature, notDoing, ambition, ...(assets ? { assets } : {}) };
 }
 
 const FACTORY_DECISIONS = new Set(["single-agent", "small-factory", "standard-factory", "pipeline", "single-reader"]);
@@ -638,8 +667,12 @@ export function parsePlan(raw: string): Plan {
       problems.push("reference must be a non-empty string");
     } else {
       const trimmed = referenceRaw.trim();
-      if (!/^https?:\/\//i.test(trimmed)) {
-        problems.push("reference must start with http:// or https://");
+      const ok =
+        /^https?:\/\//i.test(trimmed) ||
+        trimmed.startsWith("file://") ||
+        (trimmed.startsWith("/") && !trimmed.startsWith("//") && !trimmed.includes(" "));
+      if (!ok) {
+        problems.push("reference must be http(s)://, file://, or an absolute filesystem path");
       } else if (trimmed.length > 500) {
         problems.push("reference must be at most 500 characters");
       } else {

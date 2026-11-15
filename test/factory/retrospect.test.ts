@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildRetrospective,
-  renderRetrospective,
-  type RetroUsage,
-} from "../../src/factory/retrospect";
+import { buildRetrospective, renderRetrospective, type RetroUsage } from "../../src/factory/retrospect";
 
 const usage = (overrides: Partial<RetroUsage> = {}): RetroUsage => ({
   input: 100,
@@ -62,6 +58,19 @@ describe("retrospective — tokens are measured or honestly unknown", () => {
     });
     expect(r.escapes).toEqual([]);
     expect(renderRetrospective(r)).not.toContain("Scope escapes:");
+  });
+
+  test("visual flag passes through to retrospect output unchanged", () => {
+    const r = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+      visual: { verdict: "ok", detail: "initial pass" },
+    });
+    expect(r.visual).toEqual({ verdict: "ok", detail: "initial pass" });
+    expect(renderRetrospective(r)).toContain("Visual: ok");
   });
 
   test("a measured usage sums every billable class — cache counts", () => {

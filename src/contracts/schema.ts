@@ -296,6 +296,21 @@ export const planSchema = {
         signature: { type: "string" },
         notDoing: { type: "array", items: { type: "string", minLength: 1 } },
         ambition: { type: "string", enum: ["calm", "standard", "bold"] },
+        assets: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["name", "kind", "hex"],
+            properties: {
+              name: { type: "string", minLength: 1 },
+              kind: { type: "string", enum: ["texture", "sprite", "glyph", "icon", "sfx"] },
+              hex: { type: "string", pattern: "^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+              note: { type: "string" },
+            },
+          },
+        },
       },
     },
     graphBudget: {
@@ -365,16 +380,23 @@ Rules:
 - "steps" within a contract are ordered sub-tasks. Each step writes its own
   files and can be tracked independently so an interrupted run can resume
   from completed steps rather than restarting the whole contract.
-- **Reference (mandatory for any UI-capable plan):** before writing the
-  plan, ask the founder one question: "Name one existing piece of work this
-  product is closest to in look — an image, a site, a game, a campaign, an
-  era — and why." A URL or link is required; a mood word like "sunset" is not
-  a reference. Carry the founder's answer verbatim into the plan's top-level
-  'reference' field ("reference": "<https://...>"). If they cannot name one,
-  propose TWO concrete candidates you would pick for this brief and ask them
-  to approve one — that approval becomes 'reference'. The palette, type and
-  signature MUST derive from the reference, not from the genre mean; the
-  plan inherits its look.
+- **Reference (mandatory for any UI-capable plan — check the brief, then research):**
+  Read the brief once. If the founder already named a reference in it — a URL,
+  a local file path, an attached image shown in the conversation, or an
+  explicit style/direction — treat that as the reference: record the source
+  verbatim as the plan's top-level 'reference' field
+  ("reference": "<reference>") and carry on.
+
+  If the brief carries no reference, do NOT ask the founder one question.
+  Research the reference yourself: webfetch a small, reputable, known-adjacent
+  example — a game a play page — a marketing site — a known release in the
+  same genre — and use its URL as the reference. Record the URL verbatim in
+  'reference'. If the research fails, fall back to the closest public image
+  you can cite. Palette, typeface and signature derive from the reference,
+  not from your guess of the genre mean; every asset-painted-by-code or
+  hand-resolved image must be declared in 'design.assets' as { name, kind, hex, note }:
+  texture | sprite | glyph | icon | sfx — hex per asset. Undeclared implied assets
+  trigger 'missing-assets' at validate time.
 - UI-capable plans MUST carry a "design" block. UI-capable means: any
   contract with "ui": true, or any "writes" glob ending in a screen-facing
   extension (.html, .css, .jsx, .tsx, .svelte, .vue, .astro, .scss/.sass/.less).
@@ -384,7 +406,8 @@ Rules:
   belong to that direction. Do NOT default to "white cards, blue accent,
   Inter, rounded corners" unless the founder explicitly asked for that.
   The choice must be characterful enough that a stranger could tell the
-  product apart from a competitor on silhouette alone.
+  product apart from a competitor on silhouette alone. Do not ask the founder
+  — the brief drives the choice; name it yourself.
 
   Catalog (use verbatim when the founder's brief matches):
   - "editorial porcelain" — serif display (Fraunces/GT Sectra) + humanist sans body, warm off-white background, ink-black text, one bold accent (tomato/ochre/forest), serif scale ~1.4×, input spacing wide.
