@@ -706,10 +706,13 @@ async function runToCompletion(
   enterFactoryLifecycle(dir, "integrate", "worktrees collected / copied back");
   completeFactoryLifecycle(dir, "worktrees handled");
   enterFactoryLifecycle(dir, "verify");
+  // The report carries the phases and wall time Cubicore measured — keep it;
+  // discarding it in aggregation left the ledger with token counts but no clock.
+  const report = recorder.finish(usage);
   const aggregated = aggregate(
     [...outcome.accepted, ...outcome.failed.map((f) => f.result)],
     outcome.unresolved,
-    recorder.finish(usage),
+    report,
     outcome.failed.map((f) => f.contractId),
   );
 
@@ -772,6 +775,12 @@ async function runToCompletion(
       escalations: escalatedLedger(dir),
       contracts: ledgerContracts(aggregated.artifacts, { deferred: outcome.deferred, reused: reusedIds }),
       attribution: "union — per-worker file attribution is not available on this host; verdicts are the union of declared writes",
+      timing: {
+        durationMs: report.durationMs,
+        dispatchWallMs: report.dispatchWallMs,
+        phases: report.phases,
+        note: "measured from dispatch start to integration done; excludes the founder's planning review and any wait between tool calls",
+      },
       recorded: new Date().toISOString(),
     };
 

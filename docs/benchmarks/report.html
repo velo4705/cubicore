@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cubicore benchmark evidence — 2026-11-15</title>
+<style>
+  body { font-family: ui-monospace, Menlo, monospace; background: #0c0c0c; color: #d8d8d8; padding: 2rem; }
+  h1, h2 { color: #fff; font-weight: 600; }
+  table { border-collapse: collapse; margin-bottom: 2rem; font-size: 13px; }
+  th, td { border: 1px solid #333; padding: 4px 10px; text-align: left; }
+  th { background: #1b1b1b; }
+  td.note { max-width: 480px; font-size: 11px; color: #999; }
+  .banner { border: 1px solid #5b4b1f; background: #241f0c; color: #e8d28a; padding: 0.75rem 1rem; margin-bottom: 1.5rem; }
+  small { color: #777; }
+</style>
+</head>
+<body>
+<h1>Cubicore — benchmark evidence</h1>
+<div class="banner">
+  Generated from <code>docs/benchmarks/runs.jsonl</code> on 2026-11-15T17:34:56.656Z.
+  3 run(s). Any cell reading "unknown" is an <em>unmeasured value, not a zero</em>.
+  Seed rows (source: "seed") are backfilled imports — they are not comparative evidence
+  and must never appear in a product claim.
+</div>
+
+<h2>Runs</h2>
+<table>
+<thead><tr><th>project</th><th>arm</th><th>run</th><th>contracts</th><th>duration (ms)</th><th>tokens</th><th>build</th><th>smoke</th><th>visual</th><th>ok</th><th>failed</th><th>deferred</th><th>escapes</th><th>human fixes</th><th>note</th></tr></thead>
+<tbody>
+<tr><td>project-1</td><td>cubicore-inline</td><td>unknown</td><td>7</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>flat</td><td>7</td><td>0</td><td>0</td><td>0</td><td>unknown</td><td class="note">All 7 contracts dispatched inline via host sub-agent tool (cubicore-associate), in one parallel block. Post-run fixes applied by orchestrator: BETTER_AUTH_SECRET/BETTER_AUTH_URL in .env.example/.env.local, shortlisted/winner columns added to submission schema (local.db reset and reseeded), SessionMenu wired into landing masthead, revalidatePath('/submit') removed so the submission success panel pe</td></tr>
+<tr><td>project-2</td><td>cubicore-inline</td><td>unknown</td><td>8</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>flat</td><td>8</td><td>0</td><td>0</td><td>0</td><td>unknown</td><td class="note">Inline dispatch of CUBICORE_PLAN.json (8 associates, pipeline). Post-run fixes: vitest scoped to server+shared, BuildController palette string-BlockId fix, Engine.setAvatarColor added. All blocking checks re-verified on disk by the parent: tsc 0, build 0, 26/26 unit tests, playwright 1 passed, ws welcome roundtrip OK, glass-tell grep clean.</td></tr>
+<tr><td>project-6</td><td>cubicore-inline</td><td>unknown</td><td>9</td><td>unknown</td><td>unknown</td><td>unknown</td><td>unknown</td><td>flat</td><td>9</td><td>0</td><td>0</td><td>0</td><td>unknown</td><td class="note">Inline dispatch of all 9 contracts to cubicore-associate; all blocking checks re-verified green on disk (build, tsc, 88 vitest tests, playwright smoke). Orchestrator fixed one integration defect post-dispatch: src/main.ts switched from variable-specifier @vite-ignore dynamic import (would 404 on the production preview) to a literal dynamic import of ./game/Game. plan_mark unavailable to associates</td></tr>
+</tbody>
+</table>
+
+<h2>Medians (over measured rows only)</h2>
+<table>
+<thead><tr><th>metric</th><th>median</th><th>n measured</th><th>inconclusive?</th></tr></thead>
+<tbody>
+<tr><td>run</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>contracts</td><td>8</td><td>3</td><td>no</td></tr>
+<tr><td>durationMs</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>tokens</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>buildGreen</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>playwright</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>visualVerdict</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+<tr><td>accepted</td><td>8</td><td>3</td><td>no</td></tr>
+<tr><td>failed</td><td>0</td><td>3</td><td>no</td></tr>
+<tr><td>deferred</td><td>0</td><td>3</td><td>no</td></tr>
+<tr><td>escapes</td><td>0</td><td>3</td><td>no</td></tr>
+<tr><td>interventions</td><td>unknown</td><td>0</td><td>yes — no claim</td></tr>
+</tbody>
+</table>
+
+<small>Every cell traces to a line in runs.jsonl. Unknowns stay unknown. If a metric says
+"inconclusive", no claim should be published for it — measure or omit.</small>
+</body>
+</html>

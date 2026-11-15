@@ -650,3 +650,15 @@ Founder constraint: Phase 2 without touching the current build. The three items 
 Excluded by the founder's constraint: the handoff-artifact gate before dispatching a consumer, narrowed revision on gate failure, adaptive split/merge/skip. Those need the dispatch path open on purpose, not as a side effect.
 
 Tests: 611 pass, 3 consecutive runs; bundle rebuilt.
+
+
+## 2026-11-16 — Benchmark capture tooling (evidence, not claims)
+
+The founder asked how to prepare the graph, benchmark table and data visualization for promotion. Honest answer given in-session: none of those can be prepared honestly yet — no tokens measured, no wall time persisted, no control arm, three backfilled flat-verdict runs, and all of it in one sample size each. This milestone ships the machinery to produce them, not the numbers:
+
+- Execute-path ledger now persists `timing: { durationMs, dispatchWallMs, phases, note }` — RunRecorder measured these and aggregate() discarded them; the ledger had token counts but no clock. Inline runs still have no timing (host-side; nothing to measure) and are not given a fake one.
+- `docs/benchmarks/README.md` — the rulebook: ≥3 runs per arm or it isn't published; unknowns print as unknown, never 0; all arms/outcomes shown (flat screenshots included); identical inputs, holdout stays holdout; the founder publishes, Cubicore records; session dispatch preferred for benchmark runs so tokens are measurable, inline runs only feed wall-time and pass-rate.
+- `docs/benchmarks/runs.jsonl` — seeded with the three 2026-11-15 runs (project-1/2/6), marked `source: "seed"` with tokens/wall/interventions = unknown. They validate the schema and the renderer; they are not comparative evidence.
+- `scripts/benchmark-report.mjs` — reads runs.jsonl and writes `docs/benchmarks/report.html`: table of runs, medians over measured rows only, "inconclusive" when n<2 measured, unknowns never shown as zeros. report.html is regenerated, never hand-edited.
+
+Order of honesty: no promotion copy may cite a benchmark number until `runs.jsonl` holds ≥3 measured runs on both arms with a holdout task picked before tuning. The three seed rows are disqualified from use in any claim, as marked in the file and the report.

@@ -146,3 +146,8 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] Cross-plan validator scans only `CUBICORE_PLAN_*.json` — a directory with both a base file and member files goes unchecked; mixed directories are ambiguous and should either be rejected or validated, not ignored.
 - [ ] Contract ids are only unique within a member file — two member plans may reuse the same contract id (e.g. both ship a `scaffold`), and the progress markers in the member MDs would cross-contaminate. Cosmetic; the per-run ledger is unaffected. Enforce unique ids across member plans, or scope progress by file.
 - [ ] Team-mode note on "Archive of plan-and-run context" above: member files (`CUBICORE_PLAN_N.md` × N, `CONTEXT_N.md` × N) multiply the archaeology problem — the archive item matters more after 2026-11-16, not less.
+
+
+## 2026-11-16 — benchmark capture shipped; Phase 5 runs remain unscheduled
+
+- [ ] Benchmark runs — arms defined (one-agent vs cubicore, session dispatch for measurable tokens), holdout unpicked, N unset; needs the founder's tokens and calendar; Phase 5 remains closed until then
