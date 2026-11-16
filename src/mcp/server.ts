@@ -1361,6 +1361,8 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
       ...(crossPlan.length > 0
         ? ["", "Cross-plan problems (fix before any member dispatches):", ...crossPlan.map((c) => `- ${c}`)]
         : []),
+      "",
+      "If you have not called plan_coverage on this plan yet, call it now. If it reports unaddressed asks from the brief, fix the plan before dispatching — an ask the plan ignores is a bug in the plan, not in the coverage tool.",
       ...askedFactory,
     ].join("\n"),
   );
@@ -2446,6 +2448,11 @@ export const TOOLS = [
       return text(
         [
           `Wrote ${ASSOCIATE_AGENT_ID} to ${result.path}.`,
+          result.backupPath
+            ? `A backup of the previous config was kept at ${result.backupPath}.`
+            : result.backupFailed
+              ? `WARNING: the previous config could not be backed up before overwriting.`
+              : ``,
           result.maxSteps
             ? `Also bounded the primary agent to ${result.maxSteps} steps, so a planning phase that keeps calling tools cannot run forever.`
             : result.maxStepsPreserved

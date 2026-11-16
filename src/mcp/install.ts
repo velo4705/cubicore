@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
@@ -64,6 +64,10 @@ export interface InstallResult {
   maxSteps?: number;
   /** True when a primary agent already had a bound and it was left alone. */
   maxStepsPreserved?: boolean;
+  /** Where the pre-write copy of the previous config was kept, when a config existed. */
+  backupPath?: string;
+  /** True when a backup was wanted but could not be written — the config is still updated, and this says so. */
+  backupFailed?: boolean;
 }
 
 /**
@@ -152,9 +156,26 @@ export function installAgent(explicitPath?: string): InstallResult {
     return { path: location.path, wrote: false, changed: false, reason: "already up to date" };
   }
 
+  // Keep a copy of what was there before we overwrite it. The install writes
+  // into the host's global config — a wrong write is silent, so the previous
+  // config is the only recovery path. Best-effort: a failed backup never blocks
+  // the install, and backupFailed says when it happened.
+  let backupPath: string | undefined;
+  let backupFailed = false;
+  if (location.existed) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    backupPath = `${location.path}.cubicore-backup-${stamp}`;
+    try {
+      copyFileSync(location.path, backupPath);
+    } catch {
+      backupPath = undefined;
+      backupFailed = true;
+    }
+  }
+
   writeFileSync(location.path, `${JSON.stringify(config, null, 2)}\n`);
 
-  return { path: location.path, wrote: true, changed: true, maxSteps, maxStepsPreserved };
+  return { path: location.path, wrote: true, changed: true, maxSteps, maxStepsPreserved, backupPath, backupFailed };
 }
 
 /**

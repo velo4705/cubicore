@@ -420,6 +420,11 @@ async function main(): Promise<void> {
   const agentResult = installAgent(configPath);
   if (agentResult.wrote || agentResult.changed) {
     console.log(paint(GREEN, "  ✓") + ` Cubicore agents installed in ${paint(DIM, agentResult.path)}`);
+    if (agentResult.backupPath) {
+      console.log(`    ${paint(DIM, `previous config kept at ${agentResult.backupPath}`)}`);
+    } else if (agentResult.backupFailed) {
+      console.log(`    ${paint(RED, "warning: could not keep a backup of the previous config — it was overwritten")}`);
+    }
     if (agentResult.maxSteps) {
       console.log(`    ${paint(DIM, `primary agent bounded to ${agentResult.maxSteps} steps`)}`);
     }

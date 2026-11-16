@@ -597,12 +597,6 @@ Status: shipped in this tree.
 - Bundle rebuilt; 595 tests pass; typecheck clean (excluding pre-existing noise).
 - Nothing published, nothing dispatched on this host — the receipt of today's parallel rig showed Artifact loss vs native single-agent (29min Cubicore vs 23min single-agent, unpolished Flat UI).
 
-## 2026-11-15 — Asset kits required on asset-presenting plans
-
-Status: shipped in this tree.
-
-`design.assets` — each entry { name, kind, hex, note } where kind ∈ texture|sprite|glyph|icon|sfx. The validator now rejects plans whose text mentions those words but declare no assets block (code: `missing-assets`). gateStyle previously restricted palette to design.palette. New: gateStyle accepts palette ∪ asset hexes; every hex in a shipped diff must live in one of those two sets. Planner prompt updated accordingly. Tests: 3 pin reject-unmatched, accept-with-kit, no kit when no keyword; 588 pass; bundle rebuilt.
-
 ## 2026-11-15 — Phase A rework: brief-first reference recorder
 
 Status: shipped in this tree.
@@ -672,3 +666,17 @@ Three additive changes after the risk review; no dispatch, gate, or schema seman
 - **Research ceiling + stop signal**: prompt instructs at most two sweeps, then emit; after any sweep, if plan_coverage reports full coverage of the brief, emit immediately — researching past coverage is a stalled plan, not diligence. Advisory, not enforced (Cubicore cannot see the host's planner loop; the 120-step host bound stays untouched).
 - **Model unverified is now loud**: when `/provider` cannot be listed on this host, the execute reply appends `! MODEL UNVERIFIED ON THIS HOST — …` instead of printing only to server stderr. Dispatch still proceeds (a known-bad model is the only refusal); the founder sees the caveat in the tool output itself.
 - Regression tests pin both prompt sections; the empty-request refusal variant remains unchanged.
+
+
+## 2026-11-16 — Concrete risk fixes: model verification, config backup, coverage nudge
+
+- **verifyModel probes both route families**: /provider, /config/providers, /config, and /api/provider, /api/providers, /api/config, /api/config/providers. Tolerates every known payload shape ({all:[...]}, {providers:[...]}, top-level arrays, provider-keyed maps, flat models maps) via extractModelIds — never a wrong guess; unknown payload exits unverified with reasons naming each attempt. Unit-tested with mocked fetch (dedicated suite, 11 tests). NOTE: against the live host on 2026-11-16 all /provider-ish routes return HTML 200 (SPA fallback), and /api/* returns 401 to the service.json credentials — so on this host model verification still cannot succeed; every execute prints the loud MODEL UNVERIFIED line until the host's correct route + credentials are found. The probe chain is what actually got probed, and the host answering 401 (not 404) on /api/* is the strongest lead.
+- **setup keeps a backup**: installAgent now copies the pre-write global config to `.cubicore-backup-<timestamp>` before overwriting; backupPath is surfaced by both install surfaces (CLI + MCP install tool), and backupFailed prints a red warning when the copy itself failed. "already up to date" installs do not create backup clutter.
+- **plan_coverage nudge**: plan_write's success reply now tells the caller to call plan_coverage immediately and to fix the plan if it reports unaddressed asks — coverage is a plan-quality check, not an optional report.
+
+
+
+
+## Correction — publish state of the 2026-11-15/16 entries
+
+Written 2026-11-16 after checking the npm tarballs and git directly. 1.1.3 (2026-11-15T14:58Z) contains everything dated 2026-11-16 up to `b21bb4b`, i.e.: coverage tool, team prompting, per-contract ledger verdicts + union attribution (`ae8ac17`, `6a2f441`). NOT in 1.1.3: benchmark capture tooling + timing persistence (`7570bd5`), planner hardening + loud unverified model (`4622ec9`), and the uncommitted risk fixes at the time of writing (verifyModel multi-endpoint, setup config backup, plan_coverage nudge). When writing promotion copy, npm 1.1.3 is the product; the tree runs ahead of it.

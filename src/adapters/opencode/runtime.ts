@@ -158,52 +158,112 @@ export async function findCallerSession(
  * `space-bunny-free` was withdrawn mid-session and every associate sat idle
  * until its wall budget expired.
  */
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Pull model ids ("provider/model") from any of the shapes the host has
+ * served across /provider, /config/providers and /config. Anything
+ * unrecognised yields no ids — never a wrong guess.
+ */
+export function extractModelIds(body: unknown): string[] {
+  const fromProviderEntry = (entry: unknown): string[] => {
+    if (!isRecord(entry)) return [];
+    const id = typeof entry.id === "string" ? entry.id : "";
+    const models = isRecord(entry.models) ? Object.keys(entry.models) : [];
+    const flat = models.map((m) => (m.includes("/") || !id ? m : `${id}/${m}`));
+    return flat;
+  };
+  const collect = (list: unknown): string[] =>
+    Array.isArray(list) ? list.flatMap(fromProviderEntry) : [];
+
+  // Shape 1 and 2: { all: [...] } and { providers: [...] }
+  if (isRecord(body) && Array.isArray(body.all)) {
+    const out = collect(body.all);
+    if (out.length) return out;
+  }
+  if (isRecord(body) && Array.isArray(body.providers)) {
+    const out = collect(body.providers);
+    if (out.length) return out;
+  }
+  // Shape 2b: a top-level array of provider entries
+  if (Array.isArray(body)) {
+    const out = collect(body);
+    if (out.length) return out;
+  }
+  // Shape 3: keyed by provider id — { "opencode": { models: {...} } } or
+  // a flat { models: { "opencode/x": {...} } } at the top level.
+  if (isRecord(body)) {
+    const out: string[] = [];
+    for (const [key, value] of Object.entries(body)) {
+      if (!isRecord(value)) continue;
+      if (isRecord(value.models)) {
+        out.push(...Object.keys(value.models).map((m) => (m.includes("/") ? m : `${key}/${m}`)));
+      } else if (key === "models") {
+        out.push(...Object.keys(value));
+      }
+    }
+    if (out.length) return out;
+  }
+  return [];
+}
+
 export async function verifyModel(
   runtime: Runtime,
   candidate?: string,
   auth?: string,
 ): Promise<{ id: string; verified: boolean; reason?: string }> {
   const wanted = candidate ?? runtime.model.id;
+  const headers = auth ? { Authorization: auth } : undefined;
+  const failures: string[] = [];
 
-  try {
-    // The model list lives on /provider, shaped { all: [...] }. It has been
-    // three shapes across three endpoints -- an array on /config, an object
-    // keyed by id on /config/providers, and { all: [...] } here -- and
-    // reading the wrong one used to throw, and a throw refused to dispatch.
-    // So: read this one, tolerate a few shapes, and treat "could not check"
-    // as unknown rather than as a failure.
-    const response = await fetch(`${runtime.baseUrl}/provider`, {
-      headers: auth ? { Authorization: auth } : {},
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) {
-      return { id: wanted, verified: false, reason: `could not list the provider models: ${response.status}` };
-    }
-
-    const body = (await response.json()) as {
-      all?: Array<{ id: string; models?: Record<string, unknown> }>;
-    };
-    const providers = Array.isArray(body.all) ? body.all : [];
-
-    const available: string[] = [];
-    for (const provider of providers) {
-      for (const model of Object.keys(provider.models ?? {})) {
-        available.push(`${provider.id}/${model}`);
+  // The host has served three payload shapes across three endpoints -- an
+  // array on /config, an object keyed by id on /config/providers, and
+  // { all: [...] } on /provider. Reading the wrong one used to throw, and a
+  // throw refused to dispatch. Now every endpoint is tried, every known
+  // shape is tolerated, and only knowing nothing at all yields unverified.
+  // every provider endpoint is tried, both route families — the plain one and
+  // the /api/* one this host's server appears to live under (404 ≠ 401) —
+  // tolerate every known shape, and only knowing nothing at all yields unverified.
+  for (const path of ["/provider", "/config/providers", "/config", "/api/provider", "/api/providers", "/api/config", "/api/config/providers"]) {
+    try {
+      const response = await fetch(`${runtime.baseUrl}${path}`, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) {
+        failures.push(`${path} → HTTP ${response.status}`);
+        continue;
       }
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("json")) {
+        failures.push(`${path} → non-JSON (${contentType || "unknown content type"})`);
+        continue;
+      }
+      const body: unknown = await response.json();
+      const ids = extractModelIds(body);
+      if (ids.length === 0) {
+        failures.push(`${path} → JSON but no model list recognised`);
+        continue;
+      }
+      const resolved = resolveModel(ids, wanted);
+      runtime.model = { id: resolved.model, verified: resolved.ok, reason: resolved.reason };
+      return runtime.model;
+    } catch (error) {
+      failures.push(`${path} → ${String(error).slice(0, 120)}`);
     }
-
-    const resolved = resolveModel(available, wanted);
-    runtime.model = { id: resolved.model, verified: resolved.ok, reason: resolved.reason };
-    return runtime.model;
-  } catch (error) {
-    // Could not check. Say so rather than implying it was verified.
-    runtime.model = {
-      id: wanted,
-      verified: false,
-      reason: `Could not list the provider's models: ${error instanceof Error ? error.message : String(error)}`,
-    };
-    return runtime.model;
   }
+
+  // Could not check any of the three endpoints. Say so rather than implying
+  // verification happened — and rather than refusing dispatch outright.
+  runtime.model = {
+    id: wanted,
+    verified: false,
+    reason: `Could not list the provider's models. Tried: ${failures.join("; ")}`,
+  };
+  return runtime.model;
 }
 
 export function workerSessions(

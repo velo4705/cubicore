@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -186,5 +186,35 @@ describe("the agent registry", () => {
     for (const agent of CUBICORE_AGENTS) {
       expect(written.agent[agent.id]).toBeDefined();
     }
+  });
+});
+
+
+describe("install backup", () => {
+  it("keeps a copy of the previous config before overwriting it", () => {
+    const path = fixture();
+    installAgent(path);
+    const diverged = JSON.parse(readFileSync(path, "utf8"));
+    diverged.founderNote = "daily driver — do not lose this";
+    writeFileSync(path, JSON.stringify(diverged));
+
+    const stale = JSON.parse(readFileSync(path, "utf8"));
+    stale.agent[ASSOCIATE_AGENT_ID].prompt = "old";       // force a rewrite
+    writeFileSync(path, JSON.stringify(stale));
+
+    const result = installAgent(path);
+    expect(result.wrote).toBe(true);
+    expect(result.backupPath).toBeTruthy();
+    expect(existsSync(result.backupPath!)).toBe(true);
+    const backup = JSON.parse(readFileSync(result.backupPath!, "utf8"));
+    expect(backup.founderNote).toBe("daily driver — do not lose this");
+  });
+
+  it("does not back up when nothing is written", () => {
+    const path = fixture();
+    installAgent(path);
+    const second = installAgent(path);
+    expect(second.reason).toBe("already up to date");
+    expect(second.backupPath).toBeUndefined();
   });
 });

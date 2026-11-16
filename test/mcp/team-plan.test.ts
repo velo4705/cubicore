@@ -190,6 +190,7 @@ describe("solo plans are untouched by team mode", () => {
     expect(result.isError).not.toBe(true);
     expect(readFileSync(join(directory, "CUBICORE_PLAN.md"), "utf8")).not.toContain("Member ");
     expect(out(result)).toContain("CUBICORE_PLAN.md");
+    expect(out(result)).toContain("plan_coverage");
   });
 });
 

@@ -117,7 +117,7 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] Brief quality bar in the dispatched brief — 2026-11-14
 - [x] Reference field required on UI plans; validator rejects without one — 2026-11-14
 - [x] `host_tools` MCP tool: live read-back of what this host declares — 2026-11-14
-- [x] 1.0.9 packed & smoke-verified by me — 2026-11-14 — superseded by 1.1.0 (2026-11-14T13:24Z), which carries that work plus this cycle's remainder where noted; everything since 1.1.0 (2026-11-14) remains unpublished in this tree
+- [x] 1.0.9 packed & smoke-verified by me — 2026-11-14 — superseded by 1.1.0 (2026-11-14T13:24Z), then 1.1.1 (same day), 1.1.2 (2026-11-15T11:13Z) and 1.1.3 (2026-11-15T14:58Z). npm 1.1.3 is the product; everything after `b21bb4b` is in this tree, unpublished
 
 ## Decisions to make
 
@@ -156,6 +156,6 @@ None of these is committed as work, just tracked here so they are not lost:
 ## 2026-11-16 — planner risk review shipped; still open
 
 - [ ] Associates still run unrestricted shell — sandboxed associate execution (bwrap/firejail/sandbox-exec) is the real fix and needs the founder's call on host privileges
-- [ ] `/provider` returns HTML to verifyModel on this host — model verification silently never runs; the execute path now says so loudly, but the underlying fetch mismatch is unfixed
+- [ ] verifyModel probes both route families but this host still returns HTML 200 on /provider-ish routes and 401 on /api/* with the service.json credentials — find the host's actual route/credentials or accept loud-unverified as the steady state (founder's call)
 - [ ] Wildcard MCP deny — wire-level verification on this host remains unconfirmed (founder's call)
-- [ ] Release drift — setup does not back up or version-stamp the global config before overwriting
+- [x] Release drift (partial) — setup now backs up the pre-write config to `.cubicore-backup-<ts>` before overwriting (2026-11-16); version stamp still absent
