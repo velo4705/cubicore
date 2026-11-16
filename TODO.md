@@ -151,3 +151,11 @@ None of these is committed as work, just tracked here so they are not lost:
 ## 2026-11-16 — benchmark capture shipped; Phase 5 runs remain unscheduled
 
 - [ ] Benchmark runs — arms defined (one-agent vs cubicore, session dispatch for measurable tokens), holdout unpicked, N unset; needs the founder's tokens and calendar; Phase 5 remains closed until then
+
+
+## 2026-11-16 — planner risk review shipped; still open
+
+- [ ] Associates still run unrestricted shell — sandboxed associate execution (bwrap/firejail/sandbox-exec) is the real fix and needs the founder's call on host privileges
+- [ ] `/provider` returns HTML to verifyModel on this host — model verification silently never runs; the execute path now says so loudly, but the underlying fetch mismatch is unfixed
+- [ ] Wildcard MCP deny — wire-level verification on this host remains unconfirmed (founder's call)
+- [ ] Release drift — setup does not back up or version-stamp the global config before overwriting
