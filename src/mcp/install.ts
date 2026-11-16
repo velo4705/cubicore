@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { CUBICORE_AGENTS } from "./agents";
 
@@ -68,6 +69,32 @@ export interface InstallResult {
   backupPath?: string;
   /** True when a backup was wanted but could not be written — the config is still updated, and this says so. */
   backupFailed?: boolean;
+  /** Where the version stamp was written (same directory as the config). */
+  versionStampPath?: string;
+}
+
+function packageVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8")) as { version?: string };
+    return typeof pkg.version === "string" ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** Record which Cubicore installed this host's config, and when. Best-effort. */
+function writeVersionStamp(configPath: string): string | undefined {
+  try {
+    const stampPath = join(dirname(configPath), ".cubicore-version");
+    writeFileSync(
+      stampPath,
+      JSON.stringify({ version: packageVersion(), writtenAt: new Date().toISOString() }, null, 2) + "\n",
+    );
+    return stampPath;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -153,7 +180,8 @@ export function installAgent(explicitPath?: string): InstallResult {
 
   mkdirSync(dirname(location.path), { recursive: true });
   if (before === after && location.existed && maxSteps === undefined) {
-    return { path: location.path, wrote: false, changed: false, reason: "already up to date" };
+    const versionStampPath = writeVersionStamp(location.path);
+    return { path: location.path, wrote: false, changed: false, reason: "already up to date", versionStampPath };
   }
 
   // Keep a copy of what was there before we overwrite it. The install writes
@@ -174,8 +202,9 @@ export function installAgent(explicitPath?: string): InstallResult {
   }
 
   writeFileSync(location.path, `${JSON.stringify(config, null, 2)}\n`);
+  const versionStampPath = writeVersionStamp(location.path);
 
-  return { path: location.path, wrote: true, changed: true, maxSteps, maxStepsPreserved, backupPath, backupFailed };
+  return { path: location.path, wrote: true, changed: true, maxSteps, maxStepsPreserved, backupPath, backupFailed, versionStampPath };
 }
 
 /**

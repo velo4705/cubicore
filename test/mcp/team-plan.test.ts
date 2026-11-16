@@ -164,6 +164,40 @@ describe("plan_write with a planNumber", () => {
     expect(text).toContain("src/shared.ts");
   });
 
+  test("member plans sharing a contract id withhold progress markers in the markdown", async () => {
+    const directory = root();
+    const shared = (member: string) => ({
+      ...memberPlan(member, [`src/${member}.ts`]),
+      contracts: [
+        {
+          ...memberPlan(member, []).contracts[0],
+          id: "scaffold",
+          writes: [`src/shared-${member}.ts`],
+        },
+      ],
+    });
+
+    const first = await handler()({
+      plan: JSON.stringify(shared("1")),
+      directory,
+      planNumber: 1,
+    });
+    expect(first.isError).not.toBe(true);
+
+    const second = await handler()({
+      plan: JSON.stringify(shared("2")),
+      directory,
+      planNumber: 2,
+    });
+    const text = out(second);
+    expect(text).toContain('shared contract id "scaffold"');
+    expect(text).toContain("withheld");
+
+    const md = readFileSync(join(directory, "CUBICORE_PLAN_2.md"), "utf8");
+    expect(md).toContain("Progress markers withheld");
+    expect(md).toContain("scaffold");
+  });
+
   test("disjoint member slices pass silently", async () => {
     const directory = root();
     await handler()({

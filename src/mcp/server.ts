@@ -56,6 +56,7 @@ import {
   validateCrossPlan,
   validateCrossPlanCollisions,
   validateCrossPlanInterfaces,
+  memberContractIdCollisions,
 } from "./protocol";
 import type { Contract, Plan } from "../contracts/types";
 
@@ -1249,11 +1250,27 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   // along the same way).
   writeFileSync(resolved.planPath, JSON.stringify(parsed, null, 2));
 
+  // Shared contract ids between member files mean the host cannot say who
+  // produced which verdict — so progress markers for those ids are withheld
+  // rather than shown with someone else's check marks.
+  const idCollisions = numbered
+    ? memberContractIdCollisions(dir, planBase, parsed.contracts.map((c) => c.id))
+    : [];
   const progress = progressFromDisk(directory, parsed.contracts);
+  for (const id of idCollisions) {
+    progress.contracts.delete(id);
+    progress.steps.delete(id);
+  }
+  const withholdSuffix = idCollisions.length > 0
+    ? ` Progress markers withheld for shared ids: ${idCollisions.join(", ")}.`
+    : "";
   const memberHeader = numbered
-    ? planNumber === 1
-      ? `Member 1 — you are the team leader. This is your slice. Dispatch it with \`/cubicore:execute 1\`. The rest of the team dispatches theirs with their own numbers.`
-      : `Member ${planNumber} — one file per team member; the leader took CUBICORE_PLAN_1. This file is yours. Dispatch it with \`/cubicore:execute ${planNumber}\`. Do not dispatch another member's file.`
+    ? (
+        (planNumber === 1
+          ? `Member 1 — you are the team leader. This is your slice. Dispatch it with \`/cubicore:execute 1\`. The rest of the team dispatches theirs with their own numbers.`
+          : `Member ${planNumber} — one file per team member; the leader took CUBICORE_PLAN_1. This file is yours. Dispatch it with \`/cubicore:execute ${planNumber}\`. Do not dispatch another member's file.`)
+        + withholdSuffix
+      )
     : undefined;
   writeFileSync(
     resolved.mdPath,
@@ -1275,7 +1292,14 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   // Member slices are written one per tool call; surface cross-plan problems
   // as soon as they are visible so the leader learns about a collision
   // before handing out the files, not at dispatch time.
-  const crossPlan = numbered ? validateCrossPlan(dir) : [];
+  const crossPlan = numbered
+    ? [
+        ...validateCrossPlan(dir),
+        ...idCollisions.map(
+          (id) => `shared contract id "${id}" between member plans — progress markers for it are withheld in the markdown (rename it in one plan to fix)`,
+        ),
+      ]
+    : [];
 
   if (problems.length === 0) {
     // A good plan clears the budget. Without this a refine would start at
@@ -1406,9 +1430,18 @@ async function recordFactoryFit(
     JSON.stringify(nextFit, null, 2));
   const validation = validatePlan(next, deriveBaseline(dir));
   const progress = progressFromDisk(dir, next.contracts);
+  const fitCollisions =
+    planNumber !== undefined && planNumber !== null
+      ? memberContractIdCollisions(dir, resolved.planPath.split("/").pop() ?? "", next.contracts.map((c) => c.id))
+      : [];
+  for (const id of fitCollisions) {
+    progress.contracts.delete(id);
+    progress.steps.delete(id);
+  }
   const fitHeader =
     planNumber !== undefined && planNumber !== null
-      ? `Member ${planNumber} — dispatch this slice with \`/cubicore:execute ${planNumber}\`.`
+      ? `Member ${planNumber} — dispatch this slice with \`/cubicore:execute ${planNumber}\`.` +
+        (fitCollisions.length > 0 ? ` Progress markers withheld for shared ids: ${fitCollisions.join(", ")}.` : "")
       : undefined;
   writeFileSync(
     resolved.mdPath,
@@ -2453,6 +2486,9 @@ export const TOOLS = [
             : result.backupFailed
               ? `WARNING: the previous config could not be backed up before overwriting.`
               : ``,
+          result.versionStampPath
+            ? `Version stamp written to ${result.versionStampPath}.`
+            : ``,
           result.maxSteps
             ? `Also bounded the primary agent to ${result.maxSteps} steps, so a planning phase that keeps calling tools cannot run forever.`
             : result.maxStepsPreserved

@@ -680,3 +680,13 @@ Three additive changes after the risk review; no dispatch, gate, or schema seman
 ## Correction — publish state of the 2026-11-15/16 entries
 
 Written 2026-11-16 after checking the npm tarballs and git directly. 1.1.3 (2026-11-15T14:58Z) contains everything dated 2026-11-16 up to `b21bb4b`, i.e.: coverage tool, team prompting, per-contract ledger verdicts + union attribution (`ae8ac17`, `6a2f441`). NOT in 1.1.3: benchmark capture tooling + timing persistence (`7570bd5`), planner hardening + loud unverified model (`4622ec9`), and the uncommitted risk fixes at the time of writing (verifyModel multi-endpoint, setup config backup, plan_coverage nudge). When writing promotion copy, npm 1.1.3 is the product; the tree runs ahead of it.
+
+
+## 2026-11-16 — Safe additive pass (no architecture changes)
+
+Founder-approved safe set; nothing in dispatch, gates, topology or validator semantics was touched.
+
+- **Version stamp**: install now writes `.cubicore-version` (version + UTC) beside the global config on every write and on no-op reinstalls; surfaced on both install paths (CLI + MCP install tool).
+- **Member plans with shared contract ids**: cross-plan id scan at plan-write time; shared ids are named in the reply, and the member MD **withholds progress markers for those ids** instead of rendering another member's check marks. Applies to the factory-fit re-render path too, so a founder override cannot restore misleading markers.
+- **describe() steps tally**: runs with step-level progress now show `Steps: a/b done` — real data or no line at all.
+- Tests: 632 pass including new describe suite and member-collision fixtures; bundle rebuilt.

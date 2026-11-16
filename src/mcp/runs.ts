@@ -234,9 +234,13 @@ export function describe(run: Run): string {
     return `${head}${body}`;
   });
 
+  const steps = run.progress.flatMap((p) => Object.values(p.steps ?? {}));
+  const stepsDone = steps.filter((s) => s === "done").length;
+
   const lines = [
     `run ${run.id} · stage: ${stage} · elapsed ${elapsed}s`,
     `Associates: ${counts}`,
+    ...(steps.length > 0 ? [`Steps: ${stepsDone}/${steps.length} done`] : []),
     ...contractLines,
   ];
 

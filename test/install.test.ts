@@ -54,6 +54,20 @@ describe("agent install", () => {
     expect(second.reason).toBe("already up to date");
   });
 
+  it("writes a version stamp next to the config, on both paths", () => {
+    const path = fixture();
+    const result = installAgent(path);
+    expect(result.versionStampPath).toBeTruthy();
+    const stampPath = result.versionStampPath!;
+    const stamp = JSON.parse(readFileSync(stampPath, "utf8"));
+    expect(typeof stamp.version).toBe("string");
+    expect(typeof stamp.writtenAt).toBe("string");
+
+    const second = installAgent(path);
+    expect(second.reason).toBe("already up to date");
+    expect(second.versionStampPath).toBeTruthy();
+  });
+
   it("refreshes a stale agent rather than leaving it", () => {
     const path = fixture();
     const config = JSON.parse(readFileSync(path, "utf8"));

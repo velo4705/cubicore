@@ -18,8 +18,8 @@ see the archive before proposing. If an item appears wrong, check there first.
 
 - [ ] Adaptive split/merge/skip decisions on a gate failure
 - [ ] Narrowed revision named by the factory on gate failure (replaces "merge whatever changed")
-- [ ] Cancellation and resume rigour — verdict per contract persisted, not only per task
-- [ ] Factory dashboard / readable status — all worker states
+- [x] Cancellation and resume rigour — verdict per contract persisted, not only per task — ledger carries done/flagged/blocked/deferred/reused per contract in both execute and inline paths (1.1.3) — checked 2026-11-16
+- [x] Factory dashboard / readable status — all worker states — describe() renders every contract (icon, writes, counts, stage, elapsed, escalation next moves, union-pick attribution footer, steps tally) — checked 2026-11-16
 - [ ] Handoff artifacts verified when passed between waves — not a promise
 - [ ] Collision reporting per-file from actual diffs (artifact has *which* worker wrote *which* file) — **attribution not available on opencode 2.1.3; the union is all this host will say**
 - [ ] No two associates own the same file by name — union-scope does not attribute; resolved when the host gains per-session attribution
@@ -31,7 +31,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 - [ ] Replace an unavailable capability with the strongest available one
 - [ ] Stop spending on work cheaper as one agent
 - [ ] Handoff artifact checks: consumer's `reads` must exist and pass their own gate before dispatching the consumer
-- [ ] Collision from actual diffs: per-file attribution proposal; if the host cannot, the founder gets the union and a clear "not attributable" line
+- [x] Collision from actual diffs — host cannot attribute (opencode 2.1.3); the union verdict + "not attributable" line now prints in gate detail, retrospective, /cubicore:status, and every ledger — per-file attribution remains host-blocked; the escape hatch this item allowed is fully shipped — checked 2026-11-16
 
 ## Area 3 — Portability (Phase 3; open only)
 
@@ -49,8 +49,8 @@ see the archive before proposing. If an item appears wrong, check there first.
 ## Area 4 — User-Visible Value (open only)
 
 - [ ] Archive of plan-and-run context across runs — one place, not `CUBICORE_PLAN*.md` archaeology
-- [ ] Tight summary after run: done / not done, what to do next, one line
-- [ ] Exit: a blocked run tells the founder exactly one next move (partially true — `escalatedLine` prints it; audit ends here unless the host supports attributed idle)
+- [x] Tight summary after run: done / not done, what to do next, one line — execute/debug replies end with a Next: line derived from disk state via nextLine(); the retrospective carries the done/not-done split — checked 2026-11-16
+- [x] Exit: a blocked run tells the founder exactly one next move — escalatedLine prints the single next move with the attempt count; attributed idle does not exist on this host, so this is where the audit ends, exactly as the item anticipated — checked 2026-11-16
 - [ ] Exit: nothing the founder sees is unverified — unverified lines print as unverified (keep)
 
 ## Phase 4 — Continuous-project support (open only)
@@ -131,7 +131,7 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] "Not attributable — verdicts rest on the union of declared writes" line in scope gate detail, retrospective, and `/cubicore:status` (multi-worker) — 2026-11-16; per-file attribution remains host-blocked
 - [x] Planner no longer asks about direction if not specified
 - [ ] Single-reader topology: worth designing now or wait for cost-budget plan?
-- [ ] File claims of speed/cost in README before measurement? No.
+- [x] File claims of speed/cost in README before measurement? No. — decided: promotion stays on the "verification, not speed" framing until Phase 5 produces measured numbers — checked 2026-11-16
 - [ ] Fold any of the 2026-11-13 ideas into phases now, or leave parked?
 
 ## Known-state open defects and unknowns (not milestones — fact)
@@ -144,7 +144,7 @@ None of these is committed as work, just tracked here so they are not lost:
 
 - [ ] Bare `/cubicore:execute` in a team directory (no base `CUBICORE_PLAN.json`) silently falls back to `CUBICORE_PLAN_1.json` — member 2 running it redrives the leader's slice instead of being told "pass your number". Decide: refuse when no base file exists and numbered files do, or warn loudly. `next.ts` already steers the suggestion, but the fallback itself remains.
 - [ ] Cross-plan validator scans only `CUBICORE_PLAN_*.json` — a directory with both a base file and member files goes unchecked; mixed directories are ambiguous and should either be rejected or validated, not ignored.
-- [ ] Contract ids are only unique within a member file — two member plans may reuse the same contract id (e.g. both ship a `scaffold`), and the progress markers in the member MDs would cross-contaminate. Cosmetic; the per-run ledger is unaffected. Enforce unique ids across member plans, or scope progress by file.
+- [x] Contract ids shared between member plans — memberContractIdCollisions() scan at plan-write time; shared ids named in the reply; member MD withholds progress markers for collided ids rather than rendering another member's checks; both write paths (plan_write and record_factory_fit) honor it — checked 2026-11-16 (base .cubicore-progress.json write side deliberately untouched)
 - [ ] Team-mode note on "Archive of plan-and-run context" above: member files (`CUBICORE_PLAN_N.md` × N, `CONTEXT_N.md` × N) multiply the archaeology problem — the archive item matters more after 2026-11-16, not less.
 
 
@@ -158,4 +158,4 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] Associates still run unrestricted shell — sandboxed associate execution (bwrap/firejail/sandbox-exec) is the real fix and needs the founder's call on host privileges
 - [ ] verifyModel probes both route families but this host still returns HTML 200 on /provider-ish routes and 401 on /api/* with the service.json credentials — find the host's actual route/credentials or accept loud-unverified as the steady state (founder's call)
 - [ ] Wildcard MCP deny — wire-level verification on this host remains unconfirmed (founder's call)
-- [x] Release drift (partial) — setup now backs up the pre-write config to `.cubicore-backup-<ts>` before overwriting (2026-11-16); version stamp still absent
+- [x] Release drift — setup now backs up the pre-write config to `.cubicore-backup-<ts>` before overwriting and writes `.cubicore-version` (version + UTC) beside it on every install, no-op included — full release-drift item done 2026-11-16

@@ -425,6 +425,9 @@ async function main(): Promise<void> {
     } else if (agentResult.backupFailed) {
       console.log(`    ${paint(RED, "warning: could not keep a backup of the previous config — it was overwritten")}`);
     }
+    if (agentResult.versionStampPath) {
+      console.log(`    ${paint(DIM, `version stamp written to ${agentResult.versionStampPath}`)}`);
+    }
     if (agentResult.maxSteps) {
       console.log(`    ${paint(DIM, `primary agent bounded to ${agentResult.maxSteps} steps`)}`);
     }

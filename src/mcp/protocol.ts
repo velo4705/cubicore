@@ -464,6 +464,47 @@ export function validateCrossPlan(directory: string): string[] {
 }
 
 /**
+ * Contract ids shared between two plan files in the directory.
+ *
+ * Progress markers in member markdown are keyed by contract id, so a shared
+ * id makes one member's MD show the other member's check marks — the host
+ * cannot attribute which run produced which verdict. Returning the shared
+ * ids lets the writer withhold them honestly instead of printing lies.
+ */
+export function memberContractIdCollisions(
+  directory: string,
+  selfFile: string,
+  contractIds: readonly string[],
+): string[] {
+  const otherIds = new Set<string>();
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return [];
+  }
+  for (const entry of entries) {
+    if (entry === selfFile) continue;
+    if (!/^CUBICORE_PLAN(\.json|_\d+\.json)$/.test(entry)) continue;
+    let raw: string;
+    try {
+      raw = readFileSync(join(directory, entry), "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { contracts?: Array<{ id?: unknown }> };
+      for (const contract of parsed.contracts ?? []) {
+        if (typeof contract.id === "string") otherIds.add(contract.id);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return contractIds.filter((id) => otherIds.has(id));
+}
+
+/**
  * Render CUBICORE_CONTEXT.md — narrative context for human readers.
  *
  * Not parsed by Execute or dispatch; purely for team members who need to
