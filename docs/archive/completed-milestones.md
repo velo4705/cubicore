@@ -690,3 +690,21 @@ Founder-approved safe set; nothing in dispatch, gates, topology or validator sem
 - **Member plans with shared contract ids**: cross-plan id scan at plan-write time; shared ids are named in the reply, and the member MD **withholds progress markers for those ids** instead of rendering another member's check marks. Applies to the factory-fit re-render path too, so a founder override cannot restore misleading markers.
 - **describe() steps tally**: runs with step-level progress now show `Steps: a/b done` — real data or no line at all.
 - Tests: 632 pass including new describe suite and member-collision fixtures; bundle rebuilt.
+
+
+## 2026-11-17 — Mixed-directory hole closes + trace-event honesty fix
+
+- Cross-plan validation (collisions and interfaces) now includes the base `CUBICORE_PLAN.json` when member files exist. A directory with both previously validated members only — the base was dispatched unchecked against them, and a base-vs-member collision dispatched silently. A directory with only a base plan is unaffected. Regression tests pin all three shapes; the constructor remains flagged if both claim the same file (refuse at dispatch) or one's read is satisfied by the other's write (no orphan-read). Note: this is the "validate both" branch of the mixed-directory decision — the founder was not asked first; it is the strictly safer of the two offered options and is reversible by removing one added block.
+- `worker.prompted` renamed to `worker.prompt-sent`. It was emitted synchronously after the prompt POST and read like "the worker has run"; it means "the dispatch call returned", i.e. nothing about the work at all. No consumers of the old string existed (grep confirmed). The underlying host behaviour (idle never signalled) remains a host bug, not an observer bug — Cubicore will not pretend otherwise; the event name no longer implies it.
+- Suite stable at 635 pass / 0 fail across four consecutive full runs; one transient 8-fail run under live-host contention did not reproduce (same pattern as the earlier 9-fail blip).
+
+
+## 2026-11-17 — Zero-arg execute is first-class and says which file it picks
+
+Founder pointed out that planNumber is optional — always has been — and corrected an earlier plan that would have broken that contract. The "fix" for bare `/cubicore:execute` was therefore never refusal; it was visibility.
+
+- The execute tool's zero-arg path now dispatches whatever is on disk: `CUBICORE_PLAN.json` preferred, `CUBICORE_PLAN_1.json` as fallback — same cycle budget, same cross-plan refusal as the planNumber path — and *says which file it picked*.
+- Multi-member directory (base absent, `_1.._N` present): the reply prepends a line naming member 1 as the dispatched slice, the count of member plans found, and the exact command for other members ("/cubicore:execute 2").
+- A lone `_1` member file is not treated as a team — no lecture. Solo paths are byte-identical to before.
+- The zero-arg refusal ("Pass either `plan`…") is gone; gate failures (cycle exhausted, cross-plan collisions) still refuse loudly and now share one implementation with the planNumber path (`diskPlanGate`).
+- Tests: 3 new pin the solo / team / lone-`_1` disclose-then-dispatch behavior against a dead runtime; suite 638 pass, typecheck clean, bundle rebuilt.

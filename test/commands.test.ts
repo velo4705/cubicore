@@ -334,4 +334,46 @@ describe("cross-plan interface validation", () => {
     const problems = validateCrossPlan(dir);
     expect(problems).toEqual([]);
   });
+
+  it("includes the base plan when a directory mixes base and member plans", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    // Base plan and a member plan both claim src/shared.ts. Before the base
+    // counted, this directory was "members-only validated" and dispatch could
+    // proceed on a collision between the base and a member.
+    writeFile(dir, "CUBICORE_PLAN.json", planWith([
+      { id: "base", reads: [], writes: ["src/shared.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "member1", reads: [], writes: ["src/shared.ts"] },
+    ]));
+
+    const problems = validateCrossPlan(dir);
+    expect(problems.some((p) => p.includes("write collision"))).toBe(true);
+  });
+
+  it("a member's read satisfied by the base plan is not an orphan read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    // The member reads src/api.ts; nobody in the member files writes it —
+    // but the base plan does, and the base plan is part of the same
+    // dispatch. Refusing would be refusing a satisfied dependency.
+    writeFile(dir, "CUBICORE_PLAN.json", planWith([
+      { id: "base", reads: [], writes: ["src/api.ts"] },
+    ]));
+    writeFile(dir, "CUBICORE_PLAN_1.json", planWith([
+      { id: "member1", reads: ["src/api.ts"], writes: ["src/app.ts"] },
+    ]));
+
+    const problems = validateCrossPlanInterfaces(dir);
+    expect(problems).toEqual([]);
+  });
+
+  it("a directory with only a base plan is unaffected", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cubicore-cross-"));
+    writeFile(dir, "CUBICORE_PLAN.json", planWith([
+      { id: "only", reads: [], writes: ["src/app.ts"] },
+    ]));
+
+    const problems = validateCrossPlan(dir);
+    expect(problems).toEqual([]);
+  });
 });

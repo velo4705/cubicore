@@ -2,7 +2,7 @@ import { checkTopology } from "../coordinator/topology";
 import { validatePlan } from "../validate/plan";
 import { parsePlan } from "../coordinator/parse";
 import { PLAN_SCHEMA_JSON } from "../contracts/schema";
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import type { Contract, Plan, PlanContext } from "../contracts/types";
@@ -327,6 +327,13 @@ export function loadPlan(raw: string): { ok: true; plan: Plan } | { ok: false; r
 export function validateCrossPlanCollisions(directory: string): string[] {
   const problems: string[] = [];
   const planFiles: string[] = [];
+  // The base plan counts too. A directory with a base plan beside member
+  // plans used to leave the base unchecked — the member could claim a file
+  // the base claimed and both would dispatch on top of each other, which is
+  // the exact failure this gate exists to prevent.
+  if (existsSync(join(directory, PLAN_JSON))) {
+    planFiles.push(join(directory, PLAN_JSON));
+  }
 
   let entries: string[];
   try {
@@ -392,6 +399,13 @@ export function validateCrossPlanCollisions(directory: string): string[] {
 export function validateCrossPlanInterfaces(directory: string): string[] {
   const problems: string[] = [];
   const planFiles: string[] = [];
+
+  // The base plan counts too — a mixed directory used to leave the base
+  // unvalidated. Including it can only turn a silent corruption into a
+  // named problem, never hide one.
+  if (existsSync(join(directory, PLAN_JSON))) {
+    planFiles.push(join(directory, PLAN_JSON));
+  }
 
   let entries: string[];
   try {

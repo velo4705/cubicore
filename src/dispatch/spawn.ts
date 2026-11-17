@@ -180,7 +180,10 @@ export class WorkerSessions {
         tools: toolsForContract(contract),
       });
 
-      this.trace?.("worker.prompted", { contractId: contract.id, sessionId });
+      // Not "the worker ran" — the prompt has been handed to the host and
+      // nothing else is known. The name exists long enough to find in logs;
+      // anything more confident would be a lie.
+      this.trace?.("worker.prompt-sent", { contractId: contract.id, sessionId });
       // opencode 2.1.3 may terminate the agent but never publish session.idle
       // to the MCP's event pump. The session database is ground truth for
       // termination. Poll it as the fallback when the event path misses.

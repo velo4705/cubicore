@@ -47,7 +47,7 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
-import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync, appendFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
 import { cleanOrphanedWorktrees } from "../dispatch/worktree";
@@ -399,6 +399,63 @@ function resolvePlanFile(directory: string, planNumber?: number): { planPath: st
     return { planPath: numberedPlan, mdPath: numberedMd, resolved: 1 };
   }
   return { planPath: basePlan, mdPath: baseMd, resolved: null };
+}
+
+/**
+ * Read and gate a plan from disk — shared by the planNumber path and the
+ * zero-arg path. Both paths enforce the same cycle budget, the same
+ * cross-plan check, and the same dispatch gates; only the *disclosure* of
+ * which file was picked differs between them.
+ */
+async function diskPlanGate(
+  dir: string,
+  planNumber?: number,
+): Promise<{ raw: string; note: string | null } | { error: string; message: string }> {
+  const resolved = resolvePlanFile(dir, planNumber);
+  let raw: string;
+  try {
+    raw = await Bun.file(resolved.planPath).text();
+  } catch {
+    return { error: `No plan file found at ${resolved.planPath}. Run the plan command first.`, message: "not-found" };
+  }
+
+  const statePath = `${dir}/.cubicore-cycle.json`;
+  const state = readCycleState(statePath);
+  const gate = canExecute(state);
+  if (!gate.allowed) return { error: gate.reason, message: "cycle" };
+
+  const collisions = validateCrossPlan(dir);
+  if (collisions.length > 0) {
+    return {
+      error: [
+        "Refusing to dispatch: cross-plan problems detected.",
+        "",
+        ...collisions.map((c) => `- ${c}`),
+        "",
+        "Fix the overlapping write scopes or unsatisfied reads before dispatching.",
+      ].join("\n"),
+      message: "cross-plan",
+    };
+  }
+
+  writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+
+  let note: string | null = null;
+  if (planNumber === undefined || planNumber === null) {
+    if (resolved.resolved === 1) {
+      let memberCount = 0;
+      try {
+        memberCount = readdirSync(dir).filter((n) => /^CUBICORE_PLAN_\d+\.json$/.test(n)).length;
+      } catch { /* unreadable dir — treat as a single member, say nothing */ }
+      if (memberCount > 1) {
+        note =
+          `No planNumber given - dispatching CUBICORE_PLAN_1.json (member 1, the leader's slice). ` +
+          `${memberCount} member plans are in this directory. ` +
+          `If you are not member 1, pass your own number: /cubicore:execute 2, /cubicore:execute 3, ...`;
+      }
+    }
+  }
+  return { raw, note };
 }
 
 
@@ -2140,9 +2197,10 @@ export const TOOLS = [
     name: "execute",
     description:
       WHEN +
-      "Execute the plan and run its associates now. Pass `plan` (inline JSON) or " +
-      "`planNumber` (reads CUBICORE_PLAN_N.json from disk); omit both to read " +
-      "CUBICORE_PLAN.json. Returns when done — no polling, no progress chatter.",
+      "Execute the plan and run its associates now. Omit all arguments to read " +
+      "CUBICORE_PLAN.json from disk — it says which file it picked; pass `plan` " +
+      "(inline JSON) or `planNumber` (CUBICORE_PLAN_N.json) otherwise. " +
+      "Returns when done — no polling, no progress chatter.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2155,44 +2213,31 @@ export const TOOLS = [
     handler: async (args: { plan?: string; parentSessionID?: string; directory?: string; planNumber?: number }) => {
       const dir = args.directory ?? process.cwd();
       let raw: string;
+      let note: string | null = null;
 
       if (args.planNumber !== undefined && args.planNumber !== null) {
-        // Disk path: read CUBICORE_PLAN_N.json, enforce cycle budget and cross-plan checks.
-        const resolved = resolvePlanFile(dir, args.planNumber);
-        try {
-          raw = await Bun.file(resolved.planPath).text();
-        } catch {
-          return text(`No plan file found at ${resolved.planPath}. Run the plan command first.`, true);
-        }
-
-        const statePath = `${dir}/.cubicore-cycle.json`;
-        const state = readCycleState(statePath);
-        const gate = canExecute(state);
-        if (!gate.allowed) return text(gate.reason, true);
-
-        const collisions = validateCrossPlan(dir);
-        if (collisions.length > 0) {
-          return text(
-            [
-              `Refusing to dispatch: cross-plan problems detected.`,
-              "",
-              ...collisions.map((c) => `- ${c}`),
-              "",
-              "Fix the overlapping write scopes or unsatisfied reads before dispatching.",
-            ].join("\n"),
-            true,
-          );
-        }
-
-        writeCycleState(statePath, { cycle: state.cycle + 1, maxCycles: state.maxCycles, fromDebug: state.fromDebug });
+        const gated = await diskPlanGate(dir, args.planNumber);
+        if ("error" in gated) return text(gated.error, true);
+        raw = gated.raw;
+        note = gated.note;
       } else if (args.plan) {
-        // Inline path: run the plan passed directly.
+        // Inline path: run the plan passed directly; no disk claims.
         raw = args.plan;
       } else {
-        return text("Pass either `plan` (inline JSON) or `planNumber` (read from disk).", true);
+        // Zero-arg: dispatch whatever is on disk, and say which file it picked.
+        const gated = await diskPlanGate(dir);
+        if ("error" in gated) return text(gated.error, true);
+        raw = gated.raw;
+        note = gated.note;
       }
 
-      return execute(raw, args.parentSessionID, dir);
+      const out = await execute(raw, args.parentSessionID, dir);
+      if (!note) return out;
+      const body = out.content
+        .filter((part): part is { type: "text"; text: string } => part.type === "text" && "text" in part)
+        .map((part) => part.text)
+        .join("\n");
+      return text(`${note}\n\n${body}`, out.isError);
     },
   },
   {
@@ -3214,7 +3259,7 @@ export function promptFor(name: string, args: Record<string, string>) {
             text:
 `${ENDING}Execute CUBICORE_PLAN.json now. Do not explain the plan to the founder; dispatch it.
 
-Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Pass planNumber for CUBICORE_PLAN_N.json.
+Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the execute tool with no arguments at all — it dispatches whatever is on disk and says which file it picked, including a note to teammates when the directory holds several member plans.
 
 1. Call \`dispatch_blueprint\` with the project kind.
 2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.

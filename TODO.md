@@ -81,7 +81,8 @@ see the archive before proposing. If an item appears wrong, check there first.
 ## Deferred: faster and cheaper (open only)
 
 - [ ] Lean the brief — exact file list, one check command, exact report format
-- [ ] worker.prompted still emits after turn completion (before the events side is fixed, this is expected; the name is wrong — keep tracking until it is the host, not the observer)
+- [x] worker.prompted renamed to worker.prompt-sent (2026-11-17); host never signals idle, i.e. it is not the observer's bug; keep the tracking item until the host emits it
+
 - [ ] Concurrency cap — `dispatch` already accepts `maxConcurrency` but nothing wires it; no caller uses it
 - [ ] Measure once — A/B after the cheap wins, not before (blocked by the three above + ~518k tok/tier measured and shipped)
 
@@ -142,8 +143,8 @@ None of these is committed as work, just tracked here so they are not lost:
 
 ## Team mode (2026-11-16) — sharp edges found during the build
 
-- [ ] Bare `/cubicore:execute` in a team directory (no base `CUBICORE_PLAN.json`) silently falls back to `CUBICORE_PLAN_1.json` — member 2 running it redrives the leader's slice instead of being told "pass your number". Decide: refuse when no base file exists and numbered files do, or warn loudly. `next.ts` already steers the suggestion, but the fallback itself remains.
-- [ ] Cross-plan validator scans only `CUBICORE_PLAN_*.json` — a directory with both a base file and member files goes unchecked; mixed directories are ambiguous and should either be rejected or validated, not ignored.
+- [x] Bare `/cubicore:execute` in a team directory — N remains optional, dispatch proceeds on the fallback file (member 1 / base), and the reply discloses which file it picked plus how members 2..N dispatch their own slices; lone `_1` fallback prints nothing (2026-11-17)
+- [x] Cross-plan validator includes the base plan in collision and interface scans when members exist (validate-both shipped 2026-11-17); mixed directories no longer dispatch an unchecked base against members
 - [x] Contract ids shared between member plans — memberContractIdCollisions() scan at plan-write time; shared ids named in the reply; member MD withholds progress markers for collided ids rather than rendering another member's checks; both write paths (plan_write and record_factory_fit) honor it — checked 2026-11-16 (base .cubicore-progress.json write side deliberately untouched)
 - [ ] Team-mode note on "Archive of plan-and-run context" above: member files (`CUBICORE_PLAN_N.md` × N, `CONTEXT_N.md` × N) multiply the archaeology problem — the archive item matters more after 2026-11-16, not less.
 
