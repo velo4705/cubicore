@@ -708,3 +708,35 @@ Founder pointed out that planNumber is optional — always has been — and corr
 - A lone `_1` member file is not treated as a team — no lecture. Solo paths are byte-identical to before.
 - The zero-arg refusal ("Pass either `plan`…") is gone; gate failures (cycle exhausted, cross-plan collisions) still refuse loudly and now share one implementation with the planNumber path (`diskPlanGate`).
 - Tests: 3 new pin the solo / team / lone-`_1` disclose-then-dispatch behavior against a dead runtime; suite 638 pass, typecheck clean, bundle rebuilt.
+
+
+## 2026-11-17 — Evidence seal (the drawbook can no longer pass silently)
+
+The founder's defect verdict: Cubicore can reach "done" after passing a check that was rewritten to accept an easier path — and nothing in Cubicore notices, because the check is the instrument that reports it.
+
+The fix: Cubicore seals the evidence itself at the moment a plan is accepted.
+
+- At plan acceptance, hash every file referenced by blocking check commands (config files, check scripts, spec files, package.json#scripts), and seal them with their parent-record. The seal is `.cubicore-evidence.json` in the project directory; absent files seal as `absent` and are enrolled at first appearance during the run.
+- Each time the plan is verified — execute() and record_inline_run reuse the same path through `refreshPlanProgress` — the seal is checked before any blocking check runs. A changed hash is `evidence modified`, a vanished file is `evidence missing`, a changed check command is `evidence changed for …`. Any of the three makes the contract unverified, and unverifiable contracts are not recorded as done.
+- If a seal exists and is violated, dispatch continues but verification refuses to wave the run through — the retrospective will say `evidence-seal` with the exact file that moved.
+- The seal is honest about what it catches: a file created mid-run is enrolled once seen, and a *later* rewrite of it is caught. It cannot catch the case where an entirely new check produces all evidence in one shot, but it closes the demonstrated production bug (a spec rewritten to auto-pass).
+- package.json is sealed by content of its `scripts` section only — dependency installs are legitimate work and are not evidence defects; script rewrites are evidence defects.
+- No dispatch semantics, no topology changes, no new tools; fully additive to the run; re-accept a plan to reseal a legitimate edit. Tests: 12 new pin extraction, per-file change detection, created-mid-run enrollment, re-verify re-detection, seal-absent path, package.json #scripts scoping; suite 650 pass.
+
+
+## 2026-11-17 — The execute and debug stage ends no longer take the agent's word
+
+- **End of /cubicore:execute**: the retrospective now prints, whenever the plan declares no `integration` command, `- Integration: NOT VERIFIED — no integration command in the plan. Each contract passed alone; the merged tree was never built as one.` Visual verdict prints as before. Nothing else green will accidentally pass as green.
+- **End of /cubicore:debug**: the tool now re-runs the plan's own `blocking` checks on disk *after* accepting the agent's findings (it does not trust them), takes a screenshot when the plan is UI (fails if flat: "selector checks do not see a black canvas"), and only prints "No blocking findings" when nothing on disk contradicts the claim. When there is no plan on disk at all it says so — the agent's word alone.
+- Both paths share one implementation: `debugRun` reuses `refreshPlanProgress` (the same function ` execute` and `record_inline_run` use) so the seal and the blocking checks both hold here.
+- Tests: 4 new pin the no-plan-on-disk and nothing-claimed cases and the failing-check-refusal path; suite 654 pass, typecheck clean; bundle rebuilt.
+
+
+## 2026-11-17 — Install-smoke revealed and fixed a bundle-location leak
+
+First run of the repo's documented install-smoke (the same three legs as .github/workflows/install-smoke.yml, run locally in sandboxes) already exposed real issues on this machine — environment leaks from a Flatpak OpenCode sandbox — and produced a fix.
+
+- `dataDir()` resolved `XDG_DATA_HOME` before honoring `$HOME`, so a sandboxed `cubicore setup` run inside this Flatpak envelope copied the MCP runtime into the **live** host's bundle directory while its config went into the sandbox. Fixed with the same precedence rule the native config resolver uses: ambient XDG values are honored only when they lie inside the caller's home.
+- Regression tests updated: XDG values inside the caller's home honored; ambient XDG pointing elsewhere ignored.
+- After fix: native sandbox bundle lives at `<sandbox>/.local/share/cubicore/mcp-main.js`; Flatpak sandbox follows the same rule; empty HOME still aborts clean.
+- The live host's bundle is the dev build — an earlier setup run during the leak copied it there. Either keep it (it has every 2026-11-17 fix) or reinstall published 1.1.3 via `npx cubicore@latest setup`. Founder decides.

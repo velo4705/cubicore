@@ -213,10 +213,20 @@ describe("resolveBun", () => {
 });
 
 describe("dataDir", () => {
-  it("uses XDG_DATA_HOME on Linux when set", () => {
-    expect(dataDir({ platform: "linux", home: HOME, env: { XDG_DATA_HOME: "/data" } })).toBe(
-      join("/data", "cubicore"),
-    );
+  it("honours XDG_DATA_HOME when it lies within the caller's home", () => {
+    expect(
+      dataDir({ platform: "linux", home: HOME, env: { XDG_DATA_HOME: join(HOME, "xdg-data") } }),
+    ).toBe(join(HOME, "xdg-data", "cubicore"));
+  });
+
+  it("does not leak outside the caller's home (ambient XDG from a different host is ignored)", () => {
+    expect(
+      dataDir({
+        platform: "linux",
+        home: "/tmp/sandbox-home",
+        env: { XDG_DATA_HOME: "/home/somewhere-else/.var/app/ai.opencode.opencode/data" },
+      }),
+    ).toBe(join("/tmp/sandbox-home", ".local", "share", "cubicore"));
   });
 
   it("defaults to ~/.local/share/cubicore on Linux", () => {

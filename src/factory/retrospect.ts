@@ -139,7 +139,7 @@ export function renderRetrospective(r: Retrospective): string {
       ? r.integration.passed
         ? `- Integration: passed`
         : `- Integration: FAILED — ${r.integration.output.trim().slice(0, 120)}`
-      : ``,
+      : `- Integration: NOT VERIFIED — no integration command in the plan. Each contract passed alone; the merged tree was never built as one.`,
     r.escapes.length > 0
       ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,

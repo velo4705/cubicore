@@ -25,7 +25,11 @@ import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { toolHints, renderToolHint } from "../plan/tool-hint";
-import { assessCoverage, renderCoverage } from "../validate/coverage";
+import {
+  assessCoverage,
+  renderCoverage,
+} from "../validate/coverage";
+import { buildEvidence, checkEvidence } from "../validate/evidence";
 import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
@@ -1281,6 +1285,10 @@ async function planWrite(raw: string, directory: string, planNumber?: number): P
   const topology = checkTopology(parsed);
   const fit = assessFactoryFit({ topology: parsed.topology, contracts: parsed.contracts });
   parsed.factoryFit = fit;
+  // Seal the evidence before anything else is written — this is the boundary
+  // the seal measures from. A change to any sealed file mid-flight makes the
+  // evidence invalid and will refuse the run, not fail the work.
+  buildEvidence(dir, parsed);
   // Numbered member files each get their own fit record so member slices
   // don't overwrite each other (or the leader's base-file assessment).
   writeFileSync(
@@ -1675,6 +1683,21 @@ async function refreshPlanProgress(
   const failures: Array<{ contractId: string; checkId: string; output: string }> = [];
 
   for (const contract of parsed.contracts) {
+    const evidence = checkEvidence(directory, parsed);
+    if (evidence.problems.length > 0) {
+      // The seal was broken — one of the files this run judged itself by
+      // changed after acceptance. The contract is not verified; the plan is
+      // not done; the retrospective will say why. This is not a code bug and
+      // it is not fixable by retrying: the plan must be re-accepted.
+      progress.set(contract.id, "blocked");
+      failures.push({
+        contractId: contract.id,
+        checkId: "evidence-seal",
+        output: evidence.problems.join("\n"),
+      });
+      continue;
+    }
+
     const checks = contract.checks.filter((check) =>
       check.gating === "blocking" && check.kind !== "judgment"
     );
@@ -2006,22 +2029,89 @@ async function debugRun(args: { findings?: TestFinding[] }, directory: string): 
   const state = readCycleState(statePath);
   const findings = args.findings ?? [];
 
-  const blocking = findings.filter((f) => f.severity !== "judgment");
-  const advisory = findings.filter((f) => f.severity === "judgment");
+  // The rite that ends every debug call: verify on disk rather than take the
+  // agent's word that the thing is fixed. The agent that fixed it is the one most
+  // likely to believe it is fixed; the plan is the ground truth. Its own blocking
+  // checks re-run here, and if a UI plan exists the actual pixels are looked at.
+  // Only then can "no blocking findings" be printed.
+  const discovered: TestFinding[] = [];
+  let planFound = false;
+  try {
+    const resolved = resolvePlanFile(directory, undefined);
+    const raw = await Bun.file(resolved.planPath).text();
+    const loaded = loadPlan(raw);
+    if (loaded.ok) {
+      planFound = true;
+      const parsed = loaded.plan;
+      const verified = await refreshPlanProgress(parsed, directory);
+      for (const [contractId, state] of verified.progress) {
+        if (state === "failed") {
+          const fail = verified.failures.find((f) => f.contractId === contractId);
+          discovered.push({
+            severity: "error",
+            source: `plan check: ${fail?.checkId ?? "contract"}`,
+            message: `contract ${contractId} fails its own blocking check(s) on disk: ${(fail?.output ?? "").slice(0, 200).replace(/\n/g, " ")}`,
+            fix: "fix before claiming done — Cubicore re-ran the plan's own blocking checks and at least one fails.",
+          });
+        } else if (state === "blocked") {
+          discovered.push({
+            severity: "warning",
+            source: "plan/blocked",
+            message: `contract ${contractId} cannot be verified on this host (blocked check — missing tool, offline, or sealed evidence)`,
+            fix: "install what is missing or re-accept the plan so the check can be run; /cubicore:deploy must not be called while this is blocked.",
+          });
+        }
+      }
+      if (parsed.design && parsed.preview?.url && parsed.preview?.command) {
+        try {
+          const result = await screenshotCheck({
+            command: String(parsed.preview.command),
+            url: String(parsed.preview.url),
+            projectRoot: directory,
+            outFile: ".cubicore-debug-screenshot.png",
+          });
+          if (result.verdict === "flat") {
+            discovered.push({
+              severity: "error",
+              source: "visual",
+              message: `UI screenshot reads flat — rendered content is not visible (${result.detail})`,
+              fix: "open the preview and look: selector checks do not see a black canvas; the debug stage cannot say it is fine either.",
+            });
+          } else if (result.verdict === "blocked") {
+            discovered.push({
+              severity: "warning",
+              source: "visual",
+              message: `visual verify could not run: ${result.detail}`,
+              fix: "view it yourself with /cubicore:preview; a screenshot verdict of unknown is not a pass.",
+            });
+          }
+        } catch (error) {
+          discovered.push({
+            severity: "warning",
+            source: "visual",
+            message: `visual verify threw: ${String(error).slice(0, 200)}`,
+            fix: "view /cubicore:preview yourself; the screenshot could not be taken.",
+          });
+        }
+      }
+    }
+  } catch {
+    // No plan on disk — nothing independent to check; the agent's word is all there is.
+  }
 
-  writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(findings, state.cycle, state.maxCycles));
+  const all = [...findings, ...discovered];
+  const blocking = all.filter((f) => f.severity !== "judgment");
+  const advisory = all.filter((f) => f.severity === "judgment");
+
+  writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(all, state.cycle, state.maxCycles));
 
   if (blocking.length === 0) {
-    const hasDebug = existsSync(join(directory, DEBUG_MD));
-    const nextHint = hasDebug
-      ? "\n\n---\nNext: /cubicore:deploy  (everything passes; the project is ready to put somewhere)\nOr: /cubicore:refine (add another feature to what was built) \u00b7 /cubicore:undo (discard the run and start over)"
-      : "";
+    const line = planFound
+      ? `The plan's blocking checks pass on disk, and nothing Cubicore can see contradicts the claim.${advisory.length > 0 ? ` ${advisory.length} advisory item(s) remain for a human to judge.` : ""}`
+      : `Cubicore could not verify anything here — no plan on disk to check against. Anything claimed to be fine is the agent's word alone.`;
+    const nextHint = "\n\n---\nNext: /cubicore:deploy  (everything the plan asks, passes — put it somewhere)\nOr: /cubicore:refine (add another feature to what was built) · /cubicore:undo (discard the run and start over)";
     return text(
-      [`No blocking findings. Wrote ${DEBUG_MD} listing ${advisory.length} advisory item(s).`,
-       advisory.length === 0
-         ? "Nothing mechanical and nothing judgement-worthy was found."
-         : "Advisory items are for a human to judge -- Test does not block on them.",
-       nextHint].join("\n"),
+      [`No blocking findings.`, line, nextHint].join("\n"),
       false,
     );
   }

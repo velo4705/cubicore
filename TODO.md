@@ -160,3 +160,14 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] verifyModel probes both route families but this host still returns HTML 200 on /provider-ish routes and 401 on /api/* with the service.json credentials — find the host's actual route/credentials or accept loud-unverified as the steady state (founder's call)
 - [ ] Wildcard MCP deny — wire-level verification on this host remains unconfirmed (founder's call)
 - [x] Release drift — setup now backs up the pre-write config to `.cubicore-backup-<ts>` before overwriting and writes `.cubicore-version` (version + UTC) beside it on every install, no-op included — full release-drift item done 2026-11-16
+
+
+## 2026-11-17 — evidence seal shipped; still open
+
+- [ ] Evidence seal on this host — never executed against a live Cubicore run yet; every dispatch plan written before 2026-11-17 has no seal on disk and degrades gracefully (nothing enforced, nothing claimed)
+
+
+## 2026-11-17 — stage-end honesty shipped; still open
+
+- [ ] Evidence seal never executed against a live Cubicore run yet — verification still surfaced only on freshly-accepted plans going forward; the first live render is the next one
+- [ ] The visual verdict was never fed to a founder interactively; the preview wiring exists but the loop "ask the founder to look before deploy" has not happened across any published build

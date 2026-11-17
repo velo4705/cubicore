@@ -234,5 +234,16 @@ export function dataDir(options: ResolveOptions = {}): string {
   if (platform === "darwin") {
     return join(home, "Library", "Application Support", "cubicore");
   }
-  return join(isSet(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : join(home, ".local", "share"), "cubicore");
+  // An XDG_DATA_HOME from the *ambient* environment must not write the
+  // bundle outside the caller's own home. That is exactly what happens when
+  // you run `cubicore setup` with a sandboxed HOME inside a Flatpak OpenCode
+  // sandbox: XDG_DATA_HOME points at the real Flatpak application dir and
+  // needs to stay there for a real Flatpak install, but it is out of place
+  // for any other home. The same precedence rule the native config file
+  // resolver uses: ambient XDG is honoured only when it lies within the
+  // caller's home; otherwise the home's conventional data dir wins.
+  const homeBase = env.XDG_DATA_HOME && env.XDG_DATA_HOME.startsWith(join(home, "/"))
+    ? env.XDG_DATA_HOME
+    : join(home, ".local", "share");
+  return join(homeBase, "cubicore");
 }
