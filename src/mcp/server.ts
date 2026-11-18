@@ -3491,7 +3491,7 @@ Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the e
 1. Call \`dispatch_blueprint\` with the project kind.
 2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.
 3. Wait for every report separately. Never merge them.
-4. Run every blocking check and fix failures in a tight loop. Record results with the debug tool.
+4. ONLY after every associate has reported: run the blocking checks, and fix failures in a tight loop. During dispatch itself, do not call the debug tool; it belongs after all associates have returned.
 5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.
 
 If this host truly has no sub-agent tool, call \`execute\` instead and let Cubicore dispatch sessions itself.`,
