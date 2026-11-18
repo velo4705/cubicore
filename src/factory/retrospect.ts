@@ -30,6 +30,8 @@ export type Retrospective = {
    */
   totalTokens: number | null;
   verdict: string;
+  /** Product-level acceptance outcome (derived from the synthesized acceptance artifact). */
+  acceptance?: { verdict: "done" | "flagged" | "blocked"; note: string } | undefined;
   /** Every contract that wrote outside the union of declared writes — named files, so the founder sees the leak, not "sometimes someone drifts". */
   escapes: Array<{ contractId: string; files: string[] }>;
   /**
@@ -89,6 +91,15 @@ export function buildRetrospective(opts: {
   })();
 
   const fit = opts.fit;
+  /** Product-level acceptance outcome — included when the plan produced one. */
+  const acceptanceArtifact = opts.artifacts.find((a) => a.contractId === "acceptance");
+  let acceptance: Retrospective["acceptance"];
+  if (acceptanceArtifact) {
+    const verdict = acceptanceArtifact.status === "done" ? "done" : acceptanceArtifact.status === "blocked" ? "blocked" : "flagged";
+    const note = acceptanceArtifact.unresolved.join("; ");
+    acceptance = { verdict, note: note === "" ? "acceptance flows hold" : note };
+  }
+
   let verdict: string;
 
   const integration = opts.integration === null || opts.integration === undefined ? undefined : opts.integration;
@@ -122,6 +133,7 @@ export function buildRetrospective(opts: {
     verdict,
     escapes: escapes,
     attribution: "union — per-worker file attribution is not available on this host; verdicts are the union of declared writes",
+    ...(acceptance !== undefined ? { acceptance } : {}),
     ...(opts.visual ? { visual: opts.visual } : {}),
     ...(integration !== undefined ? { integration } : {}),
   };
@@ -144,6 +156,9 @@ export function renderRetrospective(r: Retrospective): string {
       ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,
     r.visual ? `- Visual: ${r.visual.verdict} — ${r.visual.detail}` : ``,
+    r.acceptance
+      ? `- Acceptance: ${r.acceptance.verdict}${r.acceptance.note ? ` — ${r.acceptance.note}` : ""}`
+      : ``,
     `- Attribution: not attributable — verdicts rest on the union of declared writes, not per-worker evidence`,
     `- Verdict: ${r.verdict}`,
   ];

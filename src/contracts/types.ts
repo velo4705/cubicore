@@ -303,6 +303,25 @@ export interface Plan {
    * `timeoutMs` caps the wave; a hung build must not hang the factory.
    */
   integration?: { command: string; timeoutMs?: number };
+  /**
+   * Product-level acceptance flows — one per user-facing promise in the
+   * context. Each command must fail if the promise is broken and pass when
+   * it holds. These are not contracts: they don't fan out to associates,
+   * they don't budget tokens, and they run at verify time against the
+   * merged tree. A plan with UI/playable intent and no acceptance entry is
+   * rejected by the validator — the same rule that requires ui-smoke.
+   */
+  acceptance?: PlanAcceptanceCase[];
+}
+
+/** One product-level test case — a user journey expressed as a command. */
+export interface PlanAcceptanceCase {
+  /** What the user does, in one sentence, in the words they would use. */
+  name: string;
+  /** The use case this exercises, naming a context.useCases entry, if one exists. */
+  useCase?: string;
+  /** The command run at verify time — must fail loudly if the promise is broken. */
+  command: string;
 }
 
 /**
@@ -348,6 +367,9 @@ export type FindingCode =
   | "weak-contrast-palette"
   | "missing-design"
   | "missing-ui-smoke"
+  | "acceptance-no-browser"
+  | "missing-acceptance"
+  | "contract-too-big"
   | "missing-assets"
   | "missing-reference"
   | "missing-objective"

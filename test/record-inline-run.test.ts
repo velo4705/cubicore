@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,6 +55,40 @@ afterEach(() => {
 describe("record_inline_run — the inline run always records, honestly", () => {
   test("the tool is registered for the host to call", () => {
     expect(tool?.name).toBe("record_inline_run");
+  });
+
+  test("a failing acceptance flow is not reported as a verified run", async () => {
+    const plan = structuredClone(PLAN);
+    (plan as Record<string, unknown>).acceptance = [
+      { name: "app launches and renders without erroring", command: "test -f src/w1-acceptance-check" },
+    ];
+    writeFileSync(join(dir, "CUBICORE_PLAN.json"), JSON.stringify(plan));
+
+    const result = await handler({ directory: dir });
+    const text = result.content?.[0]?.text ?? "";
+
+    // The contract passes its own gate (command "true"), but the acceptance
+    // entry must poison the product verdict.
+    expect(text).toContain("Acceptance:");
+    const ledger = JSON.parse(readFileSync(join(dir, ".cubicore-factory-ledger.json"), "utf8"));
+    expect(ledger.contracts.some((c: { id: string }) => c.id === "w1")).toBe(true);
+    expect(ledger.retrospective.verdict.toLowerCase()).not.toContain("all passed");
+  });
+
+  test("a passing acceptance flow is verified end-to-end", async () => {
+    const plan = structuredClone(PLAN);
+    (plan as Record<string, unknown>).acceptance = [
+      { name: "app launches and renders", command: "test -f package.json" },
+    ];
+    // Copy the repo's own package.json over so the acceptance command can find it
+    copyFileSync(join(process.cwd(), "package.json"), join(dir, "package.json"));
+    writeFileSync(join(dir, "CUBICORE_PLAN.json"), JSON.stringify(plan));
+
+    const result = await handler({ directory: dir });
+    expect(result.isError).not.toBe(true);
+    const ledger = JSON.parse(readFileSync(join(dir, ".cubicore-factory-ledger.json"), "utf8"));
+    expect(ledger.retrospective.passed).toBe(2);
+    expect(ledger.retrospective.flagged).toBe(0);
   });
 
   test("no host token report → the ledger records unknown, never a fake zero", async () => {

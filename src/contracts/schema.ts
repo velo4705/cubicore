@@ -176,6 +176,25 @@ export const planSchema = {
         timeoutMs: { type: "number", minimum: 1000, maximum: 900000 },
       },
     },
+    acceptance: {
+      type: "array",
+      maxItems: 8,
+      description:
+        "Product-level test cases — one per user-facing promise in the context. " +
+        "Each command must FAIL when the promise is broken and PASS when it holds. " +
+        "These are not contracts: no tokens, no dispatch, no fan-out; they run at " +
+        "verify time, after the merged tree is up. Absent for a library with no user.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "command"],
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 200 },
+          useCase: { type: "string", minLength: 1 },
+          command: { type: "string", minLength: 1 },
+        },
+      },
+    },
     context: {
       type: "object",
       additionalProperties: false,
@@ -342,6 +361,25 @@ ${PLAN_SCHEMA_JSON}
 
 Rules:
 
+- **Divide and conquer recursively.** If any contract would carry more than
+  a dozen files or a sitting-of-work you cannot name in one sentence, split
+  it into two contracts along the major seam, and each again if it still
+  crosses the ceiling — until no contract is too big to fail cleanly. The
+  validator rejects an oversize contract. Splitting is not a refinement —
+  it IS the plan.
+- **Opinion carries the feature set.** Name every product this plan ships,
+  in order of shipping: the brief's skeleton, plus the features the
+  project cannot ship without — each with its one-sentence reason (why
+  the project fails without it). Split each into two: from the brief (user
+  asked for it) or from your judgment (the product will be rejected
+  without it). Do NOT ask the founder about features. Everything goes in
+  the plan; anything unlisted did not make it in.
+- **No inspiration hunting.** Do not search for, point at, or borrow from any
+  site or product. Research is for facts you cannot know — APIs, toolchains,
+  schema shapes, what a runtime does with a given input. Not for style cues,
+  not for whose UI wins, not for whose feature set to copy. If a library's
+  behaviour is genuinely uncertain and the tree cannot tell you, say so in
+  the plan instead of faking.
 - Each contract is one worker. Its "writes" globs MUST NOT overlap another
   contract's "writes" globs. Two workers writing the same file is the one
   failure this system exists to prevent.
@@ -351,12 +389,19 @@ Rules:
   without reading every contract. It goes at the top of CUBICORE_PLAN.md.
 - "opinion" is the planner's argument for the build in full — what the founder
   would want if they knew exactly what to ask for, what is deliberately left
-  out, and why. One paragraph, at most two sentences, ~400 characters. Advice,
+  out, and why. One paragraph, at most two sentences, ~1000 characters. Advice,
   not a contract: it is not dispatched, and the founder can strike it for free.
 - "integration" (optional) is one command proving the merged tree works:
   the build command, the typecheck command, etc. It runs after verification,
   before the factory says done. A hung command must not hang the factory —
   include "timeoutMs" if the command might exceed 120000 (2 minutes default).
+- "acceptance" (optional, but mandatory for UI-capable plans) is the array of
+  one-sentence user journeys the product must survive, in the words the user
+  would use — each entry is { name, command }, and the command must FAIL when
+  the promise is broken, PASS when it holds. Commands are product-level
+  e2e/playbook checks: 'npx playwright test' is the common shape. Each one
+  cites the use case it exercises ("submit the form", "see the world render").
+  Unit tests and tsc do not count; a dead button fails acceptance.
 - "scale" (optional) is one of "small" | "medium" | "large" | "massive" —
   your honest classification of the request's size BEFORE you started writing.
   Choose it explicitly and write the plan against it. A "massive" that produces

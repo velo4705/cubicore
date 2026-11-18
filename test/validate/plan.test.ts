@@ -195,6 +195,15 @@ function uiSmokeContract(overrides: Partial<Contract> = {}): Contract {
   });
 }
 
+function acceptanceBlock() {
+  return [
+    {
+      name: "the app launches and the core action works",
+      command: "npx playwright test tests/acceptance/flow.spec.ts",
+    },
+  ];
+}
+
 describe("ui smoke — the built app is walked, not just compiled", () => {
   test("a UI plan with no browser smoke is rejected", () => {
     const result = validatePlan(
@@ -369,7 +378,23 @@ describe("design elevation — UI-capable plans", () => {
     expect(codes(result)).toContain("missing-design");
   });
 
-  test("a UI plan with a complete design block and a smoke contract passes", () => {
+  test("a UI plan with a complete design block, a smoke contract and acceptance cases passes", () => {
+    const result = validatePlan(plan({
+      contracts: [contract({ ui: true, id: "app" }), uiSmokeContract()],
+      reference: "https://no-country-can-build-that.art/",
+      design: {
+        direction: "terminal",
+        palette: ["#0f0f0f", "#e6e6e6", "#3b82f6"],
+        typeface: "JetBrains Mono",
+        notDoing: ["no scrolljacking", "no second typeface", "no gradient"],
+        ambition: "calm",
+      },
+      acceptance: acceptanceBlock(),
+    }));
+    expect(result.ok).toBe(true);
+  });
+
+  test("a UI plan with design and smoke but no acceptance cases is rejected", () => {
     const result = validatePlan(plan({
       contracts: [contract({ ui: true, id: "app" }), uiSmokeContract()],
       reference: "https://no-country-can-build-that.art/",
@@ -381,7 +406,7 @@ describe("design elevation — UI-capable plans", () => {
         ambition: "calm",
       },
     }));
-    expect(result.ok).toBe(true);
+    expect(codes(result)).toContain("missing-acceptance");
   });
 
   test("an underspecified design is rejected with its missing parts named", () => {

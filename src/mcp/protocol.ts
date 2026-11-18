@@ -142,6 +142,19 @@ export function renderPlanMd(
     );
   }
 
+  if ((plan.acceptance?.length ?? 0) > 0) {
+    md.push(
+      `## Acceptance`,
+      ``,
+      ...plan.acceptance!.map((entry) =>
+        `- **${entry.name}**${entry.useCase ? ` — _${entry.useCase}_` : ""}` +
+        `\n  \`\`\`bash\n  ${entry.command}\n  \`\`\``),
+      ``,
+      `_These are the product's promises. Any of them failing at verify time means something is not as done as the contracts said._`,
+      ``,
+    );
+  }
+
   if (plan.opinion) {
     md.push(
       `## Planner's opinion`,

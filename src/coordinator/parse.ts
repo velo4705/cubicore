@@ -571,7 +571,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference"].includes(key)) {
+    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -627,7 +627,7 @@ export function parsePlan(raw: string): Plan {
     } else {
       const trimmed = opinionRaw.trim();
       if (trimmed.length > 500) {
-        problems.push("opinion must be at most 500 characters");
+        problems.push("opinion must be at most 1000 characters");
       } else {
         opinion = trimmed;
       }
@@ -684,6 +684,7 @@ export function parsePlan(raw: string): Plan {
   const design = parseDesign(json.design, problems);
   const integration = parseIntegration(json.integration, problems);
   const factoryFit = parseFactoryFit(json.factoryFit, problems);
+  const acceptance = parseAcceptance(json.acceptance, problems);
   const scaleRaw = json.scale;
   let scale: Plan["scale"];
   if (scaleRaw !== undefined && scaleRaw !== null) {
@@ -714,6 +715,7 @@ export function parsePlan(raw: string): Plan {
     ...(reference === undefined ? {} : { reference }),
     ...(factoryFit === undefined ? {} : { factoryFit }),
     ...(scale === undefined ? {} : { scale }),
+    ...(acceptance === undefined ? {} : { acceptance }),
   };
 }
 
@@ -732,6 +734,52 @@ export function parsePlan(raw: string): Plan {
  * absent means "no merged-tree check to run", present must parse, and a
  * badly-declared plan fails at plan time rather than at execute time.
  */
+function parseAcceptance(value: unknown, problems: string[]): import("../contracts/types").PlanAcceptanceCase[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || Array.isArray(value) !== true) {
+    problems.push("acceptance must be an array");
+    return undefined;
+  }
+  const out: import("../contracts/types").PlanAcceptanceCase[] = [];
+  const MAX = 8;
+  if (value.length > MAX) {
+    problems.push(`acceptance: at most ${MAX} entries; more is not better, it is slower verify and a bigger lie`);
+    return undefined;
+  }
+  for (const [index, entry] of value.entries()) {
+    if (!isRecord(entry)) {
+      problems.push(`acceptance[${index}] must be an object`);
+      continue;
+    }
+    const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    if (!name) {
+      problems.push(`acceptance[${index}].name must be a non-empty string describing the journey the user takes`);
+    } else if (name.length > 200) {
+      problems.push(`acceptance[${index}].name must be at most 200 characters`);
+    }
+    const command = typeof entry.command === "string" ? entry.command.trim() : "";
+    if (!command) {
+      problems.push(`acceptance[${index}].command must be a non-empty string — something that can fail`);
+    } else if (/^(true|false|:|echo|touch|exit)(\s*$|\s+[^|&;]*?$)/.test(command) && !/[|;&]/.test(command)) {
+      // A bare "true", or "echo ok", with no actual check invocation, is how a
+      // lazy plan claims coverage. Test runners have to actually run something.
+      problems.push(`acceptance[${index}].command must not be trivially satisfiable; it must launch a real check (${command.slice(0, 40)})`);
+    }
+    const useCase = entry.useCase === undefined || entry.useCase === null
+      ? undefined
+      : typeof entry.useCase === "string" && entry.useCase.trim().length > 0
+        ? entry.useCase.trim()
+        : undefined;
+    if (useCase === undefined && entry.useCase !== undefined && entry.useCase !== null) {
+      problems.push(`acceptance[${index}].useCase must be a non-empty string when present`);
+    }
+    if (name && command) {
+      out.push({ name, command, ...(useCase === undefined ? {} : { useCase }) });
+    }
+  }
+  return out;
+}
+
 function parseIntegration(value: unknown, problems: string[]): Plan["integration"] {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) {

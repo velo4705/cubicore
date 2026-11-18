@@ -125,6 +125,31 @@ export function isUiCapable(plan: Plan): boolean {
   return plan.contracts.some((c) => c.ui === true || c.writes.some((w) => UI_WRITES.test(w)));
 }
 
+/**
+ * Every UI-capable plan must carry acceptance — the user-facing promise,
+ * expressed as a runnable check. Without it, selectors and builds verify
+ * mechanics only, and the product must never be claimed.
+ */
+function checkAcceptance(plan: Plan): Finding[] {
+  if (!isUiCapable(plan)) return [];
+  if ((plan.acceptance?.length ?? 0) === 0) {
+    const ids = plan.contracts.map((c) => c.id);
+    return [
+      {
+        code: "missing-acceptance",
+        contractIds: ids,
+        message:
+          "plan is UI-capable but declares no acceptance cases. Add a top-level " +
+          "\"acceptance\" array with at least one entry per user-facing promise from " +
+          "the brief — each entry: { name, command }. The command must FAIL when the " +
+          "promise is broken and PASS when it holds (a browser-smoke `npx playwright test` " +
+          "in at least one case).",
+      },
+    ];
+  }
+  return [];
+}
+
 import { bestPairContrast } from "./luminance";
 
 /**
@@ -201,26 +226,74 @@ function checkDesign(plan: Plan): Finding[] {
 const SMOKE_COMMAND = /playwright|cypress|puppeteer/i;
 
 export function hasUiSmoke(plan: Plan): boolean {
+  // Acceptance entries proven in the product flows count here too — they are
+  // precisely the same check material, shaped as product-level journeys.
+  if (
+    plan.acceptance?.some((acceptance) => SMOKE_COMMAND.test(acceptance.command))
+  ) {
+    return true;
+  }
   return plan.contracts.some((contract) =>
-    (contract.checks ?? []).some((check) => SMOKE_COMMAND.test(check.command)),
+    (contract.checks ?? []).some((check) => SMOKE_COMMAND.test(check.command))
   );
 }
 
 function checkUiSmoke(plan: Plan): Finding[] {
   if (!isUiCapable(plan)) return [];
   if (hasUiSmoke(plan)) return [];
+  const hasAcceptance = (plan.acceptance?.length ?? 0) > 0;
   const ids = plan.contracts.map((c) => c.id);
+  if (hasAcceptance) {
+    // Acceptance entries exist but none exercises the built app in a browser.
+    // That is almost always a lazy suite — any useful acceptance will click
+    // through the real interface at least once.
+    return [
+      {
+        code: "acceptance-no-browser",
+        contractIds: ids,
+        message:
+          "plan is UI-capable and carries acceptance cases, but none of them drives a browser. " +
+          "At least one acceptance command must exercise the built app in a real browser — " +
+          "`npx playwright test` is the common shape; the rest can be headless.",
+      },
+    ];
+  }
   return [
     {
       code: "missing-ui-smoke",
       contractIds: ids,
       message:
-        "plan is UI-capable but no contract exercises the built app in a browser; " +
-        "add one smoke contract (e.g. id \"ui-smoke\", kind \"intent\") whose blocking check " +
-        "launches the app (or the preview server) and walks the core user flow with a browser driver, " +
-        "e.g. `npx playwright test`. Without it, a dead button ships as \"done\"",
+        "plan is UI-capable but no contract or acceptance case exercises the built app " +
+        "in a browser; add acceptance cases (top-level \"acceptance\" array) pointing at " +
+        "the built surface with a browser driver such as `npx playwright test`. Without it, " +
+        "a dead button ships as \"done\".",
     },
   ];
+}
+
+/**
+ * A contract that writes more than a dozen files is almost always a contract
+ * that was actually two (or three) contracts. Inside this product's own
+ * history: the only contract > 10 was `foundation` — it failed its own build
+ * and needed orchestrator repairs post-dispatch. Refuse at plan time so the
+ * planner splits before anything is spent.
+ */
+const MAX_WRITES_PER_CONTRACT = 12;
+
+function checkContractSize(plan: Plan): Finding[] {
+  const findings: Finding[] = [];
+  for (const contract of plan.contracts) {
+    if ((contract.writes?.length ?? 0) <= MAX_WRITES_PER_CONTRACT) continue;
+    findings.push({
+      code: "contract-too-big",
+      contractIds: [contract.id],
+      message:
+        `contract "${contract.id}" writes ${contract.writes.length} files — more than ${MAX_WRITES_PER_CONTRACT}. ` +
+        `This contract should be split in two at the plan level (e.g., "${contract.id}-core" and "${contract.id}-ui"). ` +
+        "Refusing to dispatch as-is: it will either compound its own failure modes or land broken.",
+    });
+  }
+  return findings;
 }
 
 function textsOf(plan: Plan): string[] {
@@ -342,6 +415,8 @@ export function validatePlan(
   findings.push(...checkReference(plan));
   findings.push(...checkAssets(plan));
   findings.push(...checkUiSmoke(plan));
+  findings.push(...checkAcceptance(plan));
+  findings.push(...checkContractSize(plan));
   findings.push(...checkGraphBudget(plan));
 
   return { ok: findings.length === 0, findings };

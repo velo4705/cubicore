@@ -767,12 +767,41 @@ async function runToCompletion(
   completeFactoryLifecycle(dir, "workers done or failed");
   enterFactoryLifecycle(dir, "integrate", "worktrees collected / copied back");
   completeFactoryLifecycle(dir, "worktrees handled");
-  enterFactoryLifecycle(dir, "verify");
-  // The report carries the phases and wall time Cubicore measured — keep it;
-  // discarding it in aggregation left the ledger with token counts but no clock.
+  const verified = await verifyAndSyncPlan(parsed, dir, validation);
+  completeFactoryLifecycle(dir, `verified=${[...verified.progress.values()].filter(v => v === "done").length}/${parsed.contracts.length} on disk`);
+  if (integrationOutcome && integrationOutcome.passed === false) {
+    const blocker = isEnvironmentBlocker(1, integrationOutcome.output);
+    enterFactoryLifecycle(dir, "blocked", `integration ${blocker ? "blocked — environment issue" : "failed"}: ${integrationOutcome.output.slice(0, 80)}`);
+    verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
+  }
+  syncRunRecord(runId, dir, parsed, verified);
+
+  // Aggregation happens AFTER verify so the product-lane verdict (acceptance)
+  // joins the ledger alongside the contracts. Omit this fold and the verdict
+  // line would say "product shipped verified" while acceptance was missing.
   const report = recorder.finish(usage);
+  const acceptanceState = verified.progress.get("acceptance");
+  const acceptanceFailures = verified.failures.filter((f) => f.contractId === "acceptance");
+  const acceptanceResult: import("../contracts/types").WorkerResult | null =
+    acceptanceState !== undefined && (parsed.acceptance?.length ?? 0) > 0
+      ? {
+          contractId: "acceptance",
+          status: acceptanceState === "done" ? "accepted" : "failed",
+          artifact: undefined,
+          changedFiles: [],
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, cost: 0 },
+          ms: 0,
+          toolCalls: 0,
+          cancelled: false,
+        }
+      : null;
+
   const aggregated = aggregate(
-    [...outcome.accepted, ...outcome.failed.map((f) => f.result)],
+    [
+      ...outcome.accepted,
+      ...outcome.failed.map((f) => f.result),
+      ...(acceptanceResult ? [acceptanceResult] : []),
+    ],
     outcome.unresolved,
     report,
     outcome.failed.map((f) => f.contractId),
@@ -789,6 +818,7 @@ async function runToCompletion(
     integration: integrationOutcome,
     visual,
   });
+
   // Factory ledger — one page (.cubicore-factory-ledger.json) that says
   // what this run decided, what it cost, what it got, and why it wasn't a
   // single agent. The founder can read it later without transcripts.
@@ -859,15 +889,6 @@ async function runToCompletion(
   } catch {
     // The ledger is an artifact, not a gate. A filesystem error never fails a run.
   }
-  const verified = await verifyAndSyncPlan(parsed, dir, validation);
-  completeFactoryLifecycle(dir, `verified=${[...verified.progress.values()].filter(v => v === "done").length}/${parsed.contracts.length} on disk`);
-  if (integrationOutcome && integrationOutcome.passed === false) {
-    const blocker = isEnvironmentBlocker(1, integrationOutcome.output);
-    enterFactoryLifecycle(dir, "blocked", `integration ${blocker ? "blocked — environment issue" : "failed"}: ${integrationOutcome.output.slice(0, 80)}`);
-    verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
-  }
-  syncRunRecord(runId, dir, parsed, verified);
-
   const passedCount = [...verified.progress.values()].filter((state) => state === "done").length;
   const blockedCount = [...verified.progress.values()].filter((state) => state === "blocked").length;
   const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
@@ -999,6 +1020,18 @@ async function recordInlineRun(args: {
       unverified: state === "blocked",
     };
   });
+  if ((loaded.plan.acceptance?.length ?? 0) > 0) {
+    const state = verified.progress.get("acceptance") ?? "blocked";
+    const ours = failures.filter((f) => f.contractId === "acceptance");
+    artifacts.push({
+      contractId: "acceptance",
+      status: state === "done" ? "done" : state === "blocked" ? "blocked" : "flagged",
+      deliverable: "diff",
+      changedFiles: [] as string[],
+      unresolved: ours.map((f) => `acceptance — ${f.checkId}: ${f.output.slice(0, 160)}`),
+      unverified: state === "blocked",
+    });
+  }
   const unresolved = failures.map((f) => `${f.contractId} — ${f.checkId}: ${f.output.slice(0, 160)}`);
 
   let usage: RetroUsage | null = null;
@@ -1705,6 +1738,10 @@ async function refreshPlanProgress(
       progress.set(contract.id, "done");
       continue;
     }
+    if (checks.length === 0) {
+      progress.set(contract.id, "done");
+      continue;
+    }
 
     let ok: "done" | "blocked" | "failed" = "done";
     for (const check of checks) {
@@ -1723,6 +1760,46 @@ async function refreshPlanProgress(
       }
     }
     progress.set(contract.id, ok);
+  }
+
+  // Acceptance checks — product-level promises, run now, after the contract
+  // checks proved theirs. A failing acceptance is a failure of the build as a
+  // product, not as a box of green tests.
+  if ((parsed.acceptance?.length ?? 0) > 0) {
+    const failuresAcc: Array<{ contractId: string; checkId: string; output: string }> = [];
+    let allOk = true;
+    let allBlocked = true;
+    for (const acceptance of parsed.acceptance ?? []) {
+      try {
+        const result = await runCheckedShell(acceptance.command, directory);
+        if (result.exitCode === 0) continue;
+        allOk = false;
+        if (!isEnvironmentBlocker(result.exitCode, result.output)) allBlocked = false;
+        failuresAcc.push({
+          contractId: "acceptance",
+          checkId: acceptance.name,
+          output: result.output.slice(0, 600),
+        });
+      } catch (error) {
+        allOk = false;
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isEnvironmentBlocker(1, message)) allBlocked = false;
+        failuresAcc.push({
+          contractId: "acceptance",
+          checkId: acceptance.name,
+          output: message,
+        });
+      }
+    }
+    if (failuresAcc.length === 0) {
+      progress.set("acceptance", "done");
+    } else if (allBlocked) {
+      progress.set("acceptance", "blocked");
+      failures.push(...failuresAcc);
+    } else {
+      progress.set("acceptance", "failed");
+      failures.push(...failuresAcc);
+    }
   }
 
   return { progress, failures };
@@ -1870,6 +1947,13 @@ function syncRunRecord(
     for (const step of contract.steps ?? []) {
       recordProgress(runId, directory, contract.id, state, detail, step.id);
     }
+  }
+  // Acceptance product-lane — persists its own state so the MD shows it even though
+  // it is not a contract.
+  const accState = verified.progress.get("acceptance");
+  if (accState === "done" || accState === "failed" || accState === "blocked") {
+    recordProgress(runId, directory, "acceptance", accState,
+      accState === "done" ? "acceptance flows hold" : "acceptance flows do not hold");
   }
 }
 
@@ -3138,9 +3222,21 @@ If the brief carries no reference, do NOT ask the founder. Research it yourself:
 
 **UI smoke (mandatory when the result is visual):** the plan MUST include exactly one smoke contract (id "ui-smoke", kind "intent") whose blocking check launches the built app or preview server and walks the core user flow in a real browser with Playwright — e.g. 'npx playwright test'. Unit tests and typecheck do not count. The plan is rejected by the validator before dispatch without it, the same as a missing design block.
 
-**Research (mandatory before writing any contract that names an unfamiliar library, compiler flag, framework or API):** webfetch the official docs for that specific tool at the version you intend to use. Do this even for well-known ones. Cite the URL in the plan's context or as a comment. The difference between "the planner guessed the API" and "the planner read the current page" is the difference between a working app and a repo of errors.
+**Acceptance (mandatory when the result is a product with users):** IN ADDITION to the smoke contract, the plan MUST carry a top-level "acceptance" array — one entry per user-facing promise in the brief, written in the user's own words. Each entry: { "name": "...", "command": "..." } where the command fails loudly when the promise is broken and passes when it holds. 'npx playwright test' is the common shape; each entry must mention the use case it exercises. Example:
 
-**Opinion:** Before writing the plan, think like a professional who just got this brief and fill in what the user did not say. Write ONE short paragraph (max two sentences, ~400 characters) as the plan's "opinion" field in the JSON: what the requested thing really is today, what an experienced builder would include by default, what you deliberately leave out, and why. Keep it honest — if the user's instinct is right for the problem, say so; do not invent sophistication. Do not widen or narrow the product; just state the best honest full version as it would be done properly *now*. If you would recommend a framework over what's listed, it goes in the plan (never the reply).
+  "acceptance": [
+    { "name": "clicking create post saves the post and it appears in the list", "useCase": "create-post-and-see-it", "command": "npx playwright test tests/acceptance/create-post.spec.ts" }
+  ]
+
+The validator rejects a UI-capable plan without any acceptance entries — exactly the same enforcement as a missing design block. Run them after the merged tree is built; debug will re-run them, and execute will refuse to call the run done while any entry still fails.
+
+**Research (mandatory before writing any contract that names an unfamiliar library, compiler flag, framework or API):** webfetch the official docs for that specific tool at the version you intend to use. Do this even for well-known ones. Cite the URL in the plan's context or as a comment. The difference between "the planner guessed the API" and "the planner read the current page" is the difference between a working app and a repo of errors. Research is for facts you cannot know — APIs, toolchains, schema shapes, what a runtime does with a given input. Not for style cues, not for whose UI wins, not for whose feature set to copy. Anything else — any site you would browse if you were allowed — is inspiration hunting, and it is refused.
+
+**Features (agent-expanded, never asked):** the plan may add features beyond what the brief named, and ONLY when those features are things the project cannot ship without, or the user explicitly asked for, in this brief or a refine. List every added feature in the plan's opinion field with (a) what it is and (b) why the product fails without it. Do NOT ask the founder anything about features. Additions go in the plan; /cubicore:refine is the one tool that removes them. Features nobody asked for and the product does not need are fan fiction and do not ship.
+
+**Divide and conquer recursively:** if any contract would carry more than a dozen files or one sitting-of-work, split it into two along its major seam. Re-split each child that still crosses the ceiling. This exercise happens BEFORE writing contracts, not after — a contract the planner cannot describe as "these four to eight files, this one job" is the split decision not yet made. The plan tool rejects an oversize contract outright.
+
+**Opinion:** Before writing the plan, think like a professional who just got this brief and fill in what the user did not say. Write ONE short paragraph (max two sentences, ~1000 characters) as the plan's "opinion" field in the JSON: what the requested thing really is today, what an experienced builder would include by default, what you deliberately leave out, and why. Keep it honest — if the user's instinct is right for the problem, say so; do not invent sophistication. Do not widen or narrow the product; just state the best honest full version as it would be done properly *now*. If you would recommend a framework over what's listed, it goes in the plan (never the reply).
 
 **Size check (mandatory, before you write a contract):** Classify the request as one of:
 - **small** — one or two files, one sitting of work. Un-split is the right answer.
@@ -3154,6 +3250,15 @@ Write the classification and your one-sentence reason as a top-level field in th
 
 **2. Write the plan.** Build exactly what the user requested above. Do not
 substitute, upgrade, or replace it with a project of your own choosing.
+
+**Split first, then sketch — divide-and-conquer, recursively.** If the
+final contract count will exceed a dozen files, or a single contract feels
+heavy, split every such contract down: write it as two contracts for the
+major seams, re-split each again if it still crosses a dozen, until every
+leaf contract is one sitting-of-work size. Do this mentally in the planner —
+do not emit a plan with one oversize contract and hope execute splits it;
+it will not. The plan tool rejects an oversize contract, and you'll be
+asked to re-plan.
 
 Produce the plan as a JSON object and pass it to the plan tool — that is the only
 way you may create the plan file. Do NOT write the plan JSON yourself directly
