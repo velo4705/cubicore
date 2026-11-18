@@ -10,6 +10,55 @@ const usage = (overrides: Partial<RetroUsage> = {}): RetroUsage => ({
   ...overrides,
 });
 
+describe("retrospective — receipt, visual verdict, user eyes", () => {
+  test("receipt lines appear when files are changed, or an honest clean line otherwise", () => {
+    const withFiles = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+      receipt: ["src/ui/index.html", "tests/ui-smoke.spec.ts"],
+    });
+    expect(renderRetrospective(withFiles)).toContain("src/ui/index.html");
+    expect(renderRetrospective(withFiles)).toContain("tests/ui-smoke.spec.ts");
+
+    const empty = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+      receipt: [],
+    });
+    expect(renderRetrospective(empty)).toContain("Receipt: every workspace file clean against HEAD");
+  });
+
+  test("visual verdict is printed even without a screenshot capture path — silently empty is not allowed", () => {
+    const r = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+    });
+    expect(renderRetrospective(r)).toContain("User eyes: not verified");
+  });
+
+  test("a forced 'blocked' visual verdict survives the render", () => {
+    const r = buildRetrospective({
+      fit: undefined,
+      artifacts: [],
+      unresolved: [],
+      deferred: 0,
+      usage: null,
+      visual: { verdict: "blocked", detail: "preview never answered on the declared URL" },
+    });
+    expect(renderRetrospective(r)).toContain("blocked");
+    expect(renderRetrospective(r)).toContain("preview never answered");
+  });
+});
+
 describe("retrospective — tokens are measured or honestly unknown", () => {
   test("a null usage renders unknown, never a measured-sounding zero", () => {
     const r = buildRetrospective({

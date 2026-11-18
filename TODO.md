@@ -171,3 +171,10 @@ None of these is committed as work, just tracked here so they are not lost:
 
 - [ ] Evidence seal never executed against a live Cubicore run yet — verification still surfaced only on freshly-accepted plans going forward; the first live render is the next one
 - [ ] The visual verdict was never fed to a founder interactively; the preview wiring exists but the loop "ask the founder to look before deploy" has not happened across any published build
+
+
+## 2026-11-17 — DX ranking shipped; next candidates to weigh, in order
+
+- [ ] `/preview` — a model-viewed rendered image + explicit "user happiness" line (blocked by exposing image attachment in the host agent — needs the host session to attach the screenshot)
+- [ ] integration required for `plan-full` — flag plan lacking `integration` loudly, but not blocking (adjudicated flat-blocking already rejected)
+- [ ] Visual check as blocking gate — refused; developer intent decides before shipping

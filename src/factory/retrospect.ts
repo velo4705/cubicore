@@ -43,6 +43,14 @@ export type Retrospective = {
   /** The post-integration screenshot verdict — set only when the plan had a UI preview path. */
   visual?: RetroVisual | null;
   integration?: IntegrationOutcome;
+  /**
+   * Files git sees changed versus the last commit. Unfiltered — if Cubicore
+   * did not write them, they belong to the host or to the founder, but the
+   * receipt prints them anyway.
+   */
+  receipt?: string[];
+  /** If the host model can view an image and has answered, their verdict. */
+  userVerdict?: string;
 };
 
 export type RetroUsage = {
@@ -67,6 +75,8 @@ export function buildRetrospective(opts: {
   integration?: IntegrationOutcome | null;
   /** Optional visual check outcome; absent means not attempted. */
   visual?: RetroVisual | null;
+  receipt?: string[];
+  userVerdict?: string;
 }): Retrospective {
   const totalTokens = opts.usage === null
     ? null
@@ -136,6 +146,8 @@ export function buildRetrospective(opts: {
     ...(acceptance !== undefined ? { acceptance } : {}),
     ...(opts.visual ? { visual: opts.visual } : {}),
     ...(integration !== undefined ? { integration } : {}),
+    ...(opts.receipt !== undefined ? { receipt: opts.receipt } : {}),
+    ...(opts.userVerdict !== undefined ? { userVerdict: opts.userVerdict } : {}),
   };
 }
 
@@ -156,6 +168,10 @@ export function renderRetrospective(r: Retrospective): string {
       ? `- Scope escapes: ${r.escapes.map((e) => `${e.contractId} (${e.files.join(", ")})`).join("; ")} — ${r.escapes.length} contract(s) wrote outside the declared union`
       : ``,
     r.visual ? `- Visual: ${r.visual.verdict} — ${r.visual.detail}` : ``,
+    r.receipt && r.receipt.length > 0
+      ? `- Receipt (vs last commit, unfiltered): ${r.receipt.length} file(s) — ${r.receipt.slice(0, 8).join(", ")}${r.receipt.length > 8 ? ` … (+${r.receipt.length - 8} more)` : ""}`
+      : `- Receipt: every workspace file clean against HEAD — nothing to show beyond the commit`,
+    r.userVerdict ? `- User eyes: ${r.userVerdict}` : `- User eyes: not verified — look at the screenshot with your own eyes before calling this done`,
     r.acceptance
       ? `- Acceptance: ${r.acceptance.verdict}${r.acceptance.note ? ` — ${r.acceptance.note}` : ""}`
       : ``,

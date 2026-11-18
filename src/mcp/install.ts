@@ -74,10 +74,23 @@ export interface InstallResult {
 }
 
 function packageVersion(): string {
+  // The file lives at src/mcp/install.ts in source and dist/cli.js when
+  // bundled — try the plausible offsets before giving up, and report
+  // "unknown" honestly rather than guess.
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8")) as { version?: string };
-    return typeof pkg.version === "string" ? pkg.version : "unknown";
+    for (const candidate of [
+      join(here, "..", "..", "..", "package.json"),
+      join(here, "..", "..", "package.json"),
+      join(here, "..", "package.json"),
+      join(here, "package.json"),
+    ]) {
+      try {
+        const pkg = JSON.parse(readFileSync(candidate, "utf8")) as { version?: string };
+        if (typeof pkg.version === "string" && pkg.version.trim().length > 0) return pkg.version;
+      } catch { /* keep trying */ }
+    }
+    return "unknown";
   } catch {
     return "unknown";
   }

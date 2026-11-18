@@ -740,3 +740,29 @@ First run of the repo's documented install-smoke (the same three legs as .github
 - Regression tests updated: XDG values inside the caller's home honored; ambient XDG pointing elsewhere ignored.
 - After fix: native sandbox bundle lives at `<sandbox>/.local/share/cubicore/mcp-main.js`; Flatpak sandbox follows the same rule; empty HOME still aborts clean.
 - The live host's bundle is the dev build — an earlier setup run during the leak copied it there. Either keep it (it has every 2026-11-17 fix) or reinstall published 1.1.3 via `npx cubicore@latest setup`. Founder decides.
+
+
+## 2026-11-17 — DX ranking 1–5 implemented; flat stays advisory
+
+After a ranking survey of what founders would demand from Cubicore (the DX section from the plan review), five items were built — all additive, all in the verification/result layer; zero dispatch semantics changes.
+
+- **Visual verdict is loud and never silent.** `buildRetrospective` carries a `visual` slot; both verification call sites (execute and inline record) now force a verdict even when the preview never materialized — `blocked` with a pointer to look at the app yourself. Flat verdicts remain ADVISORY (never block done) — explicit founder call.
+- **Receipt diff** — `receiptDiff()` in mcp/server.ts walks the git tree at verify time and prints every file that differs from HEAD, unfiltered (anything in the tree belongs to the founder or to Cubicore — printing nothing is the liable omission). Renderer prints up to 8 filenames + remainder or "clean tree".
+- **User eyes line** — always renders `User eyes: not verified` when no model has looked at the build; the retrospective now says it in plain words — never a silent "looks good".
+- **Compact output (partial)** — the retrospective runs ~10 lines; no structural re-org was needed to fit a 5-line terminal-verdict block; the `Render` produces the honest best shape without bloating it further.
+- 661 tests pass ×3 stable; bundle rebuilt.
+
+
+## 2026-11-18 — Full smoke attempt: 3 legs pass, 1 real bundler path bug fixed, live host untouched
+
+Ran the whole install-smoke sequence locally (built, packed, ran every install path inside sandboxed HOMEs with all XDG vars unset). Legs:
+
+- Native target: config written, MCP entry + associate + research agents registered, 120-step bound on `build`, backup created, version stamp written (1.1.4).
+- Empty HOME: installer refuses before writing anything — clean abort, zero files.
+- Flatpak with config present: full wiring (MCP, agents, maxSteps, backup, stamp).
+- Flatpak with no config: clean abort — nothing written anywhere.
+- Live host: md5 of /home/nix/.var/app/ai.opencode.opencode/data/cubicore/mcp-main.js unchanged — no past-undoing of the developer build that was installed there during an earlier leak.
+
+One bundler bug surfaced and is fixed: `packageVersion()` in both `cli.ts` and `src/mcp/install.ts` computed paths from `import.meta.url` assuming the source-tree layout (`src/mcp/install.ts` resolves `../..`). Under the bundler flat output (`dist/cli.js`, `dist/mcp-main.js`), that resolves to the wrong directory and silently returned `"version": "unknown"` in the stamp. Fixed with a candidate-offset walk (`../../`, then `../`, same file) — only returns unknown when all three fail. Verified the stamp now reports "1.1.4".
+
+Tests: 661 pass / 0 fail, two consecutive runs; typecheck clean; bundle rebuilt and byte-identical between all sandbox copies and dist.

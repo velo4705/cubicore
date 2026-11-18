@@ -83,10 +83,21 @@ function banner(version: string): string {
 }
 
 function packageVersion(): string {
+  // The CLI is bundled into dist/cli.js; the same source-tree and packed-tar.ts
+  // layouts break the strict offset. Try the plausible ones before unknown.
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as { version?: string };
-    return pkg.version ?? "unknown";
+    for (const candidate of [
+      join(here, "..", "..", "package.json"),
+      join(here, "..", "package.json"),
+      join(here, "package.json"),
+    ]) {
+      try {
+        const pkg = JSON.parse(readFileSync(candidate, "utf8")) as { version?: string };
+        if (typeof pkg.version === "string" && pkg.version.trim().length > 0) return pkg.version;
+      } catch { /* try next */ }
+    }
+    return "unknown";
   } catch {
     return "unknown";
   }

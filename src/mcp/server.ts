@@ -51,6 +51,7 @@ import {
   writeCycleState,
   type TestFinding,
 } from "./protocol";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, writeFileSync, readFileSync, appendFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeFromEnv, workerSessions, type Runtime } from "../adapters/opencode/runtime";
@@ -754,13 +755,19 @@ async function runToCompletion(
       });
       if (result.verdict === "flat") {
         outcome.unresolved.push(
-          `visual: build reads flat (${result.detail}) — no visual regression will be accepted without the founder looking at it`,
+          `visual: build reads flat (${result.detail}) — open the founder's screen and decide with your eyes`,
         );
       }
       visual = { verdict: result.verdict, detail: result.detail };
     } catch (error) {
       outcome.unresolved.push(`visual: screenshot check threw — ${String(error).slice(0, 200)}`);
     }
+  }
+  // A UI plan whose screenshot verdict never materialized is NOT the same as
+  // "looks great". Force a loud "not verified" verdict so the run cannot get
+  // reported with an empty visual signal.
+  if (parsed.design && !visual) {
+    visual = { verdict: "blocked", detail: "UI plan with no screenshot verdict — couldn't run the preview, or screenshot threw. Look at the app for yourself." };
   }
 
   enterFactoryLifecycle(dir, "observe", `accepted=${outcome.accepted.length}; failed=${outcome.failed.length}; deferred=${outcome.deferred.length}`);
@@ -817,6 +824,7 @@ async function runToCompletion(
     usage,
     integration: integrationOutcome,
     visual,
+    receipt: receiptDiff(dir),
   });
 
   // Factory ledger — one page (.cubicore-factory-ledger.json) that says
@@ -1064,13 +1072,18 @@ async function recordInlineRun(args: {
       });
       if (result.verdict === "flat") {
         unresolved.push(
-          `visual: build reads flat (${result.detail}) — no visual regression will be accepted without the founder looking at it`,
+          `visual: build reads flat (${result.detail}) — open the founder's screen and decide with your eyes.`,
         );
       }
       visual = { verdict: result.verdict, detail: result.detail };
     } catch (error) {
       unresolved.push(`visual: screenshot check threw — ${String(error).slice(0, 200)}`);
     }
+  }
+  // For UI plans with no captured verdict, force an honest "not verified" line
+  // so UI intent never earns silence from the retrospective.
+  if (loaded.plan.design && !visual) {
+    visual = { verdict: "blocked", detail: "UI plan with no screenshot verdict — couldn't run the preview, or screenshot threw. Look at the app for yourself." };
   }
 
   const retrospective = buildRetrospective({
@@ -1080,6 +1093,7 @@ async function recordInlineRun(args: {
     deferred: 0,
     usage,
     ...(visual ? { visual } : {}),
+    receipt: receiptDiff(dir),
   });
   const fit = loaded.plan.factoryFit;
   const passed = retrospective.passed;
@@ -1929,6 +1943,24 @@ async function markPlanContract(
     renderProgressionPlan(parsed, dir, persisted);
   });
   return text(`${state === "done" ? "Marked" : state === "failed" ? "Marked failed:" : "Marked skipped:"} ${contract.id} in ${PLAN_MD}. ${detail}`);
+}
+
+/**
+ * The honest diff — what this run actually left behind, beyond what Cubicore
+ * intended. "git diff --name-only HEAD"; empty list when not in a repo or
+ * nothing changed.
+ *
+ * Intentionally NOT filtered to Cubicore's claims — the founder needs to see
+ * everything that differs from the last committed state, or the receipt lies
+ * by omission.
+ */
+export function receiptDiff(directory: string): string[] {
+  try {
+    const out = execFileSync("git", ["-C", directory, "diff", "--name-only", "HEAD"], { encoding: "utf8" });
+    return out.split("\n").map((line) => line.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 /** Sync persisted run records and plan progress after the verifier has run. */
