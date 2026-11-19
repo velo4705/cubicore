@@ -34,6 +34,7 @@ import { classifyCheckFailure } from "../validate/triage";
 import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
+import { writeTriage, TRIAGE_MD } from "../factory/triage";
 import { recordEscalations, clearEscalations, escalatedLedger, escalatedLine } from "../factory/escalations";
 import { enterFactoryLifecycle, completeFactoryLifecycle, factoryLifecycleStatusLine, blockFactoryLifecycle } from "../factory/lifecycle";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -1856,6 +1857,7 @@ async function verifyAndSyncPlan(
     `${directory}/${PLAN_MD}`,
     renderPlanMd(parsed, validation, { contracts: verified.progress, steps }),
   );
+  writeTriage(directory, parsed, verified);
   return verified;
 }
 
@@ -1956,7 +1958,12 @@ async function markPlanContract(
  */
 export function receiptDiff(directory: string): string[] {
   try {
-    const out = execFileSync("git", ["-C", directory, "diff", "--name-only", "HEAD"], { encoding: "utf8" });
+    try { execFileSync("git", ["-C", directory, "rev-parse", "--is-inside-work-tree"], { stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { return []; }
+    const out = execFileSync("git", ["-C", directory, "diff", "--name-only", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     return out.split("\n").map((line) => line.trim()).filter(Boolean);
   } catch {
     return [];
@@ -2654,8 +2661,11 @@ export const TOOLS = [
     description:
       WHEN +
       "Prepares the working directory: initialise a git repository if there is " +
-      "not one already, and record a baseline commit so that later changes can be " +
-      "measured against it. Never touches a repository that already exists.",
+      "not one already, record a baseline commit so that later changes can be " +
+      "measured against it, and write a `.cubicore-state.json` snapshot of this host's " +
+      "native toolchain (node, npm, common native deps, Playwright browser cache) so " +
+      "agents never re-install what the host already has. Never touches a repository " +
+      "that already exists.",
     inputSchema: {
       type: "object",
       properties: { directory: { type: "string", description: "Working directory" } },
@@ -2663,10 +2673,20 @@ export const TOOLS = [
     handler: async (args: { directory?: string }) => {
       const dir = args.directory ?? process.cwd();
       const result = await prepareRepository(dir);
+      let snapshotLine = "";
+      try {
+        const statePath = (await import("../project/introspect")).writeStateSnapshot(dir);
+        if (statePath) {
+          snapshotLine = ` Host snapshot written to ${statePath}.`;
+        }
+      } catch (error) {
+        process.stderr.write(`[cubicore] state snapshot failed: ${String(error).slice(0, 200)}\n`);
+      }
       if (result.alreadyInitialised) {
         return text(
           `Already a git repository (${dir}); left completely alone.` +
-            (result.baseline ? ` Baseline: ${result.baseline.slice(0, 12)}` : ""),
+            (result.baseline ? ` Baseline: ${result.baseline.slice(0, 12)}` : "") +
+            snapshotLine,
         );
       }
       if (!result.initialised) {
@@ -2674,8 +2694,8 @@ export const TOOLS = [
       }
       return text(
         result.committed
-          ? `Initialised a git repository in ${dir} and committed a baseline, so later changes can be measured.`
-          : `Initialised a git repository in ${dir}. Nothing to commit yet.`,
+          ? `Initialised a git repository in ${dir} and committed a baseline, so later changes can be measured.${snapshotLine}`
+          : `Initialised a git repository in ${dir}. Nothing to commit yet.${snapshotLine}`,
       );
     },
   },
@@ -2981,6 +3001,45 @@ export const TOOLS = [
       const tokens = plan.contracts.reduce((sum, c) => sum + (c.budget?.tokens ?? 0), 0);
       const wall = plan.contracts.reduce((sum, c) => sum + (c.budget?.wallMs ?? 0), 0);
 
+      // Honest history from this directory — what we actually know, never
+      // invented. Older ledgers may carry nulls for usage; state that plainly.
+      const historyLines = (() => {
+        try {
+          const hist = readFileSync(`${dir}/.cubicore-factory-history.jsonl`, "utf8");
+          if (hist.trim().length === 0) return [];
+          return hist.trim().split("\n").filter(Boolean).map((line) => {
+            try { return JSON.parse(line) as Record<string, unknown>; }
+            catch { return null; }
+          }).filter((row): row is Record<string, unknown> => row !== null);
+        } catch {
+          return [];
+        }
+      })();
+      const historyBlock: string[] = [];
+      if (historyLines.length > 0) {
+        const teams = historyLines.map((r) => (typeof r.team === "number" ? r.team : null)).filter((n): n is number => n !== null);
+        const passTotals = historyLines.map((r) => {
+          const rtro = r.retrospect as { passed?: number } | undefined;
+          return rtro?.passed ?? null;
+        }).filter((n): n is number => n !== null);
+        const passing = passTotals.length > 0 ? passTotals.filter((n) => n > 0).length : null;
+        historyBlock.push(
+          ``,
+          `From this directory's history (${historyLines.length} recorded run(s)):`,
+          teams.length > 0
+            ? `  team sizes recorded: ${[...new Set(teams)].sort((a, b) => a - b).join(", ")} associates`
+            : `  team sizes recorded: (unknown)`,
+          passing !== null
+            ? `  runs with at least one verified contract: ${passing} of ${passTotals.length}`
+            : `  pass counts: history does not record them cleanly`,
+        );
+      } else {
+        historyBlock.push(
+          ``,
+          `From this directory's history: nothing recorded yet — this is the first run.`,
+        );
+      }
+
       return text(
         [
           `Estimate for ${plan.contracts.length} associate(s), topology ${plan.topology}.`,
@@ -2988,6 +3047,7 @@ export const TOOLS = [
           `  token ceiling: ${tokens.toLocaleString()}`,
           `  wall ceiling:  ${Math.round(wall / 1000)}s across the plan`,
           `  graph budget:  ${plan.graphBudget.nodes} nodes, ${plan.graphBudget.edges} edges`,
+          ...historyBlock,
           ``,
           ...plan.contracts.map(
             (c) => `  - ${c.id}: ${c.writes.join(", ") || "(report)"} -- ${Math.round((c.budget?.wallMs ?? 0) / 1000)}s, ${(c.budget?.tokens ?? 0).toLocaleString()} tokens`,

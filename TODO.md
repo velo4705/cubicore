@@ -195,3 +195,10 @@ None of these is committed as work, just tracked here so they are not lost:
 
 - [ ] PLANNER_PROMPT (schema.ts) and renderPlanPrompt (server.ts) — same treatment — the next biggest token sinks per planner call
 - [ ] .cubicore-factory-ledger.json + .cubicore-factory-history.jsonl — production MD output; words the user reads are paid once per run
+
+
+## 2026-11-19 — `.cubicore-state.json` shipped; the live use of it still pending
+
+- [x] `.cubicore-state.json` introspection and write — done 2026-11-19
+- [ ] Wire host reality from `.cubicore-state.json` into planner/assoicate briefs so associates don't reinstall what's already on the host
+- [ ] Estimate p50/p75 from history (DX #5) — not started

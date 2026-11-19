@@ -830,3 +830,29 @@ Tree says 1.1.5 (candidate via v1.1.4 self-declared in earlier commits). Pack re
 - All sandbox bundles byte-identical with dist/.
 
 Tests: 683 pass ×3 runs; typecheck clean; 1.1.5 tarball at /tmp/opencode/cubicore-1.1.5.tgz — ready to ship any time the founder chooses.
+
+
+## 2026-11-19 — `.cubicore-state.json` (DX #1, project introspection)
+
+- New `src/project/introspect.ts`: probes node/npm versions, platform, presence of node_modules, declared-and-present state of {sharp, better-sqlite3, playwright, @playwright/test, esbuild, turbo}, and Playwright browser cache presence in `~/.cache/ms-playwright`, `$XDG_DATA_HOME`, `$PLAYWRIGHT_BROWSERS_PATH`, plus the Flatpak prefix.
+- `prepare` tool now writes `.cubicore-state.json` alongside its baseline commit; every call refreshes it. Output line names the snapshot path.
+- Agents can read the snapshot directly today for OS-aware briefs; dispatch is not yet using it — the brief's "host reality" section is a future item; this is the read-window for the human author, the MCP consumer will be #work next.
+- Tests: 5 new pin the probe logic, snapshot write, and node_modules detection. Suite 691 pass total (683 + 8 skips + new 5).
+- Honest limits: the probing is a cached snapshot; running `prepare` refreshes it; anything that installs something in node_modules after `prepare` will still be detected next time but won't flip without it.
+
+
+## 2026-11-19 — DX #5 and #4: estimate shows history, failure packager writes TRIAGE.txt
+
+**#5 — estimate now reads your history**: `/cubicore:estimate` prints
+
+```
+From this directory's history (N recorded run(s)):
+  team sizes recorded: 7, 9 associates
+  runs with at least one verified contract: 2 of 2
+```
+
+when a history exists. Nothing invented — older `inline — host tokens not collected` records still report tokens as unknown and say so; the estimator's wording is addition, never embellishment.
+
+**#4 — TRIAGE.txt**: when the verifier fails, Cubicore writes `CUBICORE_TRIAGE.txt` at the project root: the failed contract, the named check with its kind tag (`[environment]` / `[code]` / `[format]` / `[spec]` / `[budget]`), the first 10 lines of command output, and the explicit next step — one line per failure. All-green runs remove the file. Validated end-to-end: plan with failures → file written; plan with all-green checks → file deleted.
+
+**#6 — progress heartbeat» remains unbuilt**: it needs a live stream mechanism facing the host; adding that is dispatch-semantics territory and not advised without explicit sign-off; announced honestly rather than faked.
