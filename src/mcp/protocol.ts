@@ -266,7 +266,30 @@ export function classify(finding: TestFinding): "blocks" | "annotates" {
   return finding.severity === "judgment" ? "annotates" : "blocks";
 }
 
-export function renderDebugMd(findings: TestFinding[], cycle: number, maxCycles: number): string {
+export interface DebugVerifiedContext {
+  /** The plan's contracts and their on-disk verdicts — supplied by the verifier when callable. */
+  contracts: Array<{ id: string }>;
+  /** state per contract id: done | failed | blocked | pending */
+  states: Map<string, ContractState>;
+  /** per-contract failure detail from the verifier */
+  failures: Array<{ contractId: string; checkId: string; output: string; kind: string }>;
+  /** Write-scope escapes seen by the aggregator, if any — undefined when not computed here. */
+  escapes?: Array<{ contractId: string; files: string[] }>;
+}
+
+function renderVerificationLine(id: string, state: ContractState | undefined, failureCount: number): string {
+  const icon = state === "done" ? "✅" : state === "failed" ? "❌" : state === "blocked" ? "⚠️" : "⏳";
+  const suffix = state === "done"
+    ? ""
+    : state === "blocked"
+      ? " — cannot verify on this host (missing tool / offline / sealed check)"
+      : state === "failed"
+        ? ` — failed (${failureCount} blocking check${failureCount === 1 ? "" : "s"})`
+        : "";
+  return `- ${icon} ${id}${suffix}`;
+}
+
+export function renderDebugMd(findings: TestFinding[], cycle: number, maxCycles: number, verified?: DebugVerifiedContext): string {
   const blocking = findings.filter((f) => classify(f) === "blocks");
   const advisory = findings.filter((f) => classify(f) === "annotates");
 
@@ -275,29 +298,98 @@ export function renderDebugMd(findings: TestFinding[], cycle: number, maxCycles:
     ``,
     `Cycle ${cycle} of ${maxCycles}. ${blocking.length} blocking, ${advisory.length} advisory.`,
     ``,
-    ...(blocking.length
-      ? [
-          `## Blocking`,
-          ``,
-          ...blocking.map((f) => [`### ${f.message}`, ``, `- **Source:** ${f.source}`, `- **Fix:** ${f.fix}`, ``].join("\n")),
-        ]
-      : []),
-    ...(advisory.length
-      ? [
-          `## Advisory`,
-          ``,
-          `_These are judgement calls, not mechanical failures. Test reports them; it does not block on them._`,
-          ``,
-          ...advisory.map((f) => [`### ${f.message}`, ``, `- **Source:** ${f.source}`, `- **Suggested:** ${f.fix}`, ``].join("\n")),
-        ]
-      : []),
+  ];
+
+  if (verified) {
+    const done = verified.contracts.filter((c) => verified.states.get(c.id) === "done").length;
+    const failed = verified.contracts.filter((c) => verified.states.get(c.id) === "failed").length;
+    const blocked = verified.contracts.filter((c) => verified.states.get(c.id) === "blocked").length;
+    md.push(
+      `## Verified`,
+      ``,
+      `${done}/${verified.contracts.length} verified on disk. ${failed} failed. ${blocked} blocked.`,
+      ``,
+    );
+    const sorted = [...verified.contracts].sort((a, b) => {
+      const order: Record<ContractState, number> = {
+        failed: 0,
+        blocked: 1,
+        done: 2,
+        pending: 3,
+        running: 3,
+        skipped: 4,
+      };
+      const sa = order[verified.states.get(a.id) ?? "pending"] ?? 3;
+      const sb = order[verified.states.get(b.id) ?? "pending"] ?? 3;
+      return sa - sb;
+    });
+    for (const contract of sorted) {
+      const failureCount = verified.failures.filter((f) => f.contractId === contract.id).length;
+      md.push(renderVerificationLine(contract.id, verified.states.get(contract.id), failureCount));
+    }
+    md.push(``);
+  }
+
+  if (verified) {
+    const blockedEntries = verified.contracts.filter((c) => verified.states.get(c.id) === "blocked");
+    if (blockedEntries.length > 0) {
+      md.push(
+        `## Blocked / not-verified`,
+        ``,
+        `_These contracts cannot be verified on this host — installing the missing tool / restoring the dependency / re-accepting a sealed plan is the fix, not retrying._`,
+        ``,
+      );
+      for (const contract of blockedEntries) {
+        const failures = verified.failures.filter((f) => f.contractId === contract.id);
+        md.push(`- **${contract.id}**`);
+        for (const failure of failures) {
+          md.push(`  - [${failure.kind}] ${failure.checkId}`);
+          if (failure.output) md.push(`    ${failure.output.split("\n")[0].slice(0, 220)}`);
+        }
+        md.push(``);
+      }
+    }
+  }
+
+  if (verified?.escapes && verified.escapes.length > 0) {
+    md.push(
+      `## Escapes`,
+      ``,
+      `_These files changed even though no contract declared them as a write. Investigate what happened — or, if you override, name it in your note._`,
+      ``,
+    );
+    for (const escape of verified.escapes) {
+      md.push(`- **${escape.contractId}** — ${escape.files.join(", ")}`);
+    }
+    md.push(``);
+  }
+
+  if (blocking.length) {
+    md.push(
+      `## Blocking`,
+      ``,
+      ...blocking.map((f) => [`### ${f.message}`, ``, `- **Source:** ${f.source}`, `- **Fix:** ${f.fix}`, ``].join("\n")),
+    );
+  }
+
+  if (advisory.length) {
+    md.push(
+      `## Advisory`,
+      ``,
+      `_These are judgement calls, not mechanical failures. Test reports them; it does not block on them._`,
+      ``,
+      ...advisory.map((f) => [`### ${f.message}`, ``, `- **Source:** ${f.source}`, `- **Suggested:** ${f.fix}`, ``].join("\n")),
+    );
+  }
+
+  md.push(
     `## Next`,
     ``,
-    blocking.length === 0
+    blocking.length === 0 && (!verified || [...verified.states.values()].every((s) => s === "done" || s === "skipped"))
       ? `No blocking findings. Whatever is advisory above is for a human to judge.`
-      : `Run Execute again to address the blocking findings. Bounded at ${maxCycles} cycles, then they are reported as unresolved.`,
+      : `Not every contract verified. Address blocking findings above or investigate what is blocked — then re-run. Bounded at ${maxCycles} cycles.`,
     ``,
-  ];
+  );
 
   return md.join("\n");
 }

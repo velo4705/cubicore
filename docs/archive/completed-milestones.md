@@ -766,3 +766,67 @@ Ran the whole install-smoke sequence locally (built, packed, ran every install p
 One bundler bug surfaced and is fixed: `packageVersion()` in both `cli.ts` and `src/mcp/install.ts` computed paths from `import.meta.url` assuming the source-tree layout (`src/mcp/install.ts` resolves `../..`). Under the bundler flat output (`dist/cli.js`, `dist/mcp-main.js`), that resolves to the wrong directory and silently returned `"version": "unknown"` in the stamp. Fixed with a candidate-offset walk (`../../`, then `../`, same file) — only returns unknown when all three fail. Verified the stamp now reports "1.1.4".
 
 Tests: 661 pass / 0 fail, two consecutive runs; typecheck clean; bundle rebuilt and byte-identical between all sandbox copies and dist.
+
+
+## 2026-11-18 — DX items 1, 2, 4 shipped
+
+Scoped to additive, well-tested, no dispatch-semantics changes.
+
+- **#1 streaming preview progress** — `previewIt` now emits one-line progress through `onProgress` to stderr: `Starting: <cmd>` → `Spawned pid <n>. Waiting for readiness (poll every 500ms; timeout <ms>ms)…` → `Preview ready in <ms>ms` (or `did not become ready`). Same callback wired through every retry branch (nix-tkinter on real display, xvfb-run fallback, plain starter). The host's stderr pipe carries the lines inline; the exec-reply body still carries everything in `preview`'s output block.
+- **#2 failure classification across every blocking check** — a new `classifyCheckFailure` in `src/validate/triage.ts` shades every check's output into one of six kinds (`environment | code | format | spec | budget | unknown`). The classifier covers Node `ENOENT`/`Cannot find module`/EPERM cases, TypeScript and plain JS errors, Playwright locator failures, lint output, heap-exhaustion language, and falls back honestly to `unknown`. Failures are now emitted by the verifier with a `[<kind>]` prefix and are rendered in the final reply as `[format] ...`, `[environment] ...`, etc. Tests pin every bucket.
+- **#4 port hygiene** — `runAndVerify` checks whether the declared `preview.url`'s port is already in use before spawning; if it is, the outcome is refused with reason `port-in-use` and detail naming the port + host. The founder doesn't stare at the wrong preview tab anymore. Test pins both the in-use and no-port URLs.
+
+Tests: 676 pass ×3 stable; bundle rebuilt; archive updated.
+
+
+## 2026-11-18 — #7: CUBICORE_DEBUG.md restructured into three-tier sections
+
+`renderDebugMd` now produces four sections, separate from the old flat dump:
+
+- `## Verified` — per-contract verdict lines, sorted worst-first: `✅ scaffold`, `❌ ui-shell — failed (1 blocking check)`, `⚠️ image — cannot verify on this host (…)`. Includes "N/M verified on disk. F failed. B blocked."
+- `## Blocked / not-verified` — only when present; each entry lists kind tag + check id + output; banner tells you exactly what the fix is.
+- `## Escapes` — printed only when escape context is supplied; prose marks "Investigate — or name your override".
+- `## Blocking` — findings, unchanged semantics, now printed AFTER the verified map so the picture is visual first.
+- `## Advisory` — unchanged.
+- `## Next`: if all verified done, "no blocking + everything passed → /cubicore:deploy", otherwise "Not every contract verified — address blocking findings above". Honest words for each case.
+
+Debug rite (the one path that calls `renderDebugMd`) now passes `mdContext` with per-contract verdicts and failure kind tags, so the MD actually reflects reality instead of just the agent's findings. Escapes deliberately NOT faked — the debug rite does not re-run aggregate-of-declared-vs-actual writes today; the section prints only when supplied, and it does not claim things it cannot prove.
+
+New test file pinning: Verified ordering, Blocking/Blocked coexistence, sorted failures first, escapes absent/present, Next-message branches. Suite: 683 pass ×2 runs; bundle rebuilt.
+
+
+## 2026-11-18 — Token reduction passes through the associate brief
+
+The plan review enumerated who pays each prompt on every run. The associate
+brief dominates: an N-associate run ships N×(brief) — in this corpus N was 7,
+8 or 9 per run. Cutting it is the single highest-leverage token move; every
+word dropped is paid N times per run by N sub-agents fresh from a cold
+context.
+
+- Replaced the associate brief template in src/mcp/inline.ts with a terser
+  shape preserving every load-bearing instruction. Total brief bytes dropped
+  from ~3000 to ~1600 per associate; savings across a fan-out range from
+  ~2.4k to ~10k tokens per run depending on N.
+- Preserved intentionally, with the exact test names the founder cared about:
+  - "Do not read or edit any other associate's brief" (signalling cross-brief reads forbidden)
+  - "Blocking — each must pass" (the mandatory-green-gate section)
+  - the self-named-constraint caveat (a forbidden entry naming a file owned
+    by that contract is a rule, not a prohibition)
+  - the "a diff with no blocking checks is not verifiable" call-out
+  - "If a check is wrong, say so — that's worth more than a green gate" — restored
+    from the terser form on the explicit founder cue
+- Tests: 683 pass ×3 stable; bundle rebuilt.
+
+
+## 2026-11-19 — 1.1.5 smoke attempt passes; first clean unblocking of publish options
+
+Tree says 1.1.5 (candidate via v1.1.4 self-declared in earlier commits). Pack resolves it correctly. Legs all green in sandboxed HOMEs with XDG vars unset:
+
+- Native: config written, MCP + associate + research agents registered, maxSteps=120, .cubicore-version stamp reports 1.1.5.
+- Empty HOME: clean abort, zero files.
+- Flatpak with config: also clean including backup .cubicore-backup-<ts>.
+- Flatpak no config: also clean abort.
+- Live host bundle md5 = da8adba… — UNCHANGED.
+- All sandbox bundles byte-identical with dist/.
+
+Tests: 683 pass ×3 runs; typecheck clean; 1.1.5 tarball at /tmp/opencode/cubicore-1.1.5.tgz — ready to ship any time the founder chooses.

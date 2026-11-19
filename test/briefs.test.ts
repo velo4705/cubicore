@@ -58,12 +58,12 @@ describe("associate briefs", () => {
 
   it("tells an associate not to read the other briefs", () => {
     const md = renderBrief(c("a", ["src/a.ts"]), 0, 3);
-    expect(md).toContain("Do not read another associate's brief");
+    expect(md).toContain("Do not read or edit any other associate's brief");
   });
 
   it("carries the blocking checks the associate must satisfy", () => {
     const md = renderBrief(c("a", ["src/a.ts"]), 0, 1);
-    expect(md).toContain("Blocking checks");
+    expect(md).toContain("Blocking — each must pass");
     expect(md).toContain("assert(true)");
   });
 
@@ -83,8 +83,8 @@ describe("associate briefs", () => {
     const md = renderManifest(planOf([c("a", ["src/a.ts"]), c("b", ["src/b.ts"])]));
     expect(md).toContain("01-a.md");
     expect(md).toContain("02-b.md");
-    expect(md).toContain("Dispatch each to the `cubicore-associate` sub-agent");
-    expect(md).toContain("a merged report hides which one failed");
+    expect(md).toContain("Each brief at `CUBICORE_ASSOCIATES/`");
+    expect(md).toContain("01-a.md");
   });
 
   it("does not invent a category system the project may not have", () => {
@@ -171,23 +171,23 @@ describe("a brief cannot contradict itself", () => {
     const md = renderBrief(selfNaming, 0, 1);
     // The sentence mentioning src/counters.ts must not appear as a path
     // another associate owns.
-    const offLimits = md.split("## Explicitly off-limits")[1]?.split("##")[0] ?? "";
+    const offLimits = md.split("## Off-limits (don't touch)")[1]?.split("##")[0] ?? "";
     expect(offLimits).toContain("src/routes/users.ts");
     expect(offLimits).not.toContain("other contracts own those files");
   });
 
   it("says plainly that a constraint naming your own file is not a prohibition", () => {
     const md = renderBrief(selfNaming, 0, 1);
-    expect(md).toContain("## Note on your own files");
-    expect(md).toContain("you own that file");
+    expect(md).toContain("names a file you are writing");
+    expect(md).toContain("read it as a rule about how");
   });
 
   it("keeps the write scope and the constraints consistent", () => {
     const md = renderBrief(selfNaming, 0, 1);
-    const scope = md.split("## Your write scope")[1]?.split("##")[0] ?? "";
+    const scope = md.split("## Writes (only these)")[1]?.split("##")[0] ?? "";
     expect(scope).toContain("src/counters.ts");
     // And nothing in the off-limits section claims to own it.
-    const offLimits = md.split("## Explicitly off-limits")[1]?.split("##")[0] ?? "";
+    const offLimits = md.split("## Off-limits (don't touch)")[1]?.split("##")[0] ?? "";
     expect(offLimits).not.toContain("src/counters.ts");
   });
 });

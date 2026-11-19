@@ -30,6 +30,7 @@ import {
   renderCoverage,
 } from "../validate/coverage";
 import { buildEvidence, checkEvidence } from "../validate/evidence";
+import { classifyCheckFailure } from "../validate/triage";
 import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
@@ -779,7 +780,7 @@ async function runToCompletion(
   if (integrationOutcome && integrationOutcome.passed === false) {
     const blocker = isEnvironmentBlocker(1, integrationOutcome.output);
     enterFactoryLifecycle(dir, "blocked", `integration ${blocker ? "blocked — environment issue" : "failed"}: ${integrationOutcome.output.slice(0, 80)}`);
-    verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600) });
+    verified.failures.push({ contractId: "integration", checkId: parsed.integration!.command.slice(0, 120), output: integrationOutcome.output.trim().slice(0, 600), kind: classifyCheckFailure(integrationOutcome.output) });
   }
   syncRunRecord(runId, dir, parsed, verified);
 
@@ -915,7 +916,7 @@ async function runToCompletion(
             "",
             "Disk verification failures:",
             ...verified.failures.slice(0, 2).map(
-              (failure) => `- ${failure.checkId}: ${failure.output}`,
+              (failure) => `- [${failure.kind}] ${failure.checkId}: ${failure.output}`,
             ),
           ]
         : []),
@@ -1724,10 +1725,10 @@ async function refreshPlanProgress(
   directory: string,
 ): Promise<{
   progress: Map<string, ContractState>;
-  failures: Array<{ contractId: string; checkId: string; output: string }>;
+  failures: Array<{ contractId: string; checkId: string; output: string; kind: import("../validate/triage").CheckFailureKind }>;
 }> {
   const progress = new Map<string, ContractState>();
-  const failures: Array<{ contractId: string; checkId: string; output: string }> = [];
+  const failures: Array<{ contractId: string; checkId: string; output: string; kind: import("../validate/triage").CheckFailureKind }> = [];
 
   for (const contract of parsed.contracts) {
     const evidence = checkEvidence(directory, parsed);
@@ -1741,6 +1742,7 @@ async function refreshPlanProgress(
         contractId: contract.id,
         checkId: "evidence-seal",
         output: evidence.problems.join("\n"),
+        kind: "environment",
       });
       continue;
     }
@@ -1752,10 +1754,6 @@ async function refreshPlanProgress(
       progress.set(contract.id, "done");
       continue;
     }
-    if (checks.length === 0) {
-      progress.set(contract.id, "done");
-      continue;
-    }
 
     let ok: "done" | "blocked" | "failed" = "done";
     for (const check of checks) {
@@ -1763,13 +1761,13 @@ async function refreshPlanProgress(
         const result = await runCheckedShell(check.command, directory);
         if (result.exitCode !== 0) {
           ok = isEnvironmentBlocker(result.exitCode, result.output) ? "blocked" : "failed";
-          failures.push({ contractId: contract.id, checkId: check.id, output: result.output.slice(0, 600) });
+          failures.push({ contractId: contract.id, checkId: check.id, output: result.output.slice(0, 600), kind: classifyCheckFailure(result.output) });
           break;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         ok = isEnvironmentBlocker(1, message) ? "blocked" : "failed";
-        failures.push({ contractId: contract.id, checkId: check.id, output: message });
+        failures.push({ contractId: contract.id, checkId: check.id, output: message, kind: classifyCheckFailure(message) });
         break;
       }
     }
@@ -1780,7 +1778,7 @@ async function refreshPlanProgress(
   // checks proved theirs. A failing acceptance is a failure of the build as a
   // product, not as a box of green tests.
   if ((parsed.acceptance?.length ?? 0) > 0) {
-    const failuresAcc: Array<{ contractId: string; checkId: string; output: string }> = [];
+    const failuresAcc: Array<{ contractId: string; checkId: string; output: string; kind: import("../validate/triage").CheckFailureKind }> = [];
     let allOk = true;
     let allBlocked = true;
     for (const acceptance of parsed.acceptance ?? []) {
@@ -1793,6 +1791,7 @@ async function refreshPlanProgress(
           contractId: "acceptance",
           checkId: acceptance.name,
           output: result.output.slice(0, 600),
+          kind: classifyCheckFailure(result.output),
         });
       } catch (error) {
         allOk = false;
@@ -1802,6 +1801,7 @@ async function refreshPlanProgress(
           contractId: "acceptance",
           checkId: acceptance.name,
           output: message,
+          kind: classifyCheckFailure(message),
         });
       }
     }
@@ -2152,6 +2152,7 @@ async function debugRun(args: { findings?: TestFinding[] }, directory: string): 
   // Only then can "no blocking findings" be printed.
   const discovered: TestFinding[] = [];
   let planFound = false;
+  let mdContext: import("./protocol").DebugVerifiedContext | undefined;
   try {
     const resolved = resolvePlanFile(directory, undefined);
     const raw = await Bun.file(resolved.planPath).text();
@@ -2160,12 +2161,20 @@ async function debugRun(args: { findings?: TestFinding[] }, directory: string): 
       planFound = true;
       const parsed = loaded.plan;
       const verified = await refreshPlanProgress(parsed, directory);
+      mdContext = {
+        contracts: parsed.contracts.map((c) => ({ id: c.id })),
+        states: verified.progress,
+        failures: verified.failures,
+        // Escapes are NOT computed at this seam — they live in the aggregate
+        // step of dispatch, which this rite does not re-run. The section is
+        // rendered only when supplied; nothing fake will appear here.
+      };
       for (const [contractId, state] of verified.progress) {
         if (state === "failed") {
           const fail = verified.failures.find((f) => f.contractId === contractId);
           discovered.push({
             severity: "error",
-            source: `plan check: ${fail?.checkId ?? "contract"}`,
+            source: `plan check: [${fail?.kind ?? "unknown"}] ${fail?.checkId ?? "contract"}`,
             message: `contract ${contractId} fails its own blocking check(s) on disk: ${(fail?.output ?? "").slice(0, 200).replace(/\n/g, " ")}`,
             fix: "fix before claiming done — Cubicore re-ran the plan's own blocking checks and at least one fails.",
           });
@@ -2219,7 +2228,7 @@ async function debugRun(args: { findings?: TestFinding[] }, directory: string): 
   const blocking = all.filter((f) => f.severity !== "judgment");
   const advisory = all.filter((f) => f.severity === "judgment");
 
-  writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(all, state.cycle, state.maxCycles));
+  writeFileSync(`${directory}/${DEBUG_MD}`, renderDebugMd(all, state.cycle, state.maxCycles, mdContext));
 
   if (blocking.length === 0) {
     const line = planFound
@@ -2623,7 +2632,9 @@ export const TOOLS = [
         );
       }
 
-      const outcome = await previewIt(spec, dir);
+      const outcome = await previewIt(spec, dir, (line) => {
+        process.stderr.write(line + "\n");
+      });
       const lines = [
         outcome.ok ? "Preview started." : "It does not run.",
         outcome.detail,

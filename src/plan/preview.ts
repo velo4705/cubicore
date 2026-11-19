@@ -303,11 +303,29 @@ export interface PreviewStartOutcome extends PreviewOutcome {
   pid?: number;
 }
 
-async function runAndVerify(spec: PreviewSpec, cwd: string, command: string): Promise<PreviewStartOutcome> {
+async function runAndVerify(spec: PreviewSpec, cwd: string, command: string, onProgress?: (line: string) => void): Promise<PreviewStartOutcome> {
   const started = Date.now();
   const timeout = spec.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT;
   let output = "";
   let child: ReturnType<typeof Bun.spawn> | undefined;
+
+  // Preflight FRAGILE: if a URL is declared with a port, check it is free
+  // before launching. A stuck port from the last run is the single most
+  // common failure CWD for this tool, and "zombie on 4173" is no use to the
+  // founder who doesn't know there was a zombie.
+  const where = extractPort(spec.url);
+  if (where) {
+    const busy = await portBusy(where.port, where.host);
+    if (busy) {
+      return {
+        ok: false,
+        detail: `${where.host}:${where.port} is already in use. A previous preview process may still be running there — find it with \`ss -ltnp | grep ${where.port}\` and decide whether to kill it; or change the plan's preview URL.`,
+        output: [`port ${where.port} on ${where.host} already in use`].join("\n"),
+        elapsedMs: Date.now() - started,
+        reason: "port-in-use",
+      };
+    }
+  }
 
   // Preflight: if the command names an interpreter we can check on PATH,
   // fail fast with the fix instead of a cryptic shell error. Founder asked
@@ -332,8 +350,10 @@ async function runAndVerify(spec: PreviewSpec, cwd: string, command: string): Pr
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
-const pid = child.pid;
+    const pid = child.pid;
+    onProgress?.(`[cubicore] Starting: sh -c ${command.length > 120 ? command.slice(0, 120) + "…" : command}`);
     if (!pid) {
+      onProgress?.("[cubicore] spawn failed: no PID obtained");
       return {
         ok: false,
         detail: "Failed to obtain a PID from the preview process.",
@@ -342,6 +362,8 @@ const pid = child.pid;
         reason: "spawn-failed",
       };
     }
+
+    onProgress?.(`[cubicore] Spawned pid ${pid}. Waiting for readiness (poll every 500ms; timeout ${timeout}ms)…`);
 
     // Drain both streams so a noisy command cannot block waiting for a pipe.
     const decoder = new TextDecoder();
@@ -360,6 +382,12 @@ const pid = child.pid;
     drain.catch(() => {});
 
     const ready = await waitForReady(spec, timeout, () => output);
+
+    onProgress?.(
+      ready.ok
+        ? `[cubicore] Preview ready in ${Date.now() - started}ms${spec.url ? ` (${spec.url})` : ""}.`
+        : `[cubicore] Preview did not become ready within ${timeout}ms${ready.reason ? ` (${ready.reason})` : ""}.`,
+    );
 
     // A command that was "ready" only because there was nothing to wait for may
     // have already crashed (missing native module, missing display). Do not
@@ -480,7 +508,45 @@ const pid = child.pid;
 
 /** True when the output tells us this is an environment problem, not an app defect. */
 function isEnvironmentBlocker(output: string): boolean {
-  return /ModuleNotFoundError|_tkinter|TclError|cannot open display|Could not open display|$DISPLAY|DISPLAY is not set|No protocol specified|xhost:|unable to initialize GTK/i.test(output);
+  return /ModuleNotFoundError|_tkinter|TclError|cannot open display|Could not open display|\$DISPLAY|DISPLAY is not set|No protocol specified|xhost:|unable to initialize GTK/i.test(output);
+}
+
+/**
+ * Port hygiene: refuse to spawn a preview on a port already held by someone
+ * else — typically a zombie preview from a previous run that kept its PID
+ * alive. Better to say "port busy" than to start a second copy and let the
+ * founder stare at a stale tab.
+ */
+function portBusy(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const net = require("node:net") as typeof import("node:net");
+    const socket = new net.Socket();
+    let settled = false;
+    const done = (busy: boolean) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch { /* best effort */ }
+      resolve(busy);
+    };
+    socket.setTimeout(500, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.connect(port, host);
+  });
+}
+
+/** Extract numeric port + host from a URL; null when no port present. */
+export function extractPort(url: string | undefined): { host: string; port: number } | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (!u.port) return null;
+    const port = Number.parseInt(u.port, 10);
+    if (!Number.isFinite(port) || port <= 0 || port > 65535) return null;
+    return { host: u.hostname || "127.0.0.1", port };
+  } catch {
+    return null;
+  }
 }
 
 /** True when DISPLAY points at an X socket this process can reach. */
@@ -515,8 +581,8 @@ function commandExistsSync(name: string): boolean {
  * Nix expression with python3+tkinter and xvfb-run). so a headless box can
  * verify a GUI and a desktop box lands it on screen.
  */
-export async function previewIt(spec: PreviewSpec, cwd: string): Promise<PreviewStartOutcome> {
-  const primary = await runAndVerify(spec, cwd, spec.command);
+export async function previewIt(spec: PreviewSpec, cwd: string, onProgress?: (line: string) => void): Promise<PreviewStartOutcome> {
+  const primary = await runAndVerify(spec, cwd, spec.command, onProgress);
   if (primary.ok) return primary;
   if (!isEnvironmentBlocker(primary.output)) return primary;
 
@@ -527,6 +593,7 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
       spec,
       cwd,
       `nix --extra-experimental-features 'nix-command flakes' shell --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; (python3.withPackages (ps: [ ps.tkinter ]))' -c ${spec.command}`,
+      onProgress,
     );
     if (retry.ok) {
       retry.detail = `Started via Nix (python3+tkinter) on the real display ${process.env.DISPLAY}: ${retry.detail}`;
@@ -536,7 +603,7 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
   }
 
   if (!displayReachable(process.env.DISPLAY) && commandExistsSync("xvfb-run")) {
-    const retry = await runAndVerify(spec, cwd, `xvfb-run -a ${spec.command}`);
+    const retry = await runAndVerify(spec, cwd, `xvfb-run -a ${spec.command}`, onProgress);
     if (retry.ok) {
       retry.detail = `Started under xvfb-run (host has no display): ${retry.detail}`;
       return retry;
@@ -548,6 +615,7 @@ export async function previewIt(spec: PreviewSpec, cwd: string): Promise<Preview
       spec,
       cwd,
       `nix --extra-experimental-features 'nix-command flakes' shell --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; [ (python3.withPackages (ps: [ ps.tkinter ])) xorgserver xvfb-run ]' -c xvfb-run -a ${spec.command}`,
+      onProgress,
     );
     if (retry.ok) {
       retry.detail = `Started via Nix with python3+tkinter under xvfb-run: ${retry.detail}`;

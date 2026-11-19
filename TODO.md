@@ -178,3 +178,20 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] `/preview` — a model-viewed rendered image + explicit "user happiness" line (blocked by exposing image attachment in the host agent — needs the host session to attach the screenshot)
 - [ ] integration required for `plan-full` — flag plan lacking `integration` loudly, but not blocking (adjudicated flat-blocking already rejected)
 - [ ] Visual check as blocking gate — refused; developer intent decides before shipping
+
+
+## 2026-11-18 — DX items 1, 2, 4 shipped
+
+- [x] Streaming preview lines + #2 failure kind classifier + #4 port-in-use guard
+
+
+## 2026-11-18 — DX #7 done; rationing next items honestly
+
+- [x] CUBICORE_DEBUG.md restructured into Verified/Blocked/Escapes — 2026-11-18
+- [ ] Structured escapes section manually populated at verify seam (needs aggregation hook into debug rite, a bigger change — ask first)
+
+
+## 2026-11-18 — Token audits still open
+
+- [ ] PLANNER_PROMPT (schema.ts) and renderPlanPrompt (server.ts) — same treatment — the next biggest token sinks per planner call
+- [ ] .cubicore-factory-ledger.json + .cubicore-factory-history.jsonl — production MD output; words the user reads are paid once per run

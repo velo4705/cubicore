@@ -127,161 +127,93 @@ export function renderBrief(
 ): string {
   const lines = [
     `# Brief ${index + 1} of ${total}: ${contract.id}`,
-    "",
-    `You own this piece and nothing else.`,
-    "",
-    "Do not read another associate's brief. Yours is the whole of your job.",
-    "",
-    "## Your objective",
-    "",
+    `You own this. Do not read or edit any other associate's brief.`,
+    `No placeholder code, no dead code, no bypassing checks. Production behavior, not sketch.`,
+    ``,
+    `## Objective`,
+    ``,
     contract.objective,
-    "",
-    "Do the job properly, not minimally.",
-    "",
-    "- No placeholder or stub code — types, returns and branches behave like production, not like a sketch.",
-    "- No dead code, no duplicate logic, no comment that repeats the code.",
-    "- Name things for what they are; never `data`, `obj`, `item`, `result2`.",
-    "- Handle the realistic edges: empty input, long input, resize/unmount, missing keys from the network, races on async completion.",
-    "- If it is a UI: contrast, focus rings, tap targets ≥ 44px, labels a human can read — the design gates will check some of this; you cannot wait for them.",
-    "- If you are tempted to `TODO`/`FIXME` a block or silence a check, the work is not done.",
-    "",
-    "## Your write scope — edit nothing outside this",
-    "",
+    ``,
+    `## Writes (only these)`,
+    ``,
     ...(contract.writes.length
       ? contract.writes.map((w) => `- \`${w}\``)
-      : ["*(none — you produce a report, not a diff)*"]),
-    "",
+      : ["*(none — report, not a diff)*"]),
+    ``,
   ];
 
-  // The forbidden list mixes globs with prose, and rendering every entry as a
-  // path made a brief contradict itself: an entry that merely mentioned a
-  // file this contract owns was presented as "other associates own these",
-  // and the associate had to decide which half to believe. Paths are listed
-  // as off-limits; prose is listed as the constraint it actually is.
-  const offLimits = contract.forbidden.filter((f) => looksLikePath(f));
-  const constraints = contract.forbidden.filter((f) => !looksLikePath(f));
-
-  if (offLimits.length > 0) {
-    lines.push(
-      "## Explicitly off-limits",
-      "",
-      "Other associates own these. Touching them will collide.",
-      "",
-      ...offLimits.map((f) => `- \`${f}\``),
-      "",
-    );
+  if (contract.forbidden.length > 0) {
+    const offLimits = contract.forbidden.filter((f) => looksLikePath(f));
+    const constraints = contract.forbidden.filter((f) => !looksLikePath(f));
+    if (offLimits.length) {
+      lines.push(`## Off-limits (don't touch)`, ``, ...offLimits.map((f) => `- \`${f}\``), ``);
+    }
+    if (constraints.length) {
+      lines.push(`## Constraints`, ``, ...constraints.map((f) => `- ${f}`), ``);
+    }
   }
 
-  if (constraints.length > 0) {
-    lines.push(
-      "## Constraints",
-      "",
-      "Rules, not paths. They bind you even where they name a file you own.",
-      "",
-      ...constraints.map((f) => `- ${f}`),
-      "",
-    );
-  }
-
-  // A constraint that names a file this contract owns is not a prohibition on
-  // it. Say so, or the brief contradicts itself and the associate has to guess
-  // which half is true.
+  // A constraint that names a file this contract owns is a rule about how to write it,
+  // not a prohibition on touching it. Say so or the brief contradicts itself.
   const selfNamed = contract.forbidden.filter((f) =>
     contract.writes.some((w) => f.includes(w)),
   );
   if (selfNamed.length > 0) {
     lines.push(
-      "## Note on your own files",
-      "",
-      "A constraint above mentions a file you are writing. Read it as a rule about",
-      "how to write it, not as a prohibition on touching it -- you own that file.",
-      "",
-      ...selfNamed.map((f) => `- ${f}`),
-      "",
+      `One forbidden entry names a file you are writing — read it as a rule about how, not a prohibition on touching.`,
+      ``,
     );
   }
 
   if (contract.reads.length > 0) {
-    lines.push("## You may read", "", ...contract.reads.map((r) => `- \`${r}\``), "");
+    lines.push(`## Reads`, ``, ...contract.reads.map((r) => `- \`${r}\``), ``);
   }
 
   lines.push(
-    "## What you deliver",
-    "",
-    `- **Kind:** ${contract.deliverable}`,
-    `- **Done when:** ${contract.doneWhen}`,
-    "",
+    `## Deliverable: ${contract.deliverable}. Done when: ${contract.doneWhen}`,
+    ``,
   );
 
   const blocking = contract.checks.filter((k) => k.gating === "blocking");
   const advisory = contract.checks.filter((k) => k.gating !== "blocking");
 
   if (blocking.length > 0) {
-    lines.push("## Blocking checks — every one must pass", "");
+    lines.push(`## Blocking — each must pass`, ``);
     for (const check of blocking) {
       lines.push("```", check.command, "```", `_${check.expectation}_`, "");
     }
   }
   if (advisory.length > 0) {
-    lines.push(
-      "## Advisory — run if cheap, do not chase",
-      "",
-      ...advisory.map((k) => `- \`${k.command}\` — ${k.expectation}`),
-      "",
-    );
+    lines.push(`## Advisory (optional)`, ``, ...advisory.map((k) => `- \`${k.command}\` — ${k.expectation}`), ``);
   }
   if (blocking.length === 0 && contract.deliverable === "diff") {
     lines.push(
-      "## Blocking checks",
-      "",
-      "_None were supplied. A diff with nothing that can fail is not verifiable — if you",
-      "cannot find a command that proves this work, say so rather than claiming success._",
-      "",
+      `No blocking checks were supplied — a diff with nothing that can fail is not verifiable. Say so rather than claiming success.`,
+      ``,
     );
   }
 
   if (options.projectKind) {
-    lines.push("## Context", "", `- **Project kind:** ${options.projectKind}`, "");
+    lines.push(`## Context`, ``, `Project kind: ${options.projectKind}`, ``);
   }
 
   const siblings = (options.siblings ?? []).filter((s) => s.id !== contract.id);
   if (siblings.length > 0) {
-    lines.push(
-      "## Who else is working",
-      "",
-      "_Listed so you know what is not yours. Do not read their briefs and do not edit them._",
-      "",
-      ...siblings.map((s) => `- **${s.id}** — ${s.writes.join(", ") || "(report)"}`),
-      "",
-    );
+    lines.push(`## Siblings (not yours)`, ``, ...siblings.map((s) => `- ${s.id}`), ``);
   }
 
   lines.push(
-    "## Completion",
-    "",
-    "Before you call yourself done:",
-    "1. Inspect your actual diff or file list.",
-    "2. Run every blocking check yourself and read its real output.",
-    "3. Confirm the task's `doneWhen` condition is satisfied by the running result, not just by source greps.",
-    "4. Do not weaken, delete, skip or bypass any check.",
-    "5. Fix your code if it is wrong. If a check is genuinely broken, explain which check, why, and leave the code correct.",
-    "",
-    `Only then call the Cubicore MCP tool \`plan_mark\` with \`contractId: "${contract.id}"\` and \`state: "done"\`.`,
-    `Do not edit \`CUBICORE_PLAN.md\` by hand — \`plan_mark\` re-checks your blocking checks and updates the plan for you.`,
-    `If a blocking check cannot genuinely pass, call \`plan_mark\` with \`state: "failed"\` and explain which check and why.`,
-    "",
-    "## Report back",
-    "",
-    "One paragraph: what you changed and each check's exact result. Do not paste whole files — the diff is the record.",
-    "",
-    "**If a check is wrong**, say so and name it:",
-    "",
-    "- which check, exact command",
-    "- why it cannot pass, or what it contradicts",
-    "- what you left alone instead",
-    "",
-    "That report is worth more than a green gate. A check bent to fit wrong code is a regression that reported itself as a pass.",
-    "",
+    `## Completion`,
+    `1. Run every blocking check. Read the real output.`,
+    `2. Satisfy the task's doneWhen condition with running evidence.`,
+    `3. Do not weaken any check.`,
+    `4. Call \`plan_mark\` (contractId: "${contract.id}") with state \`done\`.`,
+    `5. If a blocking check truly cannot pass, call \`plan_mark\` with state \`failed\` and name the check.`,
+    ``,
+    `## Report`,
+    `One paragraph — what you changed, and each check's exact result.`,
+    `If a check is wrong, name it and why — worth more than a green gate made of bent checks.`,
+    ``,
   );
 
   return lines.join("\n");
@@ -291,22 +223,17 @@ export function renderBrief(
 export function renderManifest(plan: Plan, options: BriefOptions = {}): string {
   return [
     `# Cubicore associates`,
-    "",
-    `${plan.contracts.length} associate(s)${options.projectKind ? ` for a ${options.projectKind}` : ""}. ` +
-      `Each has one brief in \`${BRIEF_DIR}/\`.`,
-    "",
-    "| # | Associate | Deliverable | Write scope | Brief |",
-    "|---|---|---|---|---|",
+    ``,
+    `${plan.contracts.length} associate(s)${options.projectKind ? ` for a ${options.projectKind}` : ""}. Each brief at \`${BRIEF_DIR}/\`.`,
+    ``,
+    `| # | Associate | Deliverable | Write scope | Brief |`,
+    `|---|---|---|---|---|`,
     ...plan.contracts.map(
       (c, i) =>
         `| ${i + 1} | ${c.id} | ${c.deliverable} | ` +
         `${c.writes.map((w) => `\`${w}\``).join(", ") || "—"} | \`${briefPath(i, c.id)}\` |`,
     ),
-    "",
-    `Dispatch each to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in parallel.`,
-    `Collect every report separately — each contract is judged on its own`,
-    `checks, and a merged report hides which one failed.`,
-    "",
+    ``,
   ].join("\n");
 }
 
