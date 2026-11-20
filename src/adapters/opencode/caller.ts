@@ -25,7 +25,7 @@ export interface ListedCallerSession {
   cost?: number | null;
   tokens?: { input?: number | null; output?: number | null } | null;
   time?: { created?: number; updated?: number } | null;
-  /** The model this session actually runs on — inherited by Cubicore's workers. */
+  /** Model this session runs on — inherited by Cubicore's workers. */
   model?: { id?: string; providerID?: string; variant?: string } | null;
 }
 

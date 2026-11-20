@@ -858,6 +858,20 @@ when a history exists. Nothing invented — older `inline — host tokens not co
 **#6 — progress heartbeat» remains unbuilt**: it needs a live stream mechanism facing the host; adding that is dispatch-semantics territory and not advised without explicit sign-off; announced honestly rather than faked.
 
 
+## 2026-11-20 — Branch restore-1.1.7: model fix only (founder's explicit choice)
+
+Founder asked to revert to 1.1.7 and fix the OPENCODE_MODEL issue, explicitly accepting that this restores the 401 auth bug and drops the later auth/inheritance work. Done safely: new branch `restore-1.1.7` from b31cd72; main with 1.1.12 preserved untouched.
+
+On that 1.1.7 base, only the model path was fixed:
+- `callerModel(runtime)` reads the current session's model from `GET /api/session/{OPENCODE_SESSION_ID}` with service.json auth (5s timeout), so workers inherit the model the founder selected in OpenCode — rolling free models and BYOK included.
+- ListedCallerSession gains a model field; workerSessions() accepts a modelOverride used for cheap and strong tiers (strong respects CUBICORE_STRONG_MODEL / OPENCODE_CUBICORE_MODEL).
+- The execute path resolves callerModel(runtime) before dispatch and passes it in; verifyModel checks the inherited model instead of the stale default.
+- DEFAULT_MODEL fallback changed from opencode/inkling-2-small-free to opencode/big-pickle (founder's earlier "fallback only" decision carried forward).
+- Version on this branch: 1.1.7-model-fix (package.json + lock).
+
+Verified live: callerModel(runtimeFromEnv()) returned `opencode/hy4-flash-free` on this host. 688 tests pass ×2, typecheck clean, bundle rebuilt.
+
+HONEST caveat, stated before and unchanged: this 1.1.7 base still has the auth bug (authFromEnv requires env vars; session-create 401s). Nothing here fixes that. The founder chose this branch with that consequence explicitly acknowledged.
 ## 2026-11-20 — opencode 2.x auth split fixed: 401 on session creation
 
 Screenshot on the C++→Rust migration project: `/cubicore:continue` read the plan, skipped done contracts, then both dispatch attempts failed: `Dispatch failed: opencode did not return a session id (HTTP 401: UnauthorizedError: Authentication required)`. No remaining contract ran.
@@ -907,6 +921,20 @@ Regression tests: new path, same-path rotation, env-pair precedence — 6 auth t
 
 Honest limits: cannot adapt to an auth scheme Cubicore has never seen (OAuth, mTLS); cannot self-install the fixed bundle into the Flatpak host — the founder must still re-run setup.
 
+
+## 2026-11-20 — Published 1.1.13: 1.1.7 base + model inheritance + durable auth
+
+Final release action: `npm publish` on branch `restore-1.1.7`. PUT returned 202 (async processing), registry confirmed ~30s later: `latest: 1.1.13`, 1.1.13 present, 25 total versions.
+
+Contents (cherry-picked deliberately, no 1.1.8–1.1.12 prompt/DX churn):
+- `b31cd72` 1.1.7 base
+- `3562cb1` inherit caller model from OpenCode session; DEFAULT_MODEL fallback = opencode/big-pickle
+- `fc0303f` / `1780faf` ported: basicAuthHeader, authFromEnv service.json fallback, dynamic credential resolution with 401 retry, all raw /api/* callers unified
+- Version 1.1.13 (1.1.8 version tag was taken; npm refused republish; 1.1.9–1.1.12 still exist but no longer latest)
+
+Verified before publish: 694 tests ×2, typecheck clean, bundle rebuilt; live probe on founder's host — credential from Flatpak service.json, inherited model opencode/hy4-flash-free, real session-create succeeded, scratch session deleted.
+
+Not done: npm unpublish of 1.1.8–1.1.12 was refused (E403: GAT cannot bypass 2FA) — those versions remain installable by exact number; only `latest` moved. Founder's daily host still needs `npx cubicore@latest setup --flatpak` to install 1.1.13's fixed bundle (currently runs old da8adba…).
 
 ## 2026-11-20 — Parallel dispatch regression after opencode update: prompt changed to enforce code-level path
 

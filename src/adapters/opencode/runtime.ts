@@ -149,20 +149,21 @@ export async function findCallerSession(
 }
 
 /**
- * Which model is the founder's agent actually using on this host?
+ * Which model is the founder's agent actually running on this host?
  *
- * Workers inherit it unless an explicit Cubicore override is set. This
- * replaces the old hardcoded default — the founder's current model is
- * definitionally available on this host (it is serving this session), so
- * inheriting it also removes the "MODEL UNVERIFIED" noise.
+ * Workers inherit it: OpenCode's rolling free models, BYOK, or whatever the
+ * founder selected — Cubicore follows instead of pinning a stale default.
+ * The current session's own model is definitionally usable on this host.
  */
 export async function callerModel(runtime: Runtime): Promise<string | undefined> {
-  // Explicit overrides always win.
   if (process.env.CUBICORE_WORKER_MODEL || process.env.OPENCODE_CUBICORE_WORKER_MODEL) {
     return process.env.CUBICORE_WORKER_MODEL ?? process.env.OPENCODE_CUBICORE_WORKER_MODEL;
   }
   try {
-    const auth = basicAuthHeader();
+    const password = process.env.OPENCODE_SERVER_PASSWORD ?? servicePassword();
+    if (!password) return undefined;
+    const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
+    const auth = `Basic ${btoa(`${username}:${password}`)}`;
     const sessionID = process.env.OPENCODE_SESSION_ID ?? (await findCallerSession(runtime));
     if (!sessionID) return undefined;
     const response = await fetch(
@@ -170,12 +171,11 @@ export async function callerModel(runtime: Runtime): Promise<string | undefined>
       { headers: { Authorization: auth }, signal: AbortSignal.timeout(5_000) },
     );
     if (!response.ok) return undefined;
-    const result = (await response.json()) as { data?: ListedCallerSession } | ListedCallerSession;
-    const session = (result as { data?: ListedCallerSession }).data ?? (result as ListedCallerSession);
+    const body = (await response.json()) as { data?: ListedCallerSession } | ListedCallerSession;
+    const session = (body as { data?: ListedCallerSession }).data ?? (body as ListedCallerSession);
     const id = session?.model?.id;
     if (!id) return undefined;
-    const provider = session?.model?.providerID;
-    return provider ? `${provider}/${id}` : id;
+    return session?.model?.providerID ? `${session.model.providerID}/${id}` : id;
   } catch {
     return undefined;
   }
@@ -309,7 +309,7 @@ export function workerSessions(
    * wrong means checking one repository while working in another.
    */
   root?: string,
-  /** Model override inherited from the calling agent's session. */
+  /** Model inherited from the founder's current OpenCode session. */
   modelOverride?: string,
 ): WorkerSessions {
   const db = new SqliteTokenSource();

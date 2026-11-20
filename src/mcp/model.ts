@@ -14,9 +14,8 @@
  */
 
 // Fallback only: when the founder's live session model cannot be read, workers
-// use this Opencode-host model. It is NOT the normal path — callerModel() reads
-// the model the founder selected in OpenCode and overrides this on every
-// dispatch, so Cubicore follows OpenCode's rolling free models and BYOK choices.
+// use this Opencode-host model. The normal path is callerModel(), which reads
+// the model selected in OpenCode so Cubicore follows rolling free models & BYOK.
 export const DEFAULT_MODEL = "opencode/big-pickle";
 
 export interface ModelCheck {
