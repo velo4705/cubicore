@@ -150,6 +150,39 @@ export async function findCallerSession(
 }
 
 /**
+ * Which model is the founder's agent actually running on this host?
+ *
+ * Workers inherit it: OpenCode's rolling free models, BYOK, or whatever the
+ * founder selected — Cubicore follows instead of pinning a stale default.
+ * The current session's own model is definitionally usable on this host.
+ */
+export async function callerModel(runtime: Runtime): Promise<string | undefined> {
+  if (process.env.CUBICORE_WORKER_MODEL || process.env.OPENCODE_CUBICORE_WORKER_MODEL) {
+    return process.env.CUBICORE_WORKER_MODEL ?? process.env.OPENCODE_CUBICORE_WORKER_MODEL;
+  }
+  try {
+    const password = process.env.OPENCODE_SERVER_PASSWORD ?? servicePassword();
+    if (!password) return undefined;
+    const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
+    const auth = `Basic ${btoa(`${username}:${password}`)}`;
+    const sessionID = process.env.OPENCODE_SESSION_ID ?? (await findCallerSession(runtime));
+    if (!sessionID) return undefined;
+    const response = await fetch(
+      `${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}`,
+      { headers: { Authorization: auth }, signal: AbortSignal.timeout(5_000) },
+    );
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as { data?: ListedCallerSession } | ListedCallerSession;
+    const session = (body as { data?: ListedCallerSession }).data ?? (body as ListedCallerSession);
+    const id = session?.model?.id;
+    if (!id) return undefined;
+    return session?.model?.providerID ? `${session.model.providerID}/${id}` : id;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Ask the provider which models it has, and check ours is among them.
  *
  * A model that has been removed fails silently: the prompt is accepted, the
@@ -277,15 +310,24 @@ export function workerSessions(
    * wrong means checking one repository while working in another.
    */
   root?: string,
+  /** Model inherited from the founder's current OpenCode session. */
+  modelOverride?: string,
 ): WorkerSessions {
   const db = new SqliteTokenSource();
+
+  const models = modelOverride
+    ? {
+        strong: process.env.CUBICORE_STRONG_MODEL ?? process.env.OPENCODE_CUBICORE_MODEL ?? modelOverride,
+        cheap: modelOverride,
+      }
+    : runtime.models;
 
   return new WorkerSessions(
     clientSpawner(
       { baseUrl: runtime.baseUrl, directory: runtime.directory, auth: authFromEnv() },
       runtime.sessionID,
     ),
-    runtime.models,
+    models,
     undefined as never,
     (sessionId: string) => {
       try {

@@ -1,4 +1,5 @@
 import { parsePlan, MalformedPlan } from "../coordinator/parse";
+import { servicePassword } from "./service";
 import { validatePlan } from "../validate/plan";
 import { checkTopology } from "../coordinator/topology";
 import { dispatch } from "../dispatch";
@@ -13,7 +14,7 @@ import {
   cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
   recordProgress, startRun,
 } from "./runs";
-import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
+import { findCallerSession, verifyModel, callerModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { nodePathEnv, previewIt } from "../plan/preview";
@@ -669,7 +670,8 @@ async function runToCompletion(
     `[cubicore ${parsed.contracts.length} associates, topology ${parsed.topology}]\n`,
   );
 
-  const workers = workerSessions(runtime, progress, dir);
+  const inherited = await callerModel(runtime);
+  const workers = workerSessions(runtime, progress, dir, inherited);
   // The event connection never closes on its own, so it is aborted once
   // dispatch returns. Without this the process lives forever and the client
   // waits on a response it already has.
@@ -1174,10 +1176,11 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
   const runtime = runtimeFromEnv();
-  const auth = `Basic ${btoa(
-    `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
-  )}`;
-  const model = await verifyModel(runtime, undefined, auth);
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
+  const password = process.env.OPENCODE_SERVER_PASSWORD ?? servicePassword() ?? "";
+  const auth = `Basic ${btoa(`${username}:${password}`)}`;
+  const inheritedModel = await callerModel(runtime);
+  const model = await verifyModel(runtime, inheritedModel ?? undefined, auth);
 
   // A model that is not on the provider's list fails silently: the prompt is
   // accepted, the user message is recorded, and no reply ever comes. That is

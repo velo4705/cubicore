@@ -856,3 +856,19 @@ when a history exists. Nothing invented — older `inline — host tokens not co
 **#4 — TRIAGE.txt**: when the verifier fails, Cubicore writes `CUBICORE_TRIAGE.txt` at the project root: the failed contract, the named check with its kind tag (`[environment]` / `[code]` / `[format]` / `[spec]` / `[budget]`), the first 10 lines of command output, and the explicit next step — one line per failure. All-green runs remove the file. Validated end-to-end: plan with failures → file written; plan with all-green checks → file deleted.
 
 **#6 — progress heartbeat» remains unbuilt**: it needs a live stream mechanism facing the host; adding that is dispatch-semantics territory and not advised without explicit sign-off; announced honestly rather than faked.
+
+
+## 2026-11-20 — Branch restore-1.1.7: model fix only (founder's explicit choice)
+
+Founder asked to revert to 1.1.7 and fix the OPENCODE_MODEL issue, explicitly accepting that this restores the 401 auth bug and drops the later auth/inheritance work. Done safely: new branch `restore-1.1.7` from b31cd72; main with 1.1.12 preserved untouched.
+
+On that 1.1.7 base, only the model path was fixed:
+- `callerModel(runtime)` reads the current session's model from `GET /api/session/{OPENCODE_SESSION_ID}` with service.json auth (5s timeout), so workers inherit the model the founder selected in OpenCode — rolling free models and BYOK included.
+- ListedCallerSession gains a model field; workerSessions() accepts a modelOverride used for cheap and strong tiers (strong respects CUBICORE_STRONG_MODEL / OPENCODE_CUBICORE_MODEL).
+- The execute path resolves callerModel(runtime) before dispatch and passes it in; verifyModel checks the inherited model instead of the stale default.
+- DEFAULT_MODEL fallback changed from opencode/inkling-2-small-free to opencode/big-pickle (founder's earlier "fallback only" decision carried forward).
+- Version on this branch: 1.1.7-model-fix (package.json + lock).
+
+Verified live: callerModel(runtimeFromEnv()) returned `opencode/hy4-flash-free` on this host. 688 tests pass ×2, typecheck clean, bundle rebuilt.
+
+HONEST caveat, stated before and unchanged: this 1.1.7 base still has the auth bug (authFromEnv requires env vars; session-create 401s). Nothing here fixes that. The founder chose this branch with that consequence explicitly acknowledged.
