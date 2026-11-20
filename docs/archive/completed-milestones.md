@@ -949,3 +949,14 @@ Founder asked: "what model is it using? can't it use the current agent model?" �
 Founder asked for big-pickle hardcoded "exclusively for Opencode", then clarified: **fallback only**. Changed DEFAULT_MODEL in `mcp/model.ts` from `opencode/inkling-2-small-free` to `opencode/big-pickle` — a single-source change that covers every fallback path (runtime.models, resolveModel default, verifyModel candidate). The normal path is still callerModel(): workers inherit the model the founder selected in OpenCode on every dispatch, so rolling free models and BYOK keep working. Updated the comment to say so explicitly.
 
 694 tests pass ×2; typecheck clean; bundle rebuilt; 2 big-pickle references in dist/mcp-main.js (default + strong tier).
+
+
+## 2026-11-20 — Restored visible worker rows in chat (per founder choice)
+
+Founder showed two screenshots: the old run displayed named Cubicore-Associate rows directly in chat ("Build scaffold-install contract", etc.), while the new execute-tool path showed only "Used 2 Execute" — work happened but was invisible. Founder chose: "Rows in chat, model-controlled".
+
+- Restored the `/cubicore:execute` prompt to instruct the model to dispatch all associates via the host sub-agent tool in one parallel tool block, explicitly noting the founder sees each worker by name in chat that way.
+- Kept the code-level `execute` tool as the documented fallback ("when the host tool cannot launch them concurrently") with the honest note that named rows won't appear on that path.
+- Test updated to pin the restored instruction (SAME tool block + named worker rows).
+
+Honest trade-off (accepted by founder): rows are model-controlled again, so the serial-dispatch regression after an opencode update can recur; Cubicore cannot force the host tool to parallelize. 694 pass ×2, typecheck clean, bundle rebuilt.

@@ -3559,16 +3559,12 @@ export function promptFor(name: string, args: Record<string, string>) {
 Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the execute tool with no arguments at all — it dispatches whatever is on disk and says which file it picked, including a note to teammates when the directory holds several member plans.
 
 1. Call \`dispatch_blueprint\` with the project kind.
-2. Call the \`execute\` tool — with no arguments, it dispatches the plan on disk. Cubicore
-   runs every independent contract in the SAME stage in parallel in code (\`Promise.all\`),
-   subject only to real read-write dependencies. Do NOT dispatch associates yourself,
-   one at a time or in a tool block — the host's sub-agent tool has no Cubicore-side
-   parallelism guarantee and has been observed reverting to serial dispatch after an
-   opencode update. The execute tool is the only path that guarantees simultaneous workers.
-3. Wait for the execute tool's result. Never merge reports yourself.
-4. If \`execute\` returns a dispatch failure, report it verbatim — do not attempt to
-   hand-dispatch the contracts as a workaround.
-5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
+2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time — one brief each. The founder sees each worker by name in the chat this way. Do NOT dispatch one at a time or wait for one before dispatching the next. Do not implement the work yourself before they return.
+3. Wait for every report separately. Never merge them.
+4. Run every blocking check and fix failures in a tight loop. During dispatch itself, do not call the debug tool; it belongs after all associates have returned.
+5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.
+
+If the host tool cannot launch them concurrently, call \`execute\` instead — Cubicore dispatches sessions in parallel in code, but the founder will not see named worker rows in the chat.`,
           },
         },
       ],
