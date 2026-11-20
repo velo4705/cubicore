@@ -3559,12 +3559,17 @@ export function promptFor(name: string, args: Record<string, string>) {
 Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the execute tool with no arguments at all — it dispatches whatever is on disk and says which file it picked, including a note to teammates when the directory holds several member plans.
 
 1. Call \`dispatch_blueprint\` with the project kind.
-2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time — one brief each. The founder sees each worker by name in the chat this way. Do NOT dispatch one at a time or wait for one before dispatching the next. Do not implement the work yourself before they return.
-3. Wait for every report separately. Never merge them.
-4. Run every blocking check and fix failures in a tight loop. During dispatch itself, do not call the debug tool; it belongs after all associates have returned.
-5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.
-
-If the host tool cannot launch them concurrently, call \`execute\` instead — Cubicore dispatches sessions in parallel in code, but the founder will not see named worker rows in the chat.`,
+2. Call the \`execute\` tool with no arguments — it dispatches the plan on disk. Cubicore
+   runs every independent contract in the SAME stage in parallel in code (\`Promise.all\`),
+   and each worker is created as a named CHILD SESSION of this one — OpenCode shows it in
+   the chat as a Cubicore-Associate row, e.g. "scaffold (associate)". This is the ONLY path
+   that guarantees both simultaneous workers and visible rows. Do NOT dispatch associates
+   yourself, one at a time or in a tool block — that path is model-controlled and has been
+   observed reverting to a single worker after an opencode update.
+3. Wait for the execute tool's result. Never merge reports yourself.
+4. If \`execute\` returns a dispatch failure, report it verbatim — do not hand-dispatch
+   the contracts as a workaround.
+5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
           },
         },
       ],

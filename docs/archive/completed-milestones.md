@@ -960,3 +960,14 @@ Founder showed two screenshots: the old run displayed named Cubicore-Associate r
 - Test updated to pin the restored instruction (SAME tool block + named worker rows).
 
 Honest trade-off (accepted by founder): rows are model-controlled again, so the serial-dispatch regression after an opencode update can recur; Cubicore cannot force the host tool to parallelize. 694 pass ×2, typecheck clean, bundle rebuilt.
+
+
+## 2026-11-20 — Corrected the visibility/parallelism trade-off: code path gives BOTH
+
+Founder screenshot showed a single `Cubicore-Associate scaffold contract` row — the model, told to sub-dispatch in one block, dispatched only one worker. I had wrongly told the founder rows and parallelism were mutually exclusive. Evidence from the live host's session list disproved it: Cubicore's own `clientSpawner` creates each worker as a child session parented to the founder's session, titled e.g. `cli-api associate`, `ast-deps associate` — OpenCode renders these as named Cubicore-Associate rows. The row in the screenshot was a MODEL-created sub-agent, not a Cubicore worker.
+
+- `/cubicore:execute` prompt now calls the execute tool (code-level Promise.all) as the only dispatch path, explicitly stating that workers are named child sessions visible as rows in chat.
+- Explicitly forbids model sub-dispatch ("model-controlled, observed reverting to a single worker after an opencode update").
+- Test repinned. 694 pass, typecheck clean, bundle rebuilt.
+
+Remaining honest caveat: with the old host bundle (da8adba…) the auth 401 still prevents any dispatch at all; the founder must publish + setup before this prompt and the auth fixes take effect.
