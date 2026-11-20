@@ -920,3 +920,18 @@ Verified live: source resolves to `/home/nix/.var/app/ai.opencode.opencode/confi
 Regression tests: new path, same-path rotation, env-pair precedence — 6 auth tests pass. Full suite 694 pass ×2, typecheck clean, bundle rebuilt.
 
 Honest limits: cannot adapt to an auth scheme Cubicore has never seen (OAuth, mTLS); cannot self-install the fixed bundle into the Flatpak host — the founder must still re-run setup.
+
+
+## 2026-11-20 — Published 1.1.13: 1.1.7 base + model inheritance + durable auth
+
+Final release action: `npm publish` on branch `restore-1.1.7`. PUT returned 202 (async processing), registry confirmed ~30s later: `latest: 1.1.13`, 1.1.13 present, 25 total versions.
+
+Contents (cherry-picked deliberately, no 1.1.8–1.1.12 prompt/DX churn):
+- `b31cd72` 1.1.7 base
+- `3562cb1` inherit caller model from OpenCode session; DEFAULT_MODEL fallback = opencode/big-pickle
+- `fc0303f` / `1780faf` ported: basicAuthHeader, authFromEnv service.json fallback, dynamic credential resolution with 401 retry, all raw /api/* callers unified
+- Version 1.1.13 (1.1.8 version tag was taken; npm refused republish; 1.1.9–1.1.12 still exist but no longer latest)
+
+Verified before publish: 694 tests ×2, typecheck clean, bundle rebuilt; live probe on founder's host — credential from Flatpak service.json, inherited model opencode/hy4-flash-free, real session-create succeeded, scratch session deleted.
+
+Not done: npm unpublish of 1.1.8–1.1.12 was refused (E403: GAT cannot bypass 2FA) — those versions remain installable by exact number; only `latest` moved. Founder's daily host still needs `npx cubicore@latest setup --flatpak` to install 1.1.13's fixed bundle (currently runs old da8adba…).
