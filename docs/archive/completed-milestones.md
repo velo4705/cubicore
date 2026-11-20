@@ -872,3 +872,37 @@ On that 1.1.7 base, only the model path was fixed:
 Verified live: callerModel(runtimeFromEnv()) returned `opencode/hy4-flash-free` on this host. 688 tests pass ×2, typecheck clean, bundle rebuilt.
 
 HONEST caveat, stated before and unchanged: this 1.1.7 base still has the auth bug (authFromEnv requires env vars; session-create 401s). Nothing here fixes that. The founder chose this branch with that consequence explicitly acknowledged.
+## 2026-11-20 — opencode 2.x auth split fixed: 401 on session creation
+
+Screenshot on the C++→Rust migration project: `/cubicore:continue` read the plan, skipped done contracts, then both dispatch attempts failed: `Dispatch failed: opencode did not return a session id (HTTP 401: UnauthorizedError: Authentication required)`. No remaining contract ran.
+
+Root cause: after the opencode update, the MCP child process no longer receives `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` in its environment. Two auth paths disagreed:
+- `runtimeFromEnv()` used `servicePassword()` from `~/.config/opencode/service.json` as a fallback — worked.
+- `authFromEnv()` in `plugin.ts`, which the *spawner* uses for every `/api/session` call, required the env pair and otherwise returned `undefined` — session creation went out with no Authorization header → 401.
+
+Fix:
+- `authFromEnv()` now defaults username to `opencode` and falls back to `servicePassword()`, same precedence as `runtimeFromEnv()`.
+- Added `basicAuthHeader()` in `mcp/service.ts` — one shared Basic header for every raw `/api/*` call; replaced seven scattered `btoa(`${process.env...}`)` sites in `server.ts`, `runtime.ts`, `install.ts` that shared the same failure shape.
+- No dispatch semantics changed; no new tool; additive auth resolution.
+
+Verified against the live host (not mocked):
+- `authFromEnv()` resolves `{username: opencode, password: from service.json}`.
+- `GET /api/session?directory=…` with that header → **HTTP 200**.
+- `clientSpawner.create({ title })` — the exact call that threw 401 in the screenshot — returned a session id; scratch session deleted via `DELETE /api/session/{id}` (HTTP 204).
+- 688 pass ×2, typecheck clean, bundle rebuilt.
+
+
+## 2026-11-20 — Live dispatch auth probe: every auth-bearing call passes
+
+Ran an end-to-end probe against the live host with the fixed source (not a mock), creating and deleting a scratch session:
+
+- authFromEnv resolves from service.json — PASS (username=opencode, password present)
+- clientSpawner.create() — PASS (got a session id)
+- spawner.prompt() — PASS (minimal one-line prompt)
+- spawner.changedFiles() — PASS (empty diff, no 401)
+- spawner.cancel() — PASS
+- cleanup DELETE /api/session/{id} — HTTP 204
+
+This is the exact path that threw 401 in the C++→Rust migration screenshot. Fix confirmed at the seam.
+
+CRITICAL deployment gap: the live host's installed bundle md5 is still da8adba80a30cab175b9b8116f735693 (old, broken auth), while the tree's rebuilt dist/mcp-main.js is 52da601b0da1d5f50a8c53204cd2c95e (fixed). The founder's /cubicore:continue will still 401 until they re-run `npx cubicore@latest setup` locally, which copies the fixed bundle into the Flatpak data dir. The probe proves the fix; it does not deploy it.

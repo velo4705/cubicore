@@ -1,7 +1,7 @@
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk";
 
 import { authFromEnv, clientSpawner } from "./plugin";
-import { servicePassword } from "../../mcp/service";
+import { servicePassword, basicAuthHeader } from "../../mcp/service";
 import { pickCallerSession, type ListedCallerSession } from "./caller";
 import { WorkerSessions } from "../../dispatch/spawn";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
@@ -130,12 +130,11 @@ export async function findCallerSession(
   runtime: Runtime,
 ): Promise<string | undefined> {
   try {
-    const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
-    const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+    const auth = basicAuthHeader();
     const response = await fetch(
       `${runtime.baseUrl}/api/session?directory=${encodeURIComponent(runtime.directory)}`,
       {
-        headers: { Authorization: `Basic ${btoa(`${username}:${password}`)}` },
+        headers: { Authorization: auth },
         signal: AbortSignal.timeout(5_000),
       },
     );

@@ -22,6 +22,7 @@ import { aggregate } from "../../aggregate";
 import { snapshotAnchors } from "../../review/anchors";
 import { PLAN_SCHEMA_JSON } from "../../contracts/schema";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
+import { servicePassword } from "../../mcp/service";
 
 /**
  * The opencode plugin entry point.
@@ -60,13 +61,25 @@ export interface SpawnerTarget {
   auth?: { username: string; password: string };
 }
 
-/** Auth from the environment, mirroring the rest of the codebase. */
+/**
+ * Auth for the raw /api/* calls.
+ *
+ * Fix (2026-11-20): opencode 2.x stopped injecting OPENCODE_SERVER_USERNAME and
+ * OPENCODE_SERVER_PASSWORD into MCP child processes on this host — but it still
+ * writes its service password into ~/.config/opencode/service.json (Flatpak
+ * prefix included). `runtimeFromEnv()` already used that fallback; the spawner
+ * did not, so every worker session was created without an Authorization header
+ * and the host answered 401 UnauthorizedError / "Authentication required".
+ * Use the same resolution order as the runtime: env pair, else service.json with
+ * the default username. Still return undefined only when no password exists —
+ * an open host needs no header.
+ */
 export function authFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): { username: string; password: string } | undefined {
-  const username = env.OPENCODE_SERVER_USERNAME;
-  const password = env.OPENCODE_SERVER_PASSWORD;
-  if (!username || !password) return undefined;
+  const username = env.OPENCODE_SERVER_USERNAME ?? "opencode";
+  const password = env.OPENCODE_SERVER_PASSWORD ?? servicePassword();
+  if (!password || !username) return undefined;
   return { username, password };
 }
 

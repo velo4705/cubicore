@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { CUBICORE_AGENTS } from "./agents";
+import { basicAuthHeader } from "./service";
 
 /**
  * Installing the associate agent into the host's own config.
@@ -237,9 +238,7 @@ export async function agentAvailable(
   // reported "no agent" -- a false negative that looked exactly like a real
   // absence. A check that cannot run must say so rather than answering.
   try {
-    const auth = `Basic ${btoa(
-      `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
-    )}`;
+    const auth = basicAuthHeader();
     const response = await fetch(
       `${baseUrl}/agent?directory=${encodeURIComponent(directory)}`,
       { headers: { Authorization: auth } },
