@@ -906,3 +906,16 @@ Verified live: source resolves to `/home/nix/.var/app/ai.opencode.opencode/confi
 Regression tests: new path, same-path rotation, env-pair precedence — 6 auth tests pass. Full suite 694 pass ×2, typecheck clean, bundle rebuilt.
 
 Honest limits: cannot adapt to an auth scheme Cubicore has never seen (OAuth, mTLS); cannot self-install the fixed bundle into the Flatpak host — the founder must still re-run setup.
+
+
+## 2026-11-20 — Parallel dispatch regression after opencode update: prompt changed to enforce code-level path
+
+Founder reported: after the opencode update, execute went back to one-by-one dispatch instead of simultaneous. Root cause: the /cubicore:execute prompt told the model to "dispatch ALL associates in the SAME tool block, in parallel" — an instruction to the model, not an enforcement. Host changed tool-call behaviour; model reverted to serial dispatch; nothing in Cubicore could stop it.
+
+Fix (prompt-level, no dispatch semantics changed):
+- The execute prompt now instructs the agent to call the `execute` tool (no args) as the ONLY dispatch path — Cubicore's `dispatch()` runs every independent contract in a stage in parallel in code via Promise.all. Explicitly forbids the agent hand-dispatching associates via the host sub-agent tool ("no Cubicore-side parallelism guarantee, observed reverting to serial after an opencode update").
+- Removed the contradictory "if host has no sub-agent tool, call execute" fallback line.
+- Test updated to pin the corrected guarantee (Promise.all + "Do NOT dispatch associates yourself").
+- 694 pass, typecheck clean, bundle rebuilt.
+
+Honest limits: real read/write dependencies still serialize contracts by stage (by design). Host bundle on the daily driver is still old (da8adba…) — needs a publish + setup before this prompt takes effect there.
