@@ -149,6 +149,39 @@ export async function findCallerSession(
 }
 
 /**
+ * Which model is the founder's agent actually using on this host?
+ *
+ * Workers inherit it unless an explicit Cubicore override is set. This
+ * replaces the old hardcoded default — the founder's current model is
+ * definitionally available on this host (it is serving this session), so
+ * inheriting it also removes the "MODEL UNVERIFIED" noise.
+ */
+export async function callerModel(runtime: Runtime): Promise<string | undefined> {
+  // Explicit overrides always win.
+  if (process.env.CUBICORE_WORKER_MODEL || process.env.OPENCODE_CUBICORE_WORKER_MODEL) {
+    return process.env.CUBICORE_WORKER_MODEL ?? process.env.OPENCODE_CUBICORE_WORKER_MODEL;
+  }
+  try {
+    const auth = basicAuthHeader();
+    const sessionID = process.env.OPENCODE_SESSION_ID ?? (await findCallerSession(runtime));
+    if (!sessionID) return undefined;
+    const response = await fetch(
+      `${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}`,
+      { headers: { Authorization: auth }, signal: AbortSignal.timeout(5_000) },
+    );
+    if (!response.ok) return undefined;
+    const result = (await response.json()) as { data?: ListedCallerSession } | ListedCallerSession;
+    const session = (result as { data?: ListedCallerSession }).data ?? (result as ListedCallerSession);
+    const id = session?.model?.id;
+    if (!id) return undefined;
+    const provider = session?.model?.providerID;
+    return provider ? `${provider}/${id}` : id;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Ask the provider which models it has, and check ours is among them.
  *
  * A model that has been removed fails silently: the prompt is accepted, the
@@ -276,15 +309,24 @@ export function workerSessions(
    * wrong means checking one repository while working in another.
    */
   root?: string,
+  /** Model override inherited from the calling agent's session. */
+  modelOverride?: string,
 ): WorkerSessions {
   const db = new SqliteTokenSource();
+
+  const models = modelOverride
+    ? {
+        strong: process.env.CUBICORE_STRONG_MODEL ?? process.env.OPENCODE_CUBICORE_MODEL ?? modelOverride,
+        cheap: modelOverride,
+      }
+    : runtime.models;
 
   return new WorkerSessions(
     clientSpawner(
       { baseUrl: runtime.baseUrl, directory: runtime.directory, auth: authFromEnv() },
       runtime.sessionID,
     ),
-    runtime.models,
+    models,
     undefined as never,
     (sessionId: string) => {
       try {

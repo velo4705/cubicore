@@ -13,11 +13,11 @@
  * one.
  */
 
-// `opencode/crouton-alpha-free` is not in the provider list at the time of
-// 1.0.5 — every associate compiled against it arrived silently idle. This
-// default has to track whatever is actually on the founder's host today;
-// before each release run `opencode models` and update this line.
-export const DEFAULT_MODEL = "opencode/inkling-2-small-free";
+// Fallback only: when the founder's live session model cannot be read, workers
+// use this Opencode-host model. It is NOT the normal path — callerModel() reads
+// the model the founder selected in OpenCode and overrides this on every
+// dispatch, so Cubicore follows OpenCode's rolling free models and BYOK choices.
+export const DEFAULT_MODEL = "opencode/big-pickle";
 
 export interface ModelCheck {
   ok: boolean;

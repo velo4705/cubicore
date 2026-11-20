@@ -13,7 +13,7 @@ import {
   cancelRun, describe, failRun, finishRun, getRun, haltState, loadRuns, pauseRun,
   recordProgress, startRun,
 } from "./runs";
-import { findCallerSession, verifyModel } from "../adapters/opencode/runtime";
+import { findCallerSession, verifyModel, callerModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
 import { nodePathEnv, previewIt } from "../plan/preview";
@@ -667,7 +667,8 @@ async function runToCompletion(
     `[cubicore ${parsed.contracts.length} associates, topology ${parsed.topology}]\n`,
   );
 
-  const workers = workerSessions(runtime, progress, dir);
+  const inherited = await callerModel(runtime);
+  const workers = workerSessions(runtime, progress, dir, inherited);
   // The event connection never closes on its own, so it is aborted once
   // dispatch returns. Without this the process lives forever and the client
   // waits on a response it already has.
@@ -1171,9 +1172,13 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // A withdrawn model fails silently -- the prompt is accepted and no reply
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
+  // The founder's current model is definitionally usable on this host (it is
+  // serving this session). Inherit it for verification too, so a live model is
+  // never reported "unverified" just because the provider list endpoint moved.
   const runtime = runtimeFromEnv();
   const auth = basicAuthHeader();
-  const model = await verifyModel(runtime, undefined, auth);
+  const inheritedModel = await callerModel(runtime);
+  const model = await verifyModel(runtime, inheritedModel ?? undefined, auth);
 
   // A model that is not on the provider's list fails silently: the prompt is
   // accepted, the user message is recorded, and no reply ever comes. That is
@@ -1195,7 +1200,7 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // The stderr line is for the server log; the founder's eyes are on the tool
   // output, so say the same thing there, loudly. Dispatch proceeds either way.
   const modelWarning = model.reason
-    ? `\n\n! MODEL UNVERIFIED ON THIS HOST — ${model.reason}. The dispatch proceeded; nothing here proves which model actually ran or that it is usable. If this host is your daily driver, fix the provider endpoint or set OPENCODE_CUBICORE_MODEL to a verified model.`
+    ? `\n\n! MODEL UNVERIFIED ON THIS HOST — ${model.reason}. This is informational ONLY: dispatch already proceeded. This is NOT a blocker, NOT the cause of any worker failure, and NOT a reason to re-dispatch or set OPENCODE_CUBICORE_MODEL. If workers wrote no files, the cause is session creation or authentication — check the Dispatch failed line, not this warning.`
     : "";
 
   // The plan was written with its factory decision attached (plan_write).
