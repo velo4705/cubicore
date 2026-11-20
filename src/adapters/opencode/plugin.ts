@@ -22,7 +22,7 @@ import { aggregate } from "../../aggregate";
 import { snapshotAnchors } from "../../review/anchors";
 import { PLAN_SCHEMA_JSON } from "../../contracts/schema";
 import { SqliteTokenSource } from "../../telemetry/adapters/session-db";
-import { servicePassword } from "../../mcp/service";
+import { servicePassword, basicAuthHeader, resolveCredential, basicAuthFor } from "../../mcp/service";
 
 /**
  * The opencode plugin entry point.
@@ -77,10 +77,10 @@ export interface SpawnerTarget {
 export function authFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): { username: string; password: string } | undefined {
-  const username = env.OPENCODE_SERVER_USERNAME ?? "opencode";
-  const password = env.OPENCODE_SERVER_PASSWORD ?? servicePassword();
-  if (!password || !username) return undefined;
-  return { username, password };
+  const credential = resolveCredential(env);
+  return credential
+    ? { username: env.OPENCODE_SERVER_USERNAME ?? "opencode", password: credential.password }
+    : undefined;
 }
 
 function apiHeaders(target: SpawnerTarget): Record<string, string> {
@@ -104,19 +104,34 @@ async function apiJson(
   path: string,
   body?: unknown,
 ): Promise<ApiResponse> {
-  const response = await fetch(`${target.baseUrl}${path}`, {
-    method,
-    headers: apiHeaders(target),
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await response.text();
-  let json: ApiResponse["json"] = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    // 405 / HTML error pages: leave json null and let callers report status.
+  const send = async (authHeader?: string): Promise<ApiResponse> => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    // Always resolve fresh — target.auth was captured at spawner construction
+    // and is stale the moment the host rotates its service credential.
+    const credential = resolveCredential();
+    if (authHeader) headers.Authorization = authHeader;
+    else if (credential) headers.Authorization = basicAuthFor(credential);
+    else if (target.auth) headers.Authorization = `Basic ${btoa(`${target.auth.username}:${target.auth.password}`)}`;
+
+    const response = await fetch(`${target.baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let json: ApiResponse["json"] = null;
+    try { json = JSON.parse(text); } catch { /* HTML or empty body */ }
+    return { status: response.status, json, text };
+  };
+
+  let result = await send();
+  if (result.status === 401) {
+    // Rotation (or a path change) mid-run. Force a brand-new resolution —
+    // never reuse the header that just failed — and try exactly once more.
+    const fresh = resolveCredential();
+    if (fresh) result = await send(basicAuthFor(fresh));
   }
-  return { status: response.status, json, text };
+  return result;
 }
 
 function describe(res: ApiResponse): string {

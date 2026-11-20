@@ -892,3 +892,17 @@ Ran an end-to-end probe against the live host with the fixed source (not a mock)
 This is the exact path that threw 401 in the C++→Rust migration screenshot. Fix confirmed at the seam.
 
 CRITICAL deployment gap: the live host's installed bundle md5 is still da8adba80a30cab175b9b8116f735693 (old, broken auth), while the tree's rebuilt dist/mcp-main.js is 52da601b0da1d5f50a8c53204cd2c95e (fixed). The founder's /cubicore:continue will still 401 until they re-run `npx cubicore@latest setup` locally, which copies the fixed bundle into the Flatpak data dir. The probe proves the fix; it does not deploy it.
+
+
+## 2026-11-20 — Durable fix for the recurring opencode auth break (rotation + path changes)
+
+Founder clarified the failure mode: credential path/rotation changes on each opencode update, not the injection mechanism alone. Build three-part fix:
+
+1. `service.ts` rewritten: `resolveCredential()` enumerates all candidate service.json paths on **every call** (env pair first, then OPENCODE_CONFIG / OPENCODE_CONFIG_DIR / XDG_CONFIG_HOME / ~/.config / Flatpak `ai.opencode.*` discovered by directory scan). No credential, path, or header is cached anywhere — rotation at the same path or a new path is picked up on the next call.
+2. `apiJson()` in plugin.ts re-resolves fresh on every request and retries once on HTTP 401 with a brand-new credential resolution — this heals a rotation that happens mid-dispatch without a restart.
+3. `authFromEnv()` now delegates to `resolveCredential()`, so the spawner and all raw `/api/*` callers share one resolution path.
+
+Verified live: source resolves to `/home/nix/.var/app/ai.opencode.opencode/config/opencode/service.json` (password length 43), a real session-create on the Flatpak host succeeded, scratch session deleted.
+Regression tests: new path, same-path rotation, env-pair precedence — 6 auth tests pass. Full suite 694 pass ×2, typecheck clean, bundle rebuilt.
+
+Honest limits: cannot adapt to an auth scheme Cubicore has never seen (OAuth, mTLS); cannot self-install the fixed bundle into the Flatpak host — the founder must still re-run setup.
