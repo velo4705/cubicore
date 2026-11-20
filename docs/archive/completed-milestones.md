@@ -935,3 +935,67 @@ Contents (cherry-picked deliberately, no 1.1.8–1.1.12 prompt/DX churn):
 Verified before publish: 694 tests ×2, typecheck clean, bundle rebuilt; live probe on founder's host — credential from Flatpak service.json, inherited model opencode/hy4-flash-free, real session-create succeeded, scratch session deleted.
 
 Not done: npm unpublish of 1.1.8–1.1.12 was refused (E403: GAT cannot bypass 2FA) — those versions remain installable by exact number; only `latest` moved. Founder's daily host still needs `npx cubicore@latest setup --flatpak` to install 1.1.13's fixed bundle (currently runs old da8adba…).
+
+## 2026-11-20 — Parallel dispatch regression after opencode update: prompt changed to enforce code-level path
+
+Founder reported: after the opencode update, execute went back to one-by-one dispatch instead of simultaneous. Root cause: the /cubicore:execute prompt told the model to "dispatch ALL associates in the SAME tool block, in parallel" — an instruction to the model, not an enforcement. Host changed tool-call behaviour; model reverted to serial dispatch; nothing in Cubicore could stop it.
+
+Fix (prompt-level, no dispatch semantics changed):
+- The execute prompt now instructs the agent to call the `execute` tool (no args) as the ONLY dispatch path — Cubicore's `dispatch()` runs every independent contract in a stage in parallel in code via Promise.all. Explicitly forbids the agent hand-dispatching associates via the host sub-agent tool ("no Cubicore-side parallelism guarantee, observed reverting to serial after an opencode update").
+- Removed the contradictory "if host has no sub-agent tool, call execute" fallback line.
+- Test updated to pin the corrected guarantee (Promise.all + "Do NOT dispatch associates yourself").
+- 694 pass, typecheck clean, bundle rebuilt.
+
+Honest limits: real read/write dependencies still serialize contracts by stage (by design). Host bundle on the daily driver is still old (da8adba…) — needs a publish + setup before this prompt takes effect there.
+
+
+## 2026-11-20 — Fixed the wrong-blocker report and project-3's bad integration command
+
+Founder pasted a re-dispatch report claiming "the host cannot list a usable model, so no associate wrote any file" and recommending OPENCODE_CUBICORE_MODEL as the fix. That causal claim is false: `execute()` only refuses on model grounds when the reason contains "is not available" — a *failed check* (HTML/401 from /provider) prints the warning and DISPATCH PROCEEDS. The real cause of 0 files / 0 tokens is session-create 401 from the old host bundle.
+
+- Rewrote the `! MODEL UNVERIFIED ON THIS HOST` message to state explicitly: informational only, NOT a blocker, NOT the cause of worker failure, NOT a reason to set OPENCODE_CUBICORE_MODEL or re-dispatch; if workers wrote nothing, check "Dispatch failed".
+- Fixed project-3/CUBICORE_PLAN.json integration.command from nonexistent `npm run verify` to the commands the plan's own contracts actually use (build + typecheck + vitest + playwright). The project has no package.json because the foundation contract never ran — the plan itself was fine except for that command.
+- 694 tests pass, typecheck clean, bundle rebuilt.
+
+Still outstanding (founder's call): publishing the auth-fixed bundle; the daily host continues to run da8adba… and will 401 on every dispatch until then.
+
+
+## 2026-11-20 — Workers now inherit the founder's current model instead of a hardcoded default
+
+Founder asked: "what model is it using? can't it use the current agent model?" — yes. Workers were pinned to DEFAULT_MODEL = opencode/inkling-2-small-free regardless of what the founder was running. Live probe of the host confirmed the current session runs opencode/hy4-flash-free — definitionally available on this host.
+
+- `callerModel(runtime)` in runtime.ts resolves the current session's model from `GET /api/session/{OPENCODE_SESSION_ID}` (env pair credential, 5s timeout). Explicit CUBICORE_WORKER_MODEL / OPENCODE_CUBICORE_WORKER_MODEL still win; failure returns undefined without blocking.
+- `workerSessions()` accepts a modelOverride and uses it for both cheap and strong tiers (strong respects CUBICORE_STRONG_MODEL / OPENCODE_CUBICORE_MODEL), otherwise keeps runtime.models.
+- runToCompletion resolves callerModel(runtime) before dispatch and passes it in; verifyModel now checks the inherited model too.
+- Live probe: callerModel(runtimeFromEnv()) returned `opencode/hy4-flash-free` on this host.
+- Tests 694 pass ×2; typecheck clean; bundle rebuilt.
+- Honest limit: the provider-list endpoint still returns HTML/401, so verifyModel still cannot confirm the model is on a list — but the inherited model is the one serving this session, and the warning is now labelled informational-only, not a blocker.
+
+
+## 2026-11-20 — Fallback model is now opencode/big-pickle (inheritance preserved)
+
+Founder asked for big-pickle hardcoded "exclusively for Opencode", then clarified: **fallback only**. Changed DEFAULT_MODEL in `mcp/model.ts` from `opencode/inkling-2-small-free` to `opencode/big-pickle` — a single-source change that covers every fallback path (runtime.models, resolveModel default, verifyModel candidate). The normal path is still callerModel(): workers inherit the model the founder selected in OpenCode on every dispatch, so rolling free models and BYOK keep working. Updated the comment to say so explicitly.
+
+694 tests pass ×2; typecheck clean; bundle rebuilt; 2 big-pickle references in dist/mcp-main.js (default + strong tier).
+
+
+## 2026-11-20 — Restored visible worker rows in chat (per founder choice)
+
+Founder showed two screenshots: the old run displayed named Cubicore-Associate rows directly in chat ("Build scaffold-install contract", etc.), while the new execute-tool path showed only "Used 2 Execute" — work happened but was invisible. Founder chose: "Rows in chat, model-controlled".
+
+- Restored the `/cubicore:execute` prompt to instruct the model to dispatch all associates via the host sub-agent tool in one parallel tool block, explicitly noting the founder sees each worker by name in chat that way.
+- Kept the code-level `execute` tool as the documented fallback ("when the host tool cannot launch them concurrently") with the honest note that named rows won't appear on that path.
+- Test updated to pin the restored instruction (SAME tool block + named worker rows).
+
+Honest trade-off (accepted by founder): rows are model-controlled again, so the serial-dispatch regression after an opencode update can recur; Cubicore cannot force the host tool to parallelize. 694 pass ×2, typecheck clean, bundle rebuilt.
+
+
+## 2026-11-20 — Corrected the visibility/parallelism trade-off: code path gives BOTH
+
+Founder screenshot showed a single `Cubicore-Associate scaffold contract` row — the model, told to sub-dispatch in one block, dispatched only one worker. I had wrongly told the founder rows and parallelism were mutually exclusive. Evidence from the live host's session list disproved it: Cubicore's own `clientSpawner` creates each worker as a child session parented to the founder's session, titled e.g. `cli-api associate`, `ast-deps associate` — OpenCode renders these as named Cubicore-Associate rows. The row in the screenshot was a MODEL-created sub-agent, not a Cubicore worker.
+
+- `/cubicore:execute` prompt now calls the execute tool (code-level Promise.all) as the only dispatch path, explicitly stating that workers are named child sessions visible as rows in chat.
+- Explicitly forbids model sub-dispatch ("model-controlled, observed reverting to a single worker after an opencode update").
+- Test repinned. 694 pass, typecheck clean, bundle rebuilt.
+
+Remaining honest caveat: with the old host bundle (da8adba…) the auth 401 still prevents any dispatch at all; the founder must publish + setup before this prompt and the auth fixes take effect.

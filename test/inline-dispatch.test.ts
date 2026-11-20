@@ -50,11 +50,12 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(TOOLS.some((tool) => tool.name === "dispatch_blueprint")).toBe(true);
   });
 
-  it("tells the execute prompt to use inline associates, not work alone", () => {
+  it("tells the execute prompt to use the code path that parallelizes AND names workers", () => {
     const prompt = promptFor("execute", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("dispatch_blueprint");
-    expect(prompt).toContain("cubicore-associate");
-    expect(prompt).toContain("parallel");
+    expect(prompt).toContain("Promise.all");
+    expect(prompt).toContain("CHILD SESSION");
+    expect(prompt).toContain("Do NOT dispatch associates");
   });
 
   it("reports a 407 browser proxy instead of treating it as an absent agent", async () => {

@@ -1172,6 +1172,9 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // A withdrawn model fails silently -- the prompt is accepted and no reply
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
+  // The founder's current model is definitionally usable on this host (it is
+  // serving this session). Inherit it for verification too, so a live model is
+  // never reported "unverified" just because the provider list endpoint moved.
   const runtime = runtimeFromEnv();
   const auth = basicAuthHeader();
   const inheritedModel = await callerModel(runtime);
@@ -1197,7 +1200,7 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // The stderr line is for the server log; the founder's eyes are on the tool
   // output, so say the same thing there, loudly. Dispatch proceeds either way.
   const modelWarning = model.reason
-    ? `\n\n! MODEL UNVERIFIED ON THIS HOST — ${model.reason}. The dispatch proceeded; nothing here proves which model actually ran or that it is usable. If this host is your daily driver, fix the provider endpoint or set OPENCODE_CUBICORE_MODEL to a verified model.`
+    ? `\n\n! MODEL UNVERIFIED ON THIS HOST — ${model.reason}. This is informational ONLY: dispatch already proceeded. This is NOT a blocker, NOT the cause of any worker failure, and NOT a reason to re-dispatch or set OPENCODE_CUBICORE_MODEL. If workers wrote no files, the cause is session creation or authentication — check the Dispatch failed line, not this warning.`
     : "";
 
   // The plan was written with its factory decision attached (plan_write).
@@ -3556,12 +3559,17 @@ export function promptFor(name: string, args: Record<string, string>) {
 Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the execute tool with no arguments at all — it dispatches whatever is on disk and says which file it picked, including a note to teammates when the directory holds several member plans.
 
 1. Call \`dispatch_blueprint\` with the project kind.
-2. Dispatch ALL associates to \`${ASSOCIATE_AGENT_ID}\`, or the host's available sub-agent tool, in the SAME tool block, in parallel, at the same time. Do not dispatch one at a time or wait for one before dispatching the next. One brief each. Do not implement the work yourself before they return. If the host tool cannot launch them concurrently, call \`execute\` instead so Cubicore dispatches sessions in parallel.
-3. Wait for every report separately. Never merge them.
-4. ONLY after every associate has reported: run the blocking checks, and fix failures in a tight loop. During dispatch itself, do not call the debug tool; it belongs after all associates have returned.
-5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.
-
-If this host truly has no sub-agent tool, call \`execute\` instead and let Cubicore dispatch sessions itself.`,
+2. Call the \`execute\` tool with no arguments — it dispatches the plan on disk. Cubicore
+   runs every independent contract in the SAME stage in parallel in code (\`Promise.all\`),
+   and each worker is created as a named CHILD SESSION of this one — OpenCode shows it in
+   the chat as a Cubicore-Associate row, e.g. "scaffold (associate)". This is the ONLY path
+   that guarantees both simultaneous workers and visible rows. Do NOT dispatch associates
+   yourself, one at a time or in a tool block — that path is model-controlled and has been
+   observed reverting to a single worker after an opencode update.
+3. Wait for the execute tool's result. Never merge reports yourself.
+4. If \`execute\` returns a dispatch failure, report it verbatim — do not hand-dispatch
+   the contracts as a workaround.
+5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
           },
         },
       ],
