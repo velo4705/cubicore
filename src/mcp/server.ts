@@ -35,6 +35,7 @@ import { readHostTools } from "../plan/host-tools";
 import { applyFounderFactoryChoice, assessFactoryFit, factoryFitOptions, renderFit, synthesizeSingleAgentPlan } from "../factory/fit";
 import { buildRetrospective, renderRetrospective, type RetroUsage } from "../factory/retrospect";
 import { writeTriage, TRIAGE_MD } from "../factory/triage";
+import { basicAuthHeader } from "./service";
 import { recordEscalations, clearEscalations, escalatedLedger, escalatedLine } from "../factory/escalations";
 import { enterFactoryLifecycle, completeFactoryLifecycle, factoryLifecycleStatusLine, blockFactoryLifecycle } from "../factory/lifecycle";
 import { questionsFrom, render as renderSurvey, survey } from "../plan/survey";
@@ -105,14 +106,13 @@ function frmId(prefix: string): string {
 }
 
 async function postForm(runtime: Runtime, sessionID: string, body: unknown): Promise<FormResult> {
-  const username = process.env.OPENCODE_SERVER_USERNAME ?? "";
-  const password = process.env.OPENCODE_SERVER_PASSWORD ?? "";
+  const auth = basicAuthHeader();
   try {
     const res = await fetch(`${runtime.baseUrl}/api/session/${encodeURIComponent(sessionID)}/form`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+        Authorization: auth,
         "x-opencode-directory": encodeURIComponent(runtime.directory),
       },
       body: JSON.stringify(body),
@@ -327,9 +327,7 @@ async function pumpEvents(
   workers: { onEvent(event: unknown): void },
   signal: AbortSignal,
 ): Promise<void> {
-  const auth = `Basic ${btoa(
-    `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
-  )}`;
+  const auth = basicAuthHeader();
   const port = runtime.port;
 
   while (!signal.aborted) {
@@ -1174,9 +1172,7 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
   const runtime = runtimeFromEnv();
-  const auth = `Basic ${btoa(
-    `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
-  )}`;
+  const auth = basicAuthHeader();
   const model = await verifyModel(runtime, undefined, auth);
 
   // A model that is not on the provider's list fails silently: the prompt is
@@ -2347,9 +2343,7 @@ async function research(directory: string): Promise<ToolResult> {
   let capabilityText = "";
   try {
     const runtime = runtimeFromEnv();
-    const auth = `Basic ${btoa(
-      `${process.env.OPENCODE_SERVER_USERNAME ?? ""}:${process.env.OPENCODE_SERVER_PASSWORD ?? ""}`,
-    )}`;
+    const auth = basicAuthHeader();
     capabilityText = renderCapabilities(await capabilities(runtime.baseUrl, auth));
   } catch {
     capabilityText = "";

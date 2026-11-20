@@ -43,3 +43,15 @@ export function servicePassword(): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * One Basic auth header for every raw /api/* call. Uses the env pair when
+ * opencode injects it; otherwise falls back to the host's service.json —
+ * newer opencode builds stopped injecting credentials into MCP children.
+ * Never logs the secret.
+ */
+export function basicAuthHeader(): string {
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode";
+  const password = process.env.OPENCODE_SERVER_PASSWORD ?? servicePassword() ?? "";
+  return `Basic ${btoa(`${username}:${password}`)}`;
+}
