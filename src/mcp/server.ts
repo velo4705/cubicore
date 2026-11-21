@@ -902,8 +902,26 @@ async function runToCompletion(
   const blockedCount = [...verified.progress.values()].filter((state) => state === "blocked").length;
   const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
 
+  // VISIBLE PROOF: the audience does not read collapsed MCP tool results.
+  // This explicit roster is the block the executing agent must put in its
+  // chat reply, so the founder can see every worker and its verdict without
+  // expanding a tool call. Code-level dispatch can be invisible; the proof
+  // of what it did cannot be.
+  const roster = [
+    `Cubicore dispatch complete — ${parsed.contracts.length} worker(s):`,
+    ...parsed.contracts.map((c) => {
+      const state = verified.progress.get(c.id) ?? "pending";
+      const icon = state === "done" ? "done" : state === "blocked" ? "blocked" : state === "failed" ? "failed" : "not run";
+      return `  - ${c.id}: ${icon} [writes: ${c.writes.join(", ") || "report"}]`;
+    }),
+    `Verdict: ${retrospective.verdict}`,
+  ].join("\n");
+
   return {
     summary: [
+      `RELAY THIS ROSTER TO THE FOUNDER IN YOUR REPLY (verbatim):`,
+      roster,
+      ``,
       renderRetrospective(retrospective),
       "",
       `${parsed.topology} · ${outcome.accepted.length} passed, ${outcome.failed.length} failed, ${blockedCount > 0 ? `${blockedCount} blocked, ` : ""}` +
@@ -3567,7 +3585,11 @@ Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the e
    yourself, one at a time or in a tool block — that path is model-controlled and has been
    observed reverting to a single worker after an opencode update.
 3. Wait for the execute tool's result. Never merge reports yourself.
-4. If \`execute\` returns a dispatch failure, report it verbatim — do not hand-dispatch
+4. Put the tool's "RELAY THIS ROSTER" block VERBATIM in your chat reply — every worker and
+   its verdict, as printed. The founder sees tool results collapsed; this roster is the
+   visible proof that each associate ran and what it delivered. Do not replace it with
+   "all done" or a summary of your own words.
+5. If \`execute\` returns a dispatch failure, report it verbatim — do not hand-dispatch
    the contracts as a workaround.
 5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
           },

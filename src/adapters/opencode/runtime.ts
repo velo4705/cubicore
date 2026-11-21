@@ -58,7 +58,17 @@ function discoverPort(): string | null {
       const { stdout, exitCode } = Bun.spawnSync(["sh", "-c", cmd]);
       if (exitCode !== 0) continue;
       const table = new TextDecoder().decode(stdout);
-      const match = /127\.0\.0\.1:(\d+)/.exec(table);
+      // The desktop app now owns multiple loopback listeners — a Browser
+      // Proxy on 45843/45851 and the CLI API on 49374. All of them match
+      // "opencode" in `ss -ltnp`, and the proxy's ports sort FIRST. Picking
+      // the first match sends every session-create to the proxy, which
+      // answers 407 "Basic realm=OpenCode Browser Proxy". Prefer the line
+      // that names the CLI process explicitly; only fall back to any match
+      // when the process name is absent (e.g. lsof output).
+      const lines = table.split("\n").filter((line) => line.includes("127.0.0.1:"));
+      const cli = lines.find((line) => /opencode-cli|opencode serve|serve --service/i.test(line));
+      const chosen = cli ?? lines[0];
+      const match = chosen ? /127\.0\.0\.1:(\d+)/.exec(chosen) : null;
       if (match) return match[1];
     } catch {
       // Try the next strategy.

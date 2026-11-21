@@ -50,6 +50,13 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(TOOLS.some((tool) => tool.name === "dispatch_blueprint")).toBe(true);
   });
 
+  it("requires the visible roster to be relayed into the chat reply", () => {
+    const prompt = promptFor("execute", {}).messages?.[0]?.content.text ?? "";
+    expect(prompt).toContain("RELAY THIS ROSTER");
+    expect(prompt).toContain("VERBATIM");
+    expect(prompt).toContain("tool results collapsed");
+  });
+
   it("tells the execute prompt to use the code path that parallelizes AND names workers", () => {
     const prompt = promptFor("execute", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("dispatch_blueprint");

@@ -1008,3 +1008,27 @@ Founder screenshot showed a single `Cubicore-Associate scaffold contract` row �
 - Test repinned. 694 pass, typecheck clean, bundle rebuilt.
 
 Remaining honest caveat: with the old host bundle (da8adba…) the auth 401 still prevents any dispatch at all; the founder must publish + setup before this prompt and the auth fixes take effect.
+
+
+## 2026-11-21 — Visible proof of workers (the audience's requirement)
+
+Founder: code-level dispatch can be invisible, but there must be visible proof for the audience. Root cause: `execute` returned a roster inside the MCP tool result, which OpenCode renders collapsed — the chat showed only "Used 2 Execute".
+
+- `runToCompletion` now prefixes its summary with `RELAY THIS ROSTER TO THE FOUNDER IN YOUR REPLY (verbatim)` followed by one line per contract: `- id: done|blocked|failed [writes: ...]`, plus the verdict.
+- The execute prompt now explicitly requires the agent to put that block verbatim in its chat reply, stating tool results are collapsed and that "all done"/self-summary is not acceptable.
+- Test pins the prompt requirement (RELAY THIS ROSTER / VERBATIM / tool results collapsed).
+- 702 tests pass ×2, typecheck clean, bundle rebuilt.
+- Note: this changes only the tool's text output and the prompt; dispatch semantics untouched. Requires publishing to reach users.
+
+
+## 2026-11-21 — HTTP 407 Browser Proxy: port discovery fixed
+
+Founder screenshot: `Dispatch failed: opencode did not return a session id (HTTP 407)` with `Proxy-Authenticate: Basic realm="OpenCode Browser Proxy"`. No workers ran.
+
+Root cause: `discoverPort()` matched `ss -ltnp | grep -i opencode` and took the FIRST `127.0.0.1:PORT` line. The desktop app owns three loopback listeners — two Browser Proxy ports (45843/45851) and the CLI API (49374). The proxy ports sort FIRST, so every session-create went to the proxy, which answers 407 to `/api/session`. My curl to 49374 returned 200 — the API was fine; Cubicore was dialing the wrong listener.
+
+Fix: prefer the `ss` line naming `opencode-cli` / `opencode serve --service`; fall back to the first match only when no process name is present. Verified live: `runtimeFromEnv().port = 49374`, real session-create returned a session id, scratch session deleted.
+
+Regression tests: explicit OPENCODE_PORT still wins; a discovered port must never answer 407 on `/api/session`. 704 tests pass ×2, typecheck clean, bundle rebuilt.
+
+This is a SOURCE fix — npm 1.1.13 still ships the old first-match discovery. Publishing 1.1.14 (founder's call) is required to stop 407 on the daily host.
