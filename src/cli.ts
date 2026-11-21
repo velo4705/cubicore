@@ -107,16 +107,20 @@ interface CliArgs {
   help: boolean;
   version: boolean;
   yes: boolean;
+  uninstall: boolean;
   target: "native" | "flatpak" | null;
 }
 
 function parseArgs(argv: string[]): CliArgs | { error: string } {
-  const args: CliArgs = { help: false, version: false, yes: false, target: null };
+  const args: CliArgs = { help: false, version: false, yes: false, uninstall: false, target: null };
   for (const arg of argv) {
     switch (arg) {
       case "setup":
       case "install":
         // Positional subcommand; the bin is the installer, so this is a no-op.
+        break;
+      case "uninstall":
+        args.uninstall = true;
         break;
       case "--native":
         if (args.target === "flatpak") return { error: "Pass either --native or --flatpak, not both." };
@@ -156,12 +160,21 @@ Usage:
   npx cubicore@latest setup --yes        Non-interactive; use the native default
   cubicore --help                     Show this help
 
-What it does:
+Subcommands:
+  setup (default)    Install into the chosen OpenCode (interactive; --native / --flatpak)
+  uninstall          Remove Cubicore from every installed target
+                     (add --native / --flatpak to remove only one)
+
+What setup does:
   · Registers the Cubicore MCP server in the chosen OpenCode's global config
   · Copies the MCP runtime once to a user-global location (~/.local/share/cubicore)
   · Installs the cubicore-associate / cubicore-research agents
   · Never writes into a project; never touches other OpenCode variants
 
+Both variants can coexist on Linux — run setup twice with the two flags.
+uninstall with no flag detects and cleans both. It removes only mcp.cubicore,
+the two Cubicore agents, the version stamp and (when unused) the runtime
+bundle. It keeps backups, build.maxSteps, and all other settings intact.
 If the chosen OpenCode's config directory is missing, nothing is written and
 the script says so. After a successful install, restart OpenCode fully.
 `);
@@ -309,14 +322,48 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(banner(version));
-
   const resolveOpts: ResolveOptions = {
     platform: platform(),
     env: process.env,
     home: homedir(),
     exists: existsSync,
   };
+
+  if (parsed.uninstall) {
+    const { uninstall } = await import("./install/uninstall");
+    const detected = (await import("./install/uninstall")).detectInstalledTargets(resolveOpts);
+    if (detected.length === 0) {
+      console.log("No Cubicore installation found on this machine — nothing to remove.");
+      return;
+    }
+    const chosen = parsed.target ? detected.filter((t) => t.id === parsed.target) : detected;
+    if (chosen.length === 0) {
+      console.error(`No Cubicore installation found for the ${parsed.target} target.`);
+      process.exit(1);
+      return;
+    }
+    console.log(banner(version));
+    console.log(`Removing Cubicore from: ${chosen.map((t) => t.label).join(", ")}\n`);
+    const result = uninstall(resolveOpts, parsed.target ?? undefined);
+    for (const r of result.targets) {
+      if (r.changed) {
+        console.log(paint(GREEN, "  ✓") + ` ${r.target}: removed ${r.removed.join(", ")} from ${paint(DIM, r.configFile)}`);
+      } else {
+        console.log(`  - ${r.target}: ${r.reason ?? "nothing to remove"}`);
+      }
+    }
+    for (const file of result.bundleRemoved) {
+      console.log(paint(GREEN, "  ✓") + ` removed runtime bundle ${paint(DIM, file)}`);
+    }
+    console.log(`
+Cubicore removed. Backups (*.cubicore-uninstall.bak / *.cubicore.bak) were kept for recovery.
+build.maxSteps and all other settings were left exactly as they were.
+Restart OpenCode fully so it re-reads its config.`);
+    return;
+  }
+
+  console.log(banner(version));
+
   const targets = resolveTargets(resolveOpts);
 
   // Choose the target: explicit flag > interactive prompt > native default.
