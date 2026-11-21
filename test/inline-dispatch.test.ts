@@ -97,7 +97,7 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(result.reason).toContain("non-JSON");
   });
 
-  it("still writes briefs and tells the agent to use host sub-agents despite an unverified list", async () => {
+  it("writes briefs and points to the code-level execute path despite an unverified agent list", async () => {
     const directory = mkdtempSync(join(tmpdir(), "cubicore-inline-"));
     mkdirSync(join(directory, "src"), { recursive: true });
     writeFileSync(join(directory, "CUBICORE_PLAN.json"), JSON.stringify(PLAN));
@@ -123,9 +123,12 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     const files = readdirSync(join(directory, "CUBICORE_ASSOCIATES")).sort();
 
     expect(files.length).toBeGreaterThanOrEqual(2); // one brief plus index
-    expect(output).toContain("could not be verified");
-    expect(output).toContain("task/sub-agent");
-    expect(output).toContain("in parallel");
-    expect(output).toContain("cubicore-associate");
+    expect(output).toContain("Next: call the execute tool with no arguments");
+    expect(output).toContain("Do NOT dispatch these briefs yourself");
+    // The old hand-dispatch instruction must not reappear: it contradicted
+    // the execute prompt and could pull the model back to serial subagents.
+    expect(output).not.toContain("Dispatch ALL");
+    expect(output).not.toContain("task/sub-agent");
+    expect(output).not.toContain("cubicore-associate");
   });
 });

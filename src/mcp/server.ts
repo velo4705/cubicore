@@ -2302,13 +2302,12 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
   const cycleGate = canExecute(readCycleState(`${directory}/.cubicore-cycle.json`));
   if (!cycleGate.allowed) return text(cycleGate.reason, true);
 
-  // The briefs are useless without somewhere to dispatch them to. The check
-  // is advisory only: a browser proxy or an HTML fallback must not turn a
-  // host with inline sub-agents into a host that silently uses sessions.
+  // The host agent check is advisory only. Briefs are written as an artifact;
+  // dispatch itself is code-level in the execute tool, so a browser proxy or
+  // an HTML fallback must not change how workers are launched.
   const runtime = runtimeFromEnv();
   const agent = await agentAvailable(runtime.baseUrl, directory);
-  const inlineReady = agent.present;
-  if (!inlineReady) {
+  if (!agent.present) {
     process.stderr.write(
       `[cubicore] ${ASSOCIATE_AGENT_ID} dispatch unverified: ` +
         `${agent.checked ? `host agents are ${agent.agents.join(", ") || "none"}` : agent.reason}.\n`,
@@ -2330,21 +2329,11 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
     [
       `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
       "",
-      inlineReady
-        ? `Dispatch ALL ${loaded.plan.contracts.length} associates to the \`${ASSOCIATE_AGENT_ID}\` sub-agent, in the SAME tool block, in parallel, at the same time. Give each its own brief's path. Do not wait for one before dispatching the next. Do not dispatch them one at a time.`
-        : `NOTE: the host's agent list could not be verified${agent.reason ? `: ${agent.reason}` : ""}. ` +
-          `That does not prove inline sub-agents are unavailable. If you have the host's task/sub-agent tool, dispatch ALL ${loaded.plan.contracts.length} associates NOW, in the SAME tool block, in parallel, using \`${ASSOCIATE_AGENT_ID}\` if the host knows it or \`general\` otherwise. ` +
-          `Do not wait for one before dispatching the next. One brief each, and do not dispatch them one at a time. Only if the host tool cannot launch them concurrently, call execute and let Cubicore dispatch sessions in parallel instead.`,
+      `Next: call the execute tool with no arguments. It dispatches every contract in the plan in parallel in code and returns the verdict. Do NOT dispatch these briefs yourself — one at a time or in a tool block is model-controlled and has been observed collapsing to a single worker.`,
       "",
-      "Associates to dispatch:",
+      "Briefs written (informational — execute reads the plan, not these files):",
       "",
       contractList,
-      "",
-      `An associate reads exactly one file and starts building.`,
-      "",
-      `When they return, run each contract's blocking checks. Then call the record_inline_run tool — pass your host's own token totals as usage if the host exposes them (they upper-bound the run: they include your plan-writing and everything else on this session, so say nothing more precise than that), or omit usage entirely and the tool writes "unknown (inline dispatch — host tokens not collected)" into the ledger. Never estimate numbers you do not actually see.`,
-      "",
-      `The record_inline_run tool re-verifies every blocking check on disk itself, writes .cubicore-factory-ledger.json, appends the .cubicore-factory-history.jsonl line, and prints the verdict. A run it cannot record — no plan on disk, an unwritable ledger — is reported as not recorded, never as a green number.`,
       "",
     ].join("\n"),
   );

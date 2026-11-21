@@ -1044,3 +1044,17 @@ Founder pasted a real relayed roster: 11 workers, each with a long `[writes: ...
 - Fixed a duplicate step number ("5" twice) introduced earlier.
 - Prompt tests pin the new requirements. 704 tests pass ×2; source typecheck clean; bundle rebuilt. (Three pre-existing `as typeof fetch` casts in `test/inline-dispatch.test.ts` still fail full-project tsc — unchanged from HEAD.)
 - Local version bumped to 1.1.16. NOT published — founder's call.
+
+
+## 2026-11-21 — Remove the stale hand-dispatch instruction from dispatch_blueprint
+
+Founder showed a 1.1.13 screenshot with nine green inline `Cubicore-Associate` rows. Root cause of that old behaviour: 1.1.13 (1.1.7 base) made `dispatch_blueprint` write briefs to `CUBICORE_ASSOCIATES/` and told the model to dispatch them all via OpenCode's `subagent` tool in one block — model-controlled, soft, and observed collapsing to one worker.
+
+Found a latent contradiction: current `dispatch_blueprint` still emitted that old "Dispatch ALL ... in the SAME tool block" note (and the `record_inline_run` follow-up), while the execute prompt says "Do NOT dispatch associates yourself". Recent runs happened to follow the execute prompt; this was a reversion risk, not a live failure.
+
+- `dispatch_blueprint` now says: call `execute` with no arguments; it dispatches in code, in parallel, and returns the verdict; do not dispatch briefs yourself.
+- Brief list kept as an informational artifact; heading changed from "Associates to dispatch" to "Briefs written (informational — execute reads the plan, not these files)".
+- Removed unused `inlineReady`; the host agent probe is now purely an advisory stderr diagnostic.
+- Existing test that asserted the old hand-dispatch note was rewritten to assert the new path and forbid `Dispatch ALL` / `task/sub-agent` / `cubicore-associate` in the tool output.
+- 704 tests pass ×2; source typecheck clean; bundle rebuilt.
+- Release status: 1.1.16 (compact roster) was published by the founder while this change was being made, so npm 1.1.16 does NOT contain this fix. This change is uncommitted on top of 99d37f1 and needs its own version bump to reach the daily host.
