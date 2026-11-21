@@ -54,7 +54,14 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     const prompt = promptFor("execute", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("RELAY THIS ROSTER");
     expect(prompt).toContain("VERBATIM");
-    expect(prompt).toContain("tool results collapsed");
+    expect(prompt).toContain("Tool results are collapsed");
+    expect(prompt).toContain("one line per");
+    expect(prompt).toContain("Keep it terse");
+    expect(prompt).toContain("or file lists");
+    // The prompt must not promise inline chat rows: OpenCode shows API-created
+    // child sessions only in the task panel.
+    expect(prompt).toContain("task panel");
+    expect(prompt).toContain("not as an inline");
   });
 
   it("tells the execute prompt to use the code path that parallelizes AND names workers", () => {

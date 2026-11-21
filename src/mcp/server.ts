@@ -903,16 +903,16 @@ async function runToCompletion(
   const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
 
   // VISIBLE PROOF: the audience does not read collapsed MCP tool results.
-  // This explicit roster is the block the executing agent must put in its
-  // chat reply, so the founder can see every worker and its verdict without
-  // expanding a tool call. Code-level dispatch can be invisible; the proof
-  // of what it did cannot be.
+  // One line per worker with its verdict, then the overall verdict. File lists
+  // stay in the tool result below for anyone who expands it — they made the
+  // chat reply a wall of paths and buried the outcome. This is text only:
+  // dispatch is still code-level Promise.all; nothing here changes how
+  // workers are created or how reports are merged.
   const roster = [
-    `Cubicore dispatch complete — ${parsed.contracts.length} worker(s):`,
+    `Cubicore dispatch: ${parsed.contracts.length} worker(s) — ${passedCount} done, ${failedCount} failed${blockedCount > 0 ? `, ${blockedCount} blocked` : ""}:`,
     ...parsed.contracts.map((c) => {
       const state = verified.progress.get(c.id) ?? "pending";
-      const icon = state === "done" ? "done" : state === "blocked" ? "blocked" : state === "failed" ? "failed" : "not run";
-      return `  - ${c.id}: ${icon} [writes: ${c.writes.join(", ") || "report"}]`;
+      return `- ${c.id}: ${state}`;
     }),
     `Verdict: ${retrospective.verdict}`,
   ].join("\n");
@@ -3579,19 +3579,19 @@ Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the e
 1. Call \`dispatch_blueprint\` with the project kind.
 2. Call the \`execute\` tool with no arguments — it dispatches the plan on disk. Cubicore
    runs every independent contract in the SAME stage in parallel in code (\`Promise.all\`),
-   and each worker is created as a named CHILD SESSION of this one — OpenCode shows it in
-   the chat as a Cubicore-Associate row, e.g. "scaffold (associate)". This is the ONLY path
-   that guarantees both simultaneous workers and visible rows. Do NOT dispatch associates
+   and each worker is created as a named CHILD SESSION of this one — OpenCode lists it in
+   its task panel as a named associate row, e.g. "scaffold (associate)", not as an inline
+   chat row. This is the ONLY path that guarantees simultaneous workers. Do NOT dispatch associates
    yourself, one at a time or in a tool block — that path is model-controlled and has been
    observed reverting to a single worker after an opencode update.
 3. Wait for the execute tool's result. Never merge reports yourself.
-4. Put the tool's "RELAY THIS ROSTER" block VERBATIM in your chat reply — every worker and
-   its verdict, as printed. The founder sees tool results collapsed; this roster is the
-   visible proof that each associate ran and what it delivered. Do not replace it with
-   "all done" or a summary of your own words.
+4. Put the tool's "RELAY THIS ROSTER" block VERBATIM in your chat reply — one line per
+   worker with its verdict, then the overall verdict. Tool results are collapsed; this
+   roster is the visible proof each associate ran. Keep it terse: do not replace it with
+   "all done", a summary of your own words, or file lists.
 5. If \`execute\` returns a dispatch failure, report it verbatim — do not hand-dispatch
    the contracts as a workaround.
-5. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
+6. Leave the delivered thing running if it is runnable, and reply only with the outcome, any blockers, and the next commands.`,
           },
         },
       ],

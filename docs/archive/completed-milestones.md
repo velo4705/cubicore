@@ -1032,3 +1032,15 @@ Fix: prefer the `ss` line naming `opencode-cli` / `opencode serve --service`; fa
 Regression tests: explicit OPENCODE_PORT still wins; a discovered port must never answer 407 on `/api/session`. 704 tests pass ×2, typecheck clean, bundle rebuilt.
 
 This is a SOURCE fix — npm 1.1.13 still ships the old first-match discovery. Publishing 1.1.14 (founder's call) is required to stop 407 on the daily host.
+
+
+## 2026-11-21 — Compact roster (keep the proof, drop the wall of paths)
+
+Founder pasted a real relayed roster: 11 workers, each with a long `[writes: ...]` list. It proved the relay mechanism works, but it contradicted the founder's own "Keep it terse" instruction and buried the only thing users care about — the verdict and next command. Decision: users do not care about per-contract internals; the roster is an audience proof artifact, so keep it cheap.
+
+- Roster text is now one line per contract (`- id: state`) plus the overall `Cubicore dispatch: N worker(s) — X done, Y failed` header and verdict. File lists remain in the collapsed tool result (still printed below the roster) for anyone who expands it.
+- Prompt step 4 now requires the verbatim block but explicitly says "Keep it terse", no file lists. Step 2's dispatch rules (`Promise.all`, `CHILD SESSION`, `Do NOT dispatch associates`) are UNCHANGED — this is a text-only change, not a one-by-one fallback.
+- Corrected a known-false prompt claim: OpenCode shows API-created child sessions in its **task panel**, not as inline chat rows.
+- Fixed a duplicate step number ("5" twice) introduced earlier.
+- Prompt tests pin the new requirements. 704 tests pass ×2; source typecheck clean; bundle rebuilt. (Three pre-existing `as typeof fetch` casts in `test/inline-dispatch.test.ts` still fail full-project tsc — unchanged from HEAD.)
+- Local version bumped to 1.1.16. NOT published — founder's call.
