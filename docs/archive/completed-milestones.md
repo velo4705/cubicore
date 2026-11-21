@@ -936,6 +936,15 @@ Verified before publish: 694 tests ×2, typecheck clean, bundle rebuilt; live pr
 
 Not done: npm unpublish of 1.1.8–1.1.12 was refused (E403: GAT cannot bypass 2FA) — those versions remain installable by exact number; only `latest` moved. Founder's daily host still needs `npx cubicore@latest setup --flatpak` to install 1.1.13's fixed bundle (currently runs old da8adba…).
 
+## 2026-11-21 — `npx cubicore@latest uninstall` (both-platform safe)
+
+New `src/install/uninstall.ts` + `uninstall` CLI subcommand. The problem: `setup` writes ONE target per run (native or Flatpak), so a Linux host can carry both. Uninstall solves it by detecting which targets actually hold `mcp.cubicore` or the two Cubicore agents, then removing from all of them unless `--native` / `--flatpak` names one.
+
+Removes only Cubicore-owned marks: mcp.cubicore, agent[cubicore-associate|cubicore-research], .cubicore-version stamp, and the copied runtime bundle only when no remaining target's config still references it. Keeps build.maxSteps, backups (*.cubicore-uninstall.bak / *.cubicore.bak), other MCP servers/agents/plugins, and all project files untouched.
+
+Verified: 7 new tests (both variants, single-target flags, idempotency, backups, stamp, founder settings preserved); CLI end-to-end against a sandbox HOME — removed only our marks, kept founder's MCP + maxSteps. Suite 701 pass across 66 files, typecheck clean, bundle rebuilt. One transient 7-fail run under host contention (44s vs ~20s) did not reproduce in consecutive clean runs.
+
+Note: this is in the working tree on branch restore-1.1.7 at version 1.1.13; npm's 1.1.13 (published 2026-11-20) predates this feature. Publishing it is a separate founder decision.
 ## 2026-11-20 — Parallel dispatch regression after opencode update: prompt changed to enforce code-level path
 
 Founder reported: after the opencode update, execute went back to one-by-one dispatch instead of simultaneous. Root cause: the /cubicore:execute prompt told the model to "dispatch ALL associates in the SAME tool block, in parallel" — an instruction to the model, not an enforcement. Host changed tool-call behaviour; model reverted to serial dispatch; nothing in Cubicore could stop it.
