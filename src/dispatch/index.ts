@@ -87,6 +87,10 @@ export interface DispatchOutcome {
    * aggregation as unresolved.
    */
   reviewFindings: ReviewFinding[];
+  /** Full mode only: merged-tree command after each stage. */
+  integrationRuns?: Array<{ afterStage: number; passed: boolean; output: string }>;
+  /** Full mode only: bounded repair pass when the merged tree failed. */
+  repair?: { attempted: boolean; passed: boolean; output: string };
 }
 
 export interface DispatchOptions {
@@ -243,7 +247,19 @@ export async function dispatch(
   }
 
   const settled: Array<{ contract: Contract; result: WorkerResult; gates: GateResult[]; passed: boolean }> = [];
+  const integrationRuns: Array<{ afterStage: number; passed: boolean; output: string }> = [];
   let halted: "cancelled" | "paused" | null = null;
+
+  // Full Product has no deadline, so it can afford to prove the merged tree
+  // after every stage. Demo keeps one integration check at the very end.
+  const checkMergedTree = async (afterStage: number): Promise<boolean> => {
+    if (mode !== "full" || !options.integration) return true;
+    const check = await gateRunner.run(options.integration.command);
+    const passed = check.exitCode === 0;
+    integrationRuns.push({ afterStage, passed, output: check.output.trim().slice(0, 600) });
+    options.trace?.("dispatch.stage-integration", { afterStage, passed });
+    return passed;
+  };
 
   const runStages = async (contracts: Contract[]): Promise<void> => {
   for (const stage of pipeline.stages) {
@@ -360,6 +376,7 @@ export async function dispatch(
     );
       settled.push(...results);
     }
+    await checkMergedTree(stage.index);
   }
   };
 
@@ -368,6 +385,54 @@ export async function dispatch(
     for (const contract of verifiers) prepared.set(contract.id, await staged.prepare(contract));
     await runStages(verifiers);
   }
+
+  // Full Product only: when the merged tree is still broken after every
+  // builder and verifier, give one bounded repair pass. It is a temporary,
+  // cross-contract contract — only legal in full mode, where taking the time
+  // to fix the whole is the point. Demo never pays for this.
+  let repairOutcome: DispatchOutcome["repair"];
+  if (mode === "full" && !halted && options.integration && integrationRuns.length > 0 && !integrationRuns[integrationRuns.length - 1].passed) {
+    const command = options.integration.command;
+    const repair: Contract = {
+      id: "integration-repair",
+      objective: `Repair the merged tree until this command exits 0: ${command}`,
+      reads: [...new Set(plan.contracts.flatMap((c) => c.reads))],
+      writes: [...new Set(plan.contracts.flatMap((c) => c.writes))],
+      forbidden: [],
+      deliverable: "diff",
+      schema: {},
+      doneWhen: "the integration command exits 0",
+      checks: [{ id: "integration-repair", kind: "intent", command, expectation: "exit 0", gating: "blocking", convergent: true }],
+      budget: { tokens: plan.graphBudget.tokens, toolCalls: 100, wallMs: plan.graphBudget.wallMs },
+    };
+    options.trace?.("dispatch.repair", { maxRetries, command });
+    let passed = false;
+    let detail = "";
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await runner.run(repair, attempt);
+      const gates = await runGates(
+        { artifact: result.artifact ?? emptyArtifact(repair), contract: repair, baseline: options.baseline },
+        gateRunner,
+        {
+          changedFiles: result.changedFiles,
+          changesUnknown: result.changesUnknown,
+          root: result.root ?? options.root ?? process.cwd(),
+          unionWrites: options.unionWrites,
+          design: plan.design,
+        },
+      );
+      passed = gates.every((gate) => gate.passed);
+      detail = gates.filter((gate) => !gate.passed).map((gate) => `${gate.gate}: ${gate.detail}`).join("; ");
+      if (passed) {
+        options.collect?.(repair.id);
+        break;
+      }
+      options.discard?.(repair.id);
+    }
+    repairOutcome = { attempted: true, passed, output: detail.slice(0, 600) };
+    if (!passed) unresolved.push(`integration-repair — ${detail.slice(0, 300)}`);
+  }
+
   // A prepared session that was never briefed (halt, or a stage skipped after
   // cancellation) must not linger as an idle row or hold a worktree.
   if (staged) {

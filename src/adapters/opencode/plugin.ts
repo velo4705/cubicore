@@ -399,6 +399,7 @@ export const CubicorePlugin: Plugin = async (input) => {
             // this root, so the two have to be the same tree.
             directory,
           );
+          workers.mode = parsed.mode ?? "full";
           eventTargets.push(workers);
 
           const recorder = new RunRecorder(parsed.topology, timer);

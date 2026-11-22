@@ -669,6 +669,7 @@ async function runToCompletion(
 
   const inherited = await callerModel(runtime);
   const workers = workerSessions(runtime, progress, dir, inherited);
+  workers.mode = parsed.mode ?? "full";
   // The event connection never closes on its own, so it is aborted once
   // dispatch returns. Without this the process lives forever and the client
   // waits on a response it already has.
