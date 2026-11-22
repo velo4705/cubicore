@@ -125,8 +125,12 @@ export interface DispatchOptions {
   collect?: (contractId: string) => void;
   discard?: (contractId: string) => void;
   baseline?: readonly Check[];
-  /** Revise rounds. One is the designed maximum (D6). */
+  /** Revise rounds. Demo: 1 (D6). Full Product: 2 — not rushed. */
   maxRetries?: number;
+  /** The plan's posture. Absent means full: take it easy. */
+  mode?: PlanMode;
+  /** Full mode re-runs the merged-tree command after each stage and repairs failures. */
+  integration?: { command: string; timeoutMs?: number };
   gate?: CommandRunner;
   /** Caps derived per contract, for the caller to enforce via hooks. */
   caps?: (contract: Contract) => Caps;
@@ -167,7 +171,8 @@ export async function dispatch(
   gateRunner: CommandRunner,
   options: DispatchOptions = {},
 ): Promise<DispatchOutcome> {
-  const maxRetries = options.maxRetries ?? 1;
+  const mode = options.mode ?? "full";
+  const maxRetries = options.maxRetries ?? (mode === "full" ? 2 : 1);
   const accepted: WorkerResult[] = [];
   const failed: DispatchOutcome["failed"] = [];
   const unresolved: string[] = [];
