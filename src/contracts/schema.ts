@@ -135,6 +135,11 @@ export const planSchema = {
   additionalProperties: false,
   required: ["topology", "contracts", "graphBudget"],
   properties: {
+    mode: {
+      type: "string",
+      enum: ["demo", "full"],
+      description: "Demo is allowed to be rushed; Full is engineering work and must not be.",
+    },
     topology: {
       type: "string",
       enum: ["fan-out", "pipeline", "shared-context", "refuse"],

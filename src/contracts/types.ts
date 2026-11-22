@@ -234,7 +234,12 @@ export interface AssetEntry {
   note?: string;
 }
 
+/** The posture chosen when the plan was written. Absent means legacy: take it easy. */
+export type PlanMode = "demo" | "full";
+
 export interface Plan {
+  /** Demo is allowed to be rushed; Full is engineering work and must not be. */
+  mode?: PlanMode;
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;
