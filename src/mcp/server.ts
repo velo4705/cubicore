@@ -3493,7 +3493,10 @@ function planDemoScope(): string {
 
 /** Builds the enterprise decide-scope section. */
 function planFullScope(): string {
-  return "This is a full product from scratch. Build exactly what the " +
+  return 'Write `"mode": "full"` at the top level of the plan JSON — execute reads it and ' +
+    "refuses to rush: generous wall clocks, more retries, integration after every stage, and a " +
+    "bounded repair pass if the merged tree fails. " +
+    "This is a full product from scratch. Build exactly what the " +
     "founder requested. Do not choose your own project idea and do not substitute a " +
     "different product. Include only the endpoints, config, observability, CI/CD and " +
     "error handling the requested product actually needs; do not invent enterprise " +
