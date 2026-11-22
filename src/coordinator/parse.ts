@@ -698,14 +698,11 @@ export function parsePlan(raw: string): Plan {
     }
   }
 
-  if (problems.length > 0) {
-    throw new MalformedPlan("coordinator response did not match the plan schema", problems);
-  }
-
   const modeRaw = json.mode;
   if (modeRaw !== undefined && modeRaw !== "demo" && modeRaw !== "full") {
     problems.push('mode must be "demo" or "full"');
   }
+
   if (problems.length > 0) {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
   }
