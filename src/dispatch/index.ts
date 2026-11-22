@@ -1,4 +1,4 @@
-import type { Check, Contract, Plan, WorkerResult } from "../contracts/types";
+import type { Check, Contract, Plan, PlanMode, WorkerResult } from "../contracts/types";
 import type { ContractState } from "../mcp/runs";
 import { workerPermissions } from "../adapters/opencode/permissions";
 import { runGates, type CommandRunner, type GateResult } from "../gate";
