@@ -628,6 +628,26 @@ export async function previewIt(spec: PreviewSpec, cwd: string, onProgress?: (li
   primary.detail = `${primary.detail}\nThis host is missing what the command needs (missing native module or display server). Install it, or run the command under an environment that provides it.`;
   return primary;
 }
+/**
+ * The founder's own terminal recipe. Starting a preview here is not enough:
+ * the founder also needs to know how to run the thing on their own, in their
+ * own terminal, without reading our process table. Tool results are collapsed
+ * in chat, so this block is written to be relayed verbatim.
+ */
+export function manualRunSteps(spec: PreviewSpec, cwd: string, pid?: number): string {
+  const lines = [
+    "TO RUN IT YOURSELF (relay in your reply):",
+    `  cd ${cwd}`,
+    `  ${spec.command}`,
+  ];
+  if (spec.url) lines.push(`  open ${spec.url} in a browser`);
+  lines.push("  stop with Ctrl-C");
+  if (pid !== undefined) {
+    lines.push(`  Cubicore already started it here (pid ${pid}) — stop that first, or just open the URL.`);
+  }
+  return lines.join("\n");
+}
+
 async function writePreviewState(
   cwd: string,
   state: { pid: number; url: string; startedAt: number },
