@@ -898,9 +898,14 @@ async function runToCompletion(
   } catch {
     // The ledger is an artifact, not a gate. A filesystem error never fails a run.
   }
-  const passedCount = [...verified.progress.values()].filter((state) => state === "done").length;
-  const blockedCount = [...verified.progress.values()].filter((state) => state === "blocked").length;
-  const failedCount = [...verified.progress.values()].filter((state) => state === "failed").length;
+  // Count from the same source the roster lines use. verified.progress can
+  // carry stale ids from an earlier run, which used to produce headers like
+  // "10 worker(s) — 5 done, 6 failed" for ten rows — an arithmetic lie in the
+  // exact artifact the founder is meant to trust.
+  const states = parsed.contracts.map((c) => verified.progress.get(c.id) ?? "pending");
+  const passedCount = states.filter((state) => state === "done").length;
+  const blockedCount = states.filter((state) => state === "blocked").length;
+  const failedCount = states.filter((state) => state === "failed").length;
 
   // VISIBLE PROOF: the audience does not read collapsed MCP tool results.
   // One line per worker with its verdict, then the overall verdict. File lists
@@ -910,10 +915,7 @@ async function runToCompletion(
   // workers are created or how reports are merged.
   const roster = [
     `Cubicore dispatch: ${parsed.contracts.length} worker(s) — ${passedCount} done, ${failedCount} failed${blockedCount > 0 ? `, ${blockedCount} blocked` : ""}:`,
-    ...parsed.contracts.map((c) => {
-      const state = verified.progress.get(c.id) ?? "pending";
-      return `- ${c.id}: ${state}`;
-    }),
+    ...parsed.contracts.map((c, i) => `- ${c.id}: ${states[i]}`),
     `Verdict: ${retrospective.verdict}`,
   ].join("\n");
 
