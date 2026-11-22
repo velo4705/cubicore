@@ -64,6 +64,13 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(prompt).toContain("not as an inline");
   });
 
+  it("requires the preview prompt to relay the manual terminal steps", () => {
+    const prompt = promptFor("preview", {}).messages?.[0]?.content.text ?? "";
+    expect(prompt).toContain("TO RUN IT YOURSELF");
+    expect(prompt).toContain("VERBATIM");
+    expect(prompt).toContain("tool");
+  });
+
   it("tells the execute prompt to use the code path that parallelizes AND names workers", () => {
     const prompt = promptFor("execute", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("dispatch_blueprint");

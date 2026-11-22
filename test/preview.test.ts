@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { previewCheckOnce, previewIt, stopIt } from "../src/plan/preview";
+import { manualRunSteps, previewCheckOnce, previewIt, stopIt } from "../src/plan/preview";
 
 /**
  * A contract can be correct and still not run.
@@ -87,5 +87,29 @@ describe("previewIt", () => {
 
     const stop = await stopIt(root);
     expect(stop.ok).toBe(true);
+  });
+});
+
+
+describe("manualRunSteps", () => {
+  it("gives the exact directory, command, localhost link and stop step", () => {
+    const steps = manualRunSteps(
+      { command: "npm run dev -- --host 127.0.0.1", url: "http://127.0.0.1:5173" },
+      "/home/nix/Projects/demo",
+      1234,
+    );
+    expect(steps).toContain("TO RUN IT YOURSELF");
+    expect(steps).toContain("cd /home/nix/Projects/demo");
+    expect(steps).toContain("npm run dev -- --host 127.0.0.1");
+    expect(steps).toContain("open http://127.0.0.1:5173 in a browser");
+    expect(steps).toContain("stop with Ctrl-C");
+    expect(steps).toContain("pid 1234");
+  });
+
+  it("omits the browser line for a binary with no URL", () => {
+    const steps = manualRunSteps({ command: "./bin/tool --serve" }, "/work");
+    expect(steps).toContain("./bin/tool --serve");
+    expect(steps).not.toContain("in a browser");
+    expect(steps).not.toContain("already started");
   });
 });
