@@ -16,7 +16,7 @@ import {
 import { findCallerSession, verifyModel, callerModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
 import { deriveBaseline } from "../validate/baseline";
-import { nodePathEnv, previewIt } from "../plan/preview";
+import { manualRunSteps, nodePathEnv, previewIt } from "../plan/preview";
 import { screenshotCheck } from "../screenshot/check";
 import { generateVariants, recordVariantPick } from "../plan/variants";
 import { discardChanges, prepareRepository } from "../dispatch/changes";
@@ -2660,6 +2660,7 @@ export const TOOLS = [
       if (outcome.body) lines.push(`body: ${outcome.body.slice(0, 300)}`);
       if (outcome.output) lines.push("", "--- output ---", outcome.output.slice(-800));
       if (outcome.pid !== undefined) lines.push("", "Leave it running for the founder to test.");
+      lines.push("", manualRunSteps(spec, dir, outcome.pid));
 
       return text(lines.join("\n"), !outcome.ok);
     },
