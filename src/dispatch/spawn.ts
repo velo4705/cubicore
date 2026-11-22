@@ -225,16 +225,19 @@ export class WorkerSessions {
       // delivers) resolves first and cheaply; the DB probe is the fallback and
       // races alongside instead of after, so the wall budget is never burned
       // waiting for an event the host never emits.
-      const terminalIdle = await waitForIdle(this.idleProbe, observer, sessionId, contract.budget.wallMs);
+      const plannedWallMs = contract.budget.wallMs;
+      const wallMs = this.mode === "full"
+        ? Math.max(plannedWallMs * FULL_WALL_MULTIPLIER, FULL_WALL_MIN_MS)
+        : plannedWallMs;
+      const terminalIdle = await waitForIdle(this.idleProbe, observer, sessionId, wallMs);
 
-      // Reaching here without an idle session means the worker blew its wall
-      // budget. Ask the host to cancel; whether that actually stops the spend
-      // depends on `cancel` existing, which is why the result reports the
-      // distinction instead of collapsing it.
+      // Demo kills a worker that blew its wall budget. Full Product records
+      // the overrun but does not call cancel at the first limit — the whole
+      // point of the mode is to let engineering work take the time it needs.
       let cancelled = false;
       if (!terminalIdle) {
         this.enforcer?.recordWallClockOverrun(sessionId);
-        if (this.spawner.cancel) {
+        if (this.mode === "demo" && this.spawner.cancel) {
           await this.spawner.cancel(sessionId);
           cancelled = true;
         }
