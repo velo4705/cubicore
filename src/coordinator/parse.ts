@@ -707,8 +707,9 @@ export function parsePlan(raw: string): Plan {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
   }
 
+  const mode = modeRaw === "demo" || modeRaw === "full" ? modeRaw : undefined;
   return {
-    ...(modeRaw === undefined ? {} : { mode: modeRaw }),
+    ...(mode === undefined ? {} : { mode }),
     topology: topologyRaw as Topology,
     summary,
     opinion,

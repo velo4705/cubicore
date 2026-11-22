@@ -714,6 +714,10 @@ async function runToCompletion(
       satisfiedContracts: reusedIds,
       root: dir,
       unionWrites,
+      // Full Product: prove the tree after each stage and repair if broken.
+      // Demo: one integration check at the end, no repair pass.
+      mode: parsed.mode ?? "full",
+      integration: parsed.integration,
       // Contracts whose worktrees should be preserved (not wiped) on resume.
       preserveContractIds,
       // Step completion states per contract, so associates skip completed steps.

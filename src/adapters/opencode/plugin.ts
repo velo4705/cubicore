@@ -409,7 +409,7 @@ export const CubicorePlugin: Plugin = async (input) => {
             parsed,
             workers.asStagedRunner(),
             commandRunner(ctx.directory || directory),
-            { repo: repoSource(root) },
+            { repo: repoSource(root), mode: parsed.mode ?? "full", integration: parsed.integration },
           );
           timer.stop("dispatch");
 

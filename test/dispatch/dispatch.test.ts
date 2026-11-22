@@ -56,7 +56,7 @@ describe("dispatch", () => {
     const runner: WorkerRunner = {
       async run(c) { calls++; return ok(c.id); },
     };
-    const out = await dispatch(plan([contract()]), runner, failGate);
+    const out = await dispatch(plan([contract()]), runner, failGate, { mode: "demo" });
     expect(calls).toBe(2);
     expect(out.accepted).toHaveLength(0);
     expect(out.failed).toHaveLength(1);
@@ -159,7 +159,7 @@ describe("dispatch admission control", () => {
     const runner: WorkerRunner = {
       async run(c, attempt) { attempts.push(attempt ?? 0); return ok(c.id); },
     };
-    await dispatch(plan([contract()]), runner, failGate);
+    await dispatch(plan([contract()]), runner, failGate, { mode: "demo" });
     expect(attempts).toEqual([0, 1]);
   });
 });
@@ -262,7 +262,7 @@ describe("review integration", () => {
       plan([contract()]),
       { async run(c) { return ok(c.id); } },
       failGate,
-      { repo: tamperingRepo() },
+      { repo: tamperingRepo(), mode: "demo" },
     );
     expect(out.reviewFindings.map((f) => f.code)).toEqual(["check-definition-moved"]);
     expect(out.reviewFindings[0].evidence).toContain("true");

@@ -464,6 +464,8 @@ export async function dispatch(
     deferred: deferred.map((contract) => contract.id),
     budgetExhausted: ledger.exhausted,
     reviewFindings,
+    ...(integrationRuns.length > 0 ? { integrationRuns } : {}),
+    ...(repairOutcome ? { repair: repairOutcome } : {}),
   };
 }
 

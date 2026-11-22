@@ -126,8 +126,12 @@ const FULL_WALL_MULTIPLIER = 5;
 const FULL_WALL_MIN_MS = 600_000;
 
 export class WorkerSessions {
-  /** Set from the plan before dispatch. Legacy plans default to full. */
-  mode: PlanMode = "full";
+  /**
+   * Direct callers keep the historical, bounded wall. The MCP execute path
+   * sets this from the plan — and treats a plan with no mode as full, so old
+   * Full Product plans do not get rushed.
+   */
+  mode: PlanMode = "demo";
 
   private readonly observers = new Map<string, RunObserver>();
   /** The worktree each associate worked in, so only approved work is collected. */

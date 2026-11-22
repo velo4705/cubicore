@@ -16,6 +16,7 @@ import { TOOLS } from "../../src/mcp/server";
  */
 
 const PLAN = {
+  mode: "demo",
   topology: "fan-out",
   contracts: [
     {
