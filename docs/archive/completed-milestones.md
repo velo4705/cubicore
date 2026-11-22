@@ -1080,3 +1080,17 @@ Founder's diagnosis of 1.1.17: "2-5 contracts per round" — stage gating made t
 - Prompt step 2 describes the two phases accurately; the execute prompt still forbids hand-dispatch.
 - Tests: `test/dispatch/two-phase.test.ts` pins all-builders-prepared-first, verifiers prepared last, dependency order, halt cleanup, legacy fallback; `test/dispatch/two-phase-sessions.test.ts` pins session-idle-until-brief and prerequisite refresh. 711 tests pass ×2; source typecheck clean; bundle rebuilt.
 - Release: unverified, so per the new policy this must be published as beta, never promoted to `latest`. No publish performed.
+
+
+## 2026-11-22 — Demo vs Full Product mode is now executed, not just prompted
+
+Founder's distinction: Demo is for MVPs/hackathons where efficiency is the point; Full Product is for startups/full projects where engineering quality is the point and rushing is forbidden. Both keep MCPs, plugins and skills.
+
+- `Plan.mode?: "demo" | "full"` added to `src/contracts/types.ts`, `planSchema`, the parser allow-list and validation. Unknown modes are rejected. Plans with no field default to `full` in execute, so legacy product plans are not rushed.
+- `plan-demo` and `plan-full` prompts now instruct the planner to write the mode into the plan JSON. The two prompts differ only in scope text; both can use every host capability.
+- `DispatchOptions.mode` and `.integration` added. `maxRetries` is 1 for demo, 2 for full.
+- `WorkerSessions` keeps its bounded wall for direct callers, but execute sets the plan mode: full uses a generous ceiling (5× planned, min 10 min) and does not call cancel at the first limit; it records the overrun honestly. Demo keeps the hard kill.
+- Full mode runs the merged-tree command after every stage and, if it is still broken, one bounded repair phase with a temporary cross-contract worker, novelty review on retry, and an honest "still broken" result. Demo never pays for this.
+- Outcomes now expose `integrationRuns` and `repair`. Docs in `docs/commands.md`.
+- Tests: `test/dispatch/mode-policy.test.ts` pins retry counts, per-stage integration, repair-only-in-full, parse and prompt rules. 720 tests pass ×2, source typecheck clean, bundle rebuilt.
+- Release: unverified; keep on beta until a live run proves full mode. No publish performed.

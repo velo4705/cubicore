@@ -301,7 +301,7 @@ describe("review integration", () => {
       plan([contract()]),
       { async run(c) { calls++; return ok(c.id); } },
       failGate,
-      { repo: tamperingRepo() },
+      { repo: tamperingRepo(), mode: "demo" },
     );
     // Two runs: the failure and its one retry. A finding must not buy a third.
     expect(calls).toBe(2);

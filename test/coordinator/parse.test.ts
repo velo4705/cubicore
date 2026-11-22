@@ -299,3 +299,22 @@ describe("formatFindings", () => {
     expect(text).toBe("- [write-collision] both write src/a.ts");
   });
 });
+
+describe("plan mode", () => {
+  test("parses demo and full", () => {
+    for (const mode of ["demo", "full"] as const) {
+      const parsed = parsePlan(JSON.stringify({ ...VALID, mode }));
+      expect(parsed.mode).toBe(mode);
+    }
+  });
+
+  test("rejects an unknown mode", () => {
+    try {
+      parsePlan(JSON.stringify({ ...VALID, mode: "quick" }));
+      expect.unreachable("expected an invalid mode to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(MalformedPlan);
+      expect((error as MalformedPlan).problems.join(" ")).toContain("mode");
+    }
+  });
+});

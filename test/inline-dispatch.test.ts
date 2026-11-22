@@ -64,6 +64,14 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(prompt).toContain("not as an inline");
   });
 
+  it("makes each planning prompt write the mode execute reads", () => {
+    const demo = promptFor("plan-demo", { request: "a small app" }).messages?.[0]?.content.text ?? "";
+    const full = promptFor("plan-full", { request: "a product" }).messages?.[0]?.content.text ?? "";
+    expect(demo).toContain('"mode": "demo"');
+    expect(full).toContain('"mode": "full"');
+    expect(full).toContain("refuses to rush");
+  });
+
   it("requires the preview prompt to relay the manual terminal steps", () => {
     const prompt = promptFor("preview", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("TO RUN IT YOURSELF");

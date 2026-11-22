@@ -42,6 +42,19 @@ answer, then write the plan.
 Same flow, scoped as a production project: deeper contracts, health endpoints,
 observability, checks that can fail against real systems.
 
+**Plan modes.** Both planning commands write a `mode` into `CUBICORE_PLAN.json`,
+and `execute` reads it:
+
+- `demo` — allowed to be a bit rushed: hard per-contract wall clock, one retry,
+  one integration check at the end, no repair pass. This is the efficiency mode.
+- `full` — engineering work, not rushed: generous wall clocks (the planned limit
+  is advisory, not a kill), two retries, the merged-tree command after every
+  stage, and one bounded repair pass if it is still broken. Plans written before
+  this field existed are treated as `full`, so an old product plan is not rushed.
+
+MCPs, plugins and skills are available in both modes unchanged. Neither mode
+makes a speed or cost claim on its own; only measured results may be claimed.
+
 ### `/cubicore:execute [plan | planNumber]`
 Dispatch the plan — one associate per contract, gated, integrated.
 
