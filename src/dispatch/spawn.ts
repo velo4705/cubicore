@@ -1,4 +1,4 @@
-import type { Artifact, Contract, WorkerResult } from "../contracts/types";
+import type { Artifact, Contract, PlanMode, WorkerResult } from "../contracts/types";
 import type { ContractState } from "../mcp/runs";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
@@ -117,7 +117,18 @@ interface PreparedHandle extends PreparedWorker {
   worktree?: Worktree;
 }
 
+/**
+ * Full Product has no deadline. The planned wall clock is a hint, not a kill
+ * switch: give workers a generous ceiling, and report an overrun honestly if
+ * even that is hit. Demo keeps the hard ceiling so it stays light and quick.
+ */
+const FULL_WALL_MULTIPLIER = 5;
+const FULL_WALL_MIN_MS = 600_000;
+
 export class WorkerSessions {
+  /** Set from the plan before dispatch. Legacy plans default to full. */
+  mode: PlanMode = "full";
+
   private readonly observers = new Map<string, RunObserver>();
   /** The worktree each associate worked in, so only approved work is collected. */
   private readonly worktrees = new Map<string, Worktree>();
