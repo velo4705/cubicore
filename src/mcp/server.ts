@@ -3825,6 +3825,10 @@ the ready line, how long to wait, and what it can verify:
 If there is no preview block, say so plainly. A library or a report has nothing to launch, and that
 is a correct plan, not a failure. Do not invent something to run.
 
+Put the tool's "TO RUN IT YOURSELF" block VERBATIM in your reply — the founder sees tool
+results collapsed. It gives the exact directory, command, localhost link and stop step, so the
+founder can run the binary or web app in their own terminal without reading our process table.
+
 If it fails, report the actual output rather than a summary of it. The founder is finding out
 whether this works, and "it did not start" is only useful with the reason attached — and when the
 blocker is the environment (missing tkinter, headless), name that plainly and say what would fix it.`,
