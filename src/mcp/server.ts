@@ -3474,7 +3474,9 @@ ${PLAN_SCHEMA_JSON}`;
 
 /** Builds the demo/MVP decide-scope section. */
 function planDemoScope(): string {
-  return "This is a demo or MVP. Build exactly what the founder requested. " +
+  return 'Write `"mode": "demo"` at the top level of the plan JSON — execute reads it and ' +
+    "allows the run to be a bit rushed. " +
+    "This is a demo or MVP. Build exactly what the founder requested. " +
     "Do not choose your own project idea and do not substitute a different product. " +
     "Skip observability, health endpoints, CI/CD, and multi-stage config unless the " +
     "founder explicitly asks. One contract per file or feature; prefer fewer, larger " +
