@@ -1094,3 +1094,8 @@ Founder's distinction: Demo is for MVPs/hackathons where efficiency is the point
 - Outcomes now expose `integrationRuns` and `repair`. Docs in `docs/commands.md`.
 - Tests: `test/dispatch/mode-policy.test.ts` pins retry counts, per-stage integration, repair-only-in-full, parse and prompt rules. 720 tests pass ×2, source typecheck clean, bundle rebuilt.
 - Release: unverified; keep on beta until a live run proves full mode. No publish performed.
+
+
+## 2026-11-22 — 1.1.19 verified as latest
+
+Founder confirmed 1.1.19 worked perfectly end-to-end. Registry state: `latest` → 1.1.19, `beta` → 1.1.18 (older pre-release). Verified the published tarball contains the two-phase dispatch, compact roster, preview manual-run steps, and demo/full mode policy. `docs/release-policy.md` updated so future sessions do not re-litigate the tag state. No performance claims are attached to the tag — Phase 5 benchmark remains unrun.

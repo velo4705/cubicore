@@ -33,13 +33,13 @@ Verify the actual tags (not just `npm view cubicore version`, which reflects
 npm dist-tag ls cubicore
 ```
 
-## Current state (2026-11-21)
+## Current state (2026-11-22)
 
 | Tag | Version | Status |
 | --- | --- | --- |
-| `latest` | 1.1.16 | Founder-designated known-good. Still carries the stale `dispatch_blueprint` hand-dispatch note. |
-| `beta` | 1.1.17 | Removes that stale instruction; not yet verified on the daily host. |
+| `latest` | 1.1.19 | Founder verified end-to-end on the daily host: two-phase dispatch, compact roster, preview manual steps, demo/full mode policy. |
+| `beta` | 1.1.18 | Older, superseded pre-release. |
 
-Do not promote 1.1.17 to `latest` until a live run confirms it. The next build replaces the stage-gated dispatch with two-phase dispatch (all builder sessions up front, integration/smoke last); it is also unverified and must ship as beta until a live run confirms it. No speed, cost,
-or quality claim may be attached to either tag until the Phase 5 benchmark is
-actually run.
+No speed, cost, or quality claim may be attached to either tag until the Phase 5
+benchmark is actually run. Efficiency is a demo-mode concern; Full Product is
+judged on engineering quality, not time.

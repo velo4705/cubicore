@@ -2,6 +2,10 @@
 
 <!-- Linguistic Languages for README are placed here. Must be redirected to that Lingual README. -->
 
+<p align="center">
+  <img src="docs/assets/cubicore-logo.svg" alt="Cubicore logo" width="144">
+</p>
+
 # Cubicore
 
 **Just an MCP that follows the classic engineering process, simultaneously like humans do.**
