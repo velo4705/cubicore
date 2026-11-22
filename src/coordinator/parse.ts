@@ -571,7 +571,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
+    if (!["mode", "topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
