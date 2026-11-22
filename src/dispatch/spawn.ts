@@ -3,11 +3,11 @@ import type { ContractState } from "../mcp/runs";
 import { RunObserver } from "./observe";
 import { renderPrompt } from "./prompt";
 import { changedFilesSince } from "./changes";
-import { collectWorktree, createWorktree, removeWorktree, type Worktree } from "./worktree";
+import { collectWorktree, createWorktree, refreshWorktree, removeWorktree, type Worktree } from "./worktree";
 import { routeModel, type ModelConfig } from "./routing";
 import { BudgetEnforcer } from "../adapters/opencode/hooks";
 import { deriveCaps } from "./budgets";
-import type { WorkerRunner } from "./index";
+import type { PreparedWorker, StagedWorkerRunner, WorkerRunner } from "./index";
 import { addUsage, EMPTY_USAGE, type TokenUsage } from "../telemetry/types";
 import { sessionIdleStatus } from "./session-db-idle";
 
@@ -110,6 +110,13 @@ export interface SessionSpawner {
  * Owning the subscription here — rather than per call — is what stops observers
  * stacking up across a fan-out and mutating shared state.
  */
+/** Internal handle for a child session that exists before its brief is sent. */
+interface PreparedHandle extends PreparedWorker {
+  sessionId: string;
+  observer: RunObserver;
+  worktree?: Worktree;
+}
+
 export class WorkerSessions {
   private readonly observers = new Map<string, RunObserver>();
   /** The worktree each associate worked in, so only approved work is collected. */
@@ -150,13 +157,11 @@ export class WorkerSessions {
     return this.observers.size;
   }
 
-  async run(contract: Contract, attempt = 0, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult> {
-    const startedAt = Date.now();
-    const observer = new RunObserver();
-    const routing = this.models
-      ? routeModel(contract, this.models, { attempt })
-      : undefined;
-
+  /**
+   * Create the child session now, without briefing it. The host shows the row
+   * immediately; work starts only when `start()` releases the brief.
+   */
+  async prepare(contract: Contract, preserveContractIds?: Set<string>): Promise<PreparedWorker> {
     // Isolation first: the associate works in its own checkout of the
     // repository, so two workers cannot be in the same file at the same
     // moment. opencode 1.18.x cannot restrict an agent to a path, so the
@@ -167,11 +172,29 @@ export class WorkerSessions {
       title: `${contract.id} (associate)`,
       ...(worktree && !worktree.degraded ? { directory: worktree.path } : {}),
     });
+    const observer = new RunObserver();
     observer.attach(sessionId);
-    this.trace?.("worker.created", { contractId: contract.id, sessionId, attempt });
+    this.trace?.("worker.created", { contractId: contract.id, sessionId });
     this.observers.set(contract.id, observer);
     if (worktree) this.worktrees.set(contract.id, worktree);
     this.enforcer?.register(sessionId, contract.id, deriveCaps(contract));
+
+    const handle: PreparedHandle = { contractId: contract.id, sessionId, observer, worktree };
+    return handle;
+  }
+
+  /** Refresh the prepared worktree, release the brief, and wait for the result. */
+  async start(handle: PreparedWorker, contract: Contract, attempt = 0, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult> {
+    const startedAt = Date.now();
+    const routing = this.models
+      ? routeModel(contract, this.models, { attempt })
+      : undefined;
+    const { sessionId, observer, worktree } = handle as PreparedHandle;
+
+    // Prerequisites may have landed since the session was created. Give this
+    // worker the latest declared files, then re-baseline so the scope gate
+    // still diffs only what this worker itself changes.
+    if (worktree) refreshWorktree(worktree, this.root, contract);
 
     try {
       await this.spawner.prompt(sessionId, {
@@ -255,6 +278,20 @@ export class WorkerSessions {
     }
   }
 
+  /** Prepare and immediately start — the path used by retries and legacy callers. */
+  async run(contract: Contract, attempt = 0, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult> {
+    const handle = await this.prepare(contract, preserveContractIds);
+    return this.start(handle, contract, attempt, preserveContractIds, stepsProgress);
+  }
+
+  /** Drop a prepared session that will never be briefed. */
+  abandon(handle: PreparedWorker): void {
+    const prepared = handle as PreparedHandle;
+    this.discard(prepared.contractId);
+    this.observers.delete(prepared.contractId);
+    this.enforcer?.release(prepared.sessionId);
+  }
+
   /**
    * True usage summed across every worker that has finished.
    *
@@ -297,6 +334,15 @@ export class WorkerSessions {
 
   asRunner(): WorkerRunner {
     return { run: (contract, attempt, preserveContractIds, stepsProgress) => this.run(contract, attempt, preserveContractIds, stepsProgress) };
+  }
+
+  asStagedRunner(): StagedWorkerRunner {
+    return {
+      run: (contract, attempt, preserveContractIds, stepsProgress) => this.run(contract, attempt, preserveContractIds, stepsProgress),
+      prepare: (contract) => this.prepare(contract),
+      start: (handle, contract, attempt, preserveContractIds, stepsProgress) => this.start(handle, contract, attempt, preserveContractIds, stepsProgress),
+      abandon: (handle) => this.abandon(handle),
+    };
   }
 }
 

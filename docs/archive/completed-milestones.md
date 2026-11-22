@@ -1058,3 +1058,25 @@ Found a latent contradiction: current `dispatch_blueprint` still emitted that ol
 - Existing test that asserted the old hand-dispatch note was rewritten to assert the new path and forbid `Dispatch ALL` / `task/sub-agent` / `cubicore-associate` in the tool output.
 - 704 tests pass ×2; source typecheck clean; bundle rebuilt.
 - Release status: 1.1.16 (compact roster) was published by the founder while this change was being made, so npm 1.1.16 does NOT contain this fix. This change is uncommitted on top of 99d37f1 and needs its own version bump to reach the daily host.
+
+
+## 2026-11-21 — Release policy: latest = verified, everything else = beta
+
+Founder decision: "The version that works perfectly is marked as 'latest', otherwise 'beta' or 'pre-release'." Applied immediately:
+
+- `npm dist-tag add cubicore@1.1.16 latest` — `latest` moved back from 1.1.17 to 1.1.16.
+- `npm dist-tag add cubicore@1.1.17 beta` — the newer, unverified build is now opt-in.
+- Verified with `npm dist-tag ls cubicore`: beta → 1.1.17, latest → 1.1.16. These dist-tag writes succeeded from this shell (npm identity velocity4293), unlike earlier unpublish attempts which were blocked by the GAT/2FA restriction.
+- Policy recorded in `docs/release-policy.md`, including the caveat that 1.1.16 still contains the stale hand-dispatch note that 1.1.17 removes, and that neither tag may carry performance claims before the benchmark runs.
+
+
+## 2026-11-22 — Two-phase dispatch (all builders visible, verifiers last)
+
+Founder's diagnosis of 1.1.17: "2-5 contracts per round" — stage gating made the first and last stages tiny. Decision by founder: integration/smoke are a separate phase; create every builder child session immediately, then create integration/smoke sessions only after all builders finish. Dependent builders still wait for their files (by id-based verifier classification and idle-until-brief).
+
+- `StagedWorkerRunner` added: `prepare()` creates worktree + named child session (visible, idle); `start()` refreshes the worktree with newly landed declared files, re-baselines it so prerequisites never look like worker edits, then sends the brief. `abandon()` drops prepared-but-never-briefed sessions.
+- `dispatch()` now prepares ALL builder sessions up front, releases them in dependency stages, then prepares and runs verifiers. Non-staged runners keep the old one-loop behaviour. Verifier detection is by contract id (integration/smoke/acceptance/e2e/verify).
+- Production call sites (`src/mcp/server.ts`, `src/adapters/opencode/plugin.ts`) now pass `workers.asStagedRunner()`.
+- Prompt step 2 describes the two phases accurately; the execute prompt still forbids hand-dispatch.
+- Tests: `test/dispatch/two-phase.test.ts` pins all-builders-prepared-first, verifiers prepared last, dependency order, halt cleanup, legacy fallback; `test/dispatch/two-phase-sessions.test.ts` pins session-idle-until-brief and prerequisite refresh. 711 tests pass ×2; source typecheck clean; bundle rebuilt.
+- Release: unverified, so per the new policy this must be published as beta, never promoted to `latest`. No publish performed.

@@ -406,7 +406,7 @@ export const CubicorePlugin: Plugin = async (input) => {
           timer.start("dispatch");
           const dispatched = await dispatch(
             parsed,
-            workers.asRunner(),
+            workers.asStagedRunner(),
             commandRunner(ctx.directory || directory),
             { repo: repoSource(root) },
           );

@@ -137,6 +137,43 @@ export function createWorktree(root: string, contract: Contract, workRoot?: stri
 }
 
 /**
+ * Bring a prepared worktree up to date just before its worker starts.
+ *
+ * Sessions for every builder are created up front (visible proof), but a
+ * builder that reads a file another contract writes must not begin until that
+ * file has landed in the shared root. Copying the currently available declared
+ * reads/writes into the worktree at release time makes that possible without
+ * giving the worker a stale snapshot from session-creation time.
+ *
+ * The refreshed files are committed as the new baseline so the scope gate
+ * still diffs only what THIS worker changed — prerequisites must never look
+ * like the worker's own edits.
+ */
+export function refreshWorktree(worktree: Worktree, root: string, contract: Contract): string[] {
+  if (worktree.degraded) return [];
+  const copied: string[] = [];
+  for (const file of new Set([...contract.reads, ...contract.writes])) {
+    const from = join(root, file);
+    const to = join(worktree.path, file);
+    try {
+      if (existsSync(from)) {
+        mkdirSync(dirname(to), { recursive: true });
+        copyFileSync(from, to);
+        copied.push(file);
+      }
+    } catch {
+      // Best-effort, same as createWorktree: a missing file is the worker's
+      // problem to report, not a reason to abort the dispatch.
+    }
+  }
+  if (copied.length > 0) {
+    git(["add", "-A"], worktree.path);
+    git(["commit", "-q", "-m", "cubicore: refreshed prerequisites"], worktree.path);
+  }
+  return copied;
+}
+
+/**
  * Copy the contract's declared writes back into the main tree.
  *
  * Only the declared files, and only files that exist. Because the scopes are

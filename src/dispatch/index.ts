@@ -30,6 +30,41 @@ export interface WorkerRunner {
   run(contract: Contract, attempt?: number, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult>;
 }
 
+/** A child session created before its brief is released. Visible, but idle. */
+export interface PreparedWorker {
+  contractId: string;
+}
+
+/**
+ * A runner that can create all builder sessions up front and release each
+ * brief only when its prerequisites have landed. `run()` still covers retries
+ * and hosts without the staged path.
+ */
+export interface StagedWorkerRunner extends WorkerRunner {
+  prepare(contract: Contract): Promise<PreparedWorker>;
+  start(handle: PreparedWorker, contract: Contract, attempt?: number, preserveContractIds?: Set<string>, stepsProgress?: Record<string, ContractState>): Promise<WorkerResult>;
+  /** Drop a prepared session that will never be briefed (halt / budget deferral). */
+  abandon?(handle: PreparedWorker): void;
+}
+
+function isStagedRunner(runner: WorkerRunner): runner is StagedWorkerRunner {
+  return typeof (runner as StagedWorkerRunner).prepare === "function" &&
+    typeof (runner as StagedWorkerRunner).start === "function";
+}
+
+/**
+ * The second phase: integration / smoke / acceptance contracts.
+ *
+ * By contract id, as chosen by the founder — the plan already names these
+ * contracts, and a predictable rule beats a clever classifier that quietly
+ * reclassifies an app-wiring contract as a verifier.
+ */
+const VERIFIER_ID = /(^|[-_])(integration|smoke|acceptance|e2e|verif(?:y|ication))([-_]|$)/i;
+
+export function isVerifierContract(contract: Contract): boolean {
+  return VERIFIER_ID.test(contract.id);
+}
+
 export interface DispatchOutcome {
   /**
    * Why the dispatch stopped early, if it did.
@@ -175,16 +210,27 @@ export async function dispatch(
     );
   }
 
-  // Contracts run in dependency stages. A contract that reads what another
-  // writes -- a route importing the shared types, a dispatcher importing the
-  // routes -- cannot be verified until the producer has landed. Running the
-  // whole plan at once made every such check fail on a module that simply had
-  // not been written yet, and the revise round then re-ran the work to fix a
-  // race. The plan already declares the ordering; the executor has to honour
-  // it.
+  // Two-phase dispatch. Every builder's child session is created up front so
+  // the host shows all the workers at once (the audience's visible proof), but
+  // a builder is not briefed until its prerequisites have landed in the shared
+  // root — its isolated worktree is refreshed at that moment. Integration and
+  // smoke contracts are the second phase: their sessions do not exist until
+  // every builder has finished, so they verify a complete tree.
   //
-  // Within a stage the contracts are independent by construction, so they
-  // still run in parallel.
+  // Runners without the staged path keep the original behaviour: no early
+  // sessions, one stage loop over the whole plan.
+  const staged = isStagedRunner(runner) ? runner : undefined;
+  const builders = fresh.filter((c) => !isVerifierContract(c));
+  const verifiers = fresh.filter((c) => isVerifierContract(c));
+  const prepared = new Map<string, PreparedWorker>();
+  const released = new Set<string>();
+  if (staged) {
+    options.trace?.("dispatch.prepare", { builders: builders.length, verifiers: verifiers.length });
+    for (const contract of builders) prepared.set(contract.id, await staged.prepare(contract));
+  }
+
+  // Dependency stages still gate *work*, never session creation. A consumer
+  // whose producer has not landed cannot read that file from its worktree.
   const pipeline = stages(plan.contracts);
   const stageOf = new Map<string, number>();
   for (const stage of pipeline.stages) {
@@ -194,8 +240,9 @@ export async function dispatch(
   const settled: Array<{ contract: Contract; result: WorkerResult; gates: GateResult[]; passed: boolean }> = [];
   let halted: "cancelled" | "paused" | null = null;
 
+  const runStages = async (contracts: Contract[]): Promise<void> => {
   for (const stage of pipeline.stages) {
-    const batch = fresh.filter((c) => stageOf.get(c.id) === stage.index);
+    const batch = contracts.filter((c) => stageOf.get(c.id) === stage.index);
     if (batch.length === 0) continue;
 
     // A cancelled or paused run stops here. Checked between stages, so
@@ -227,7 +274,11 @@ export async function dispatch(
     const results = await Promise.all(
       chunk.map(async (contract) => {
       const contractSteps = options.stepsProgress?.get(contract.id);
-      let result = await runner.run(contract, undefined, options.preserveContractIds, contractSteps);
+      const handle = prepared.get(contract.id);
+      let result = staged && handle
+        ? await staged.start(handle, contract, 0, options.preserveContractIds, contractSteps)
+        : await runner.run(contract, undefined, options.preserveContractIds, contractSteps);
+      if (staged && handle) released.add(contract.id);
       let gates: GateResult[] = [];
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -303,6 +354,20 @@ export async function dispatch(
       }),
     );
       settled.push(...results);
+    }
+  }
+  };
+
+  await runStages(staged ? builders : fresh);
+  if (staged && !halted && verifiers.length > 0) {
+    for (const contract of verifiers) prepared.set(contract.id, await staged.prepare(contract));
+    await runStages(verifiers);
+  }
+  // A prepared session that was never briefed (halt, or a stage skipped after
+  // cancellation) must not linger as an idle row or hold a worktree.
+  if (staged) {
+    for (const [id, handle] of prepared) {
+      if (!released.has(id)) staged.abandon?.(handle);
     }
   }
 

@@ -688,7 +688,7 @@ async function runToCompletion(
   enterFactoryLifecycle(dir, "dispatch", `topology=${parsed.topology}; contracts=${parsed.contracts.length}`);
   const outcome = await dispatch(
     parsed,
-    workers.asRunner(),
+    workers.asStagedRunner(),
     { run: async (command: string) => {
       const proc = Bun.spawn(["sh", "-c", command], {
         cwd: runtime.directory,
@@ -3570,7 +3570,10 @@ Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the e
    runs every independent contract in the SAME stage in parallel in code (\`Promise.all\`),
    and each worker is created as a named CHILD SESSION of this one — OpenCode lists it in
    its task panel as a named associate row, e.g. "scaffold (associate)", not as an inline
-   chat row. This is the ONLY path that guarantees simultaneous workers. Do NOT dispatch associates
+   chat row. Every builder session is created together, so all workers appear at once; a
+   builder that needs another contract's files is briefed only when those files land.
+   Integration/smoke sessions are created AFTER every builder finishes. This is the ONLY
+   path that guarantees simultaneous workers. Do NOT dispatch associates
    yourself, one at a time or in a tool block — that path is model-controlled and has been
    observed reverting to a single worker after an opencode update.
 3. Wait for the execute tool's result. Never merge reports yourself.
