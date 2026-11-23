@@ -1,0 +1,13 @@
+{
+  "scanned": "2026-11-23",
+  "findings": {
+    "fonts": "Fraunces + Inter + JetBrains Mono via Google Fonts (docs/styles.css:4)",
+    "palette": "cream/orange custom :root tokens (docs/styles.css:8-28)",
+    "motion": "CSS transitions only; no reduced-motion fallback (docs/styles.css:43)",
+    "spacing": "ad-hoc rem values, no --space scale (docs/styles.css:60-160)",
+    "framework": "static HTML, three pages, one stylesheet (docs/index.html, docs/docs.html, docs/tutorial.html, docs/styles.css)",
+    "product": "npm CLI cubicore 1.1.19, runs inside OpenCode as an MCP; npm latest verified by founder"
+  },
+  "preserve": ["all links and routes", "all commands and facts", "MIT and repo credits", "script.js"],
+  "introduce": ["Console theme tokens", "shared design system", "audit-trail and reading compositions", "focus states and reduced motion"]
+}

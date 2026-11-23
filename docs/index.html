@@ -3,15 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cubicore — the factory that verifies itself</title>
+  <title>Cubicore, the factory that verifies itself</title>
   <meta name="description" content="Cubicore turns one prompt into a team of parallel, verified sub-agents. Contract-driven scope, mechanical gates, founder-facing factory-fit decision. Available as an MCP for opencode; install with npx cubicore@latest setup." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="site-header">
     <div class="container nav">
       <a href="#top" class="brand" aria-label="Cubicore home">
-        <span class="brand-mark">C</span>
+        <span class="brand-mark" aria-hidden="true">C</span>
         <span>Cubicore</span>
       </a>
       <nav class="nav-links" aria-label="Main navigation">
@@ -20,82 +23,70 @@
         <a href="#architecture">Architecture</a>
         <a href="#install">Install</a>
         <a href="docs.html">Docs</a>
+        <a href="tutorial.html">Tutorial</a>
       </nav>
-      <a class="button button-secondary" href="https://github.com/velo4705/cubicore" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-action" href="https://github.com/velo4705/cubicore" target="_blank" rel="noreferrer">GitHub</a>
     </div>
   </header>
 
   <main id="top">
     <section class="hero">
       <div class="container hero-grid">
-        <div>
-          <p class="eyebrow">Dynamic agent factory</p>
-          <h1>Cubicore</h1>
-          <p class="lead">One prompt → one team of verified sub-agents. Plans, gates, and integrates behind the scenes.</p>
-          <div class="cta-row">
-            <a class="button button-primary" href="#install">Install <span class="mono" style="background:transparent;color:var(--paper);border:none">npx cubicore@latest setup</span></a>
-            <a class="button button-secondary" href="#architecture">How it works</a>
-          </div>
-          <div class="hero-facts">
-            <span><b>1 command</b>install</span>
-            <span><b>Team or Solo</b>the factory decides</span>
-            <span><b>Checks pass</b>or nothing ships</span>
+        <div class="hero-copy">
+          <h1>A factory that refuses bad work.</h1>
+          <p class="lead">One prompt becomes a team of verified sub-agents in your OpenCode session.</p>
+          <div class="hero-actions">
+            <code class="install-command">npx cubicore@latest setup</code>
+            <a class="button-primary" href="#install">Install Cubicore</a>
+            <a class="text-action" href="#architecture">How it works</a>
           </div>
         </div>
 
-        <div class="panel terminal">
-          <div class="terminal-bar">
-            <span style="margin-right:auto; color:#a1978a; font-family:var(--mono); font-size:.72rem;">opencode</span>
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <figure class="record" aria-label="A Cubicore run record">
+          <div class="record-head">
+            <span class="record-title">opencode / session record</span>
+            <span class="record-id num">plan 2</span>
           </div>
-          <div class="terminal-body">
-            <div><span class="prompt">$</span> npx cubicore@latest setup</div>
-            <div><span class="value">✓</span> <span class="dim">opencode MCP registered</span></div>
-            <div class="dim">────────── in your opencode session, not the shell ──────────</div>
-            <div><span class="prompt">›</span> <strong>/cubicore:plan-demo</strong></div>
-            <div><span class="dim">› Planning:</span> 2 disjoint contracts</div>
-            <div><span class="dim">› Factory-fit:</span> small-factory · 2 associates</div>
-            <div><span class="dim">› Form:</span> <span class="value">team of 2 — recommended</span></div>
+          <div class="record-body">
+            <div class="record-line"><span class="who">you</span><span class="measured">/cubicore:plan-demo</span></div>
+            <div class="record-line"><span class="who">planner</span><span>2 disjoint contracts</span></div>
+            <div class="record-line"><span class="who">factory fit</span><span class="measured">small factory, 2 associates</span></div>
+            <div class="record-line"><span class="who">form</span><span class="chip">team of 2 (recommended)</span></div>
+            <div class="record-line"><span class="who">gates</span><span class="chip chip-ok">verified on disk</span></div>
+            <div class="record-line"><span class="who">verdict</span><span class="chip">done, or honestly not</span></div>
           </div>
-        </div>
+          <figcaption>One plan, one factory-fit decision and the gate result, in the order they happened.</figcaption>
+        </figure>
       </div>
     </section>
 
-    <section id="features" class="section">
+    <section id="features" class="section section-2">
       <div class="container">
-        <p class="eyebrow">Features</p>
-        <h2 class="section-heading">Not a swarm. A factory that refuses bad work.</h2>
-
-        <div class="features-grid">
-          <article class="card">
-            <span class="tag">factory-fit</span>
-            <h3>Team or solo, decided by evidence</h3>
-            <p>Before anything dispatches, Cubicore sizes the task: contracts, dependency edges, write scopes. One agent if that's enough. A team if the slices are truly independent. Never maximum, never guesswork.</p>
+        <h2>A factory that refuses bad work.</h2>
+        <div class="feature-rows">
+          <article class="feature-row">
+            <span class="row-id num">01</span>
+            <div><h3>Team or solo, decided by evidence</h3><p>Cubicore sizes the task by contracts, dependency edges and write scopes. One agent when that is enough, a team when the slices are independent.</p></div>
           </article>
-          <article class="card">
-            <span class="tag">mechanical gates</span>
-            <h3>Checks, not opinions</h3>
-            <p>Every contract ships with blocking checks (tests, typecheck, grep). The run doesn't hit “done” until the checks actually pass on disk.</p>
+          <article class="feature-row">
+            <span class="row-id num">02</span>
+            <div><h3>Checks, not opinions</h3><p>Each contract carries blocking checks: tests, typecheck, grep. Done means those checks passed on disk.</p></div>
           </article>
-          <article class="card">
-            <span class="tag">founder-facing</span>
-            <h3>You approve the team, not the code</h3>
-            <p>Factory-fit arrives as a question you answer with one click: team of N, or single agent? No transcripts required.</p>
+          <article class="feature-row">
+            <span class="row-id num">03</span>
+            <div><h3>You approve the team, not the code</h3><p>Factory fit is one question: team of N, or a single agent. No transcripts to read.</p></div>
           </article>
-          <article class="card">
-            <span class="tag">union-scope</span>
-            <h3>Collisions are caught, not blamed</h3>
-            <p>Write-scope disjointness is checked at plan time; the run also checks that nothing landed outside the plan's declared files.</p>
+          <article class="feature-row">
+            <span class="row-id num">04</span>
+            <div><h3>Collisions are caught, not blamed</h3><p>Cubicore checks scopes at plan time, then checks files that landed outside the plan.</p></div>
           </article>
-          <article class="card">
-            <span class="tag">verified on disk</span>
-            <h3>A finished worktree, not a promise</h3>
-            <p>Work only reaches <code>done</code> after blocking checks re-ran on the real tree. The ledger records tokens, cost, and the factory's own verdict.</p>
+          <article class="feature-row">
+            <span class="row-id num">05</span>
+            <div><h3>A finished worktree, not a promise</h3><p>Checks re-run on the real tree before done. The ledger records tokens, cost and the verdict.</p></div>
           </article>
-          <article class="card">
-            <span class="tag">honest by default</span>
-            <h3>It says when it refuses</h3>
-            <p>Coupled, ambiguous, or empty tasks get refused — or a single agent — not a fake fan-out. The refusal is recorded in the plan, not hand-waved away.</p>
+          <article class="feature-row">
+            <span class="row-id num">06</span>
+            <div><h3>It says when it refuses</h3><p>Coupled, ambiguous or empty tasks get refused or a single agent. The refusal goes into the plan.</p></div>
           </article>
         </div>
       </div>
@@ -103,123 +94,84 @@
 
     <section id="examples" class="section">
       <div class="container">
-        <p class="eyebrow">Examples</p>
-        <h2 class="section-heading">Type a wish. Read a plan. Press go.</h2>
-
-        <div class="example-lazy" data-observe>
-          <p class="example-lazy-say"><span class="dim">you, tired and unspecific:</span> “hey can you make me a habit tracker thing that works in the browser”</p>
-          <div class="example-lazy-flow">
-            <span class="dim">→ planner: asks what the repo can’t answer · writes a plan (2 disjoint contracts)</span>
-            <span class="dim">→ you read the plan <code>.md</code> · if it looks wrong, <code>/cubicore:refine</code></span>
-            <span class="dim">→ <code>/cubicore:execute</code> → associates buzz off, gates decide, ledger records verdict</span>
+        <h2>Type a wish. Read a plan. Press go.</h2>
+        <div class="example-say">
+          <p class="label">You, tired and unspecific</p>
+          <p class="say">“hey can you make me a habit tracker thing that works in the browser”</p>
+          <div class="say-flow">
+            <span>planner asks what the repo cannot answer, writes a plan with 2 disjoint contracts</span>
+            <span>you read <code>CUBICORE_PLAN.md</code>, or run <code>/cubicore:refine</code></span>
+            <span><code>/cubicore:execute</code> dispatches associates, gates decide, the ledger records it</span>
           </div>
         </div>
-
-        <div class="examples-grid">
-          <article class="example-card">
-            <div class="example-head">
-              <h3>Personal expense tracker</h3>
-              <span class="chip">CLI · 3 associates</span>
-            </div>
-            <pre>/cubicore:plan-full "CLI in Rust that tracks my daily expenses in SQLite — 
-add/list/delete/summary. Zero deps beyond the std lib where possible."</pre>
+        <div class="example-list">
+          <article class="example-row">
+            <div><h3>Personal expense tracker</h3><p class="label">CLI, 3 associates</p></div>
+            <pre>/cubicore:plan-full "CLI in Rust that tracks my daily expenses in SQLite. Add, list, delete and summary. Zero deps beyond the std lib where possible."</pre>
           </article>
-
-          <article class="example-card">
-            <div class="example-head">
-              <h3>Habit tracker web app</h3>
-              <span class="chip">no build step</span>
-            </div>
-            <pre>/cubicore:plan-demo "a single-file habit tracker: localStorage-backed,
-streak counter, week view, prints nicely"</pre>
+          <article class="example-row">
+            <div><h3>Habit tracker web app</h3><p class="label">No build step</p></div>
+            <pre>/cubicore:plan-demo "a single-file habit tracker: localStorage-backed, streak counter, week view, prints nicely"</pre>
           </article>
-
-          <article class="example-card">
-            <div class="example-head">
-              <h3>Refactor under tests</h3>
-              <span class="chip">mechanical verify</span>
-            </div>
-            <pre>/cubicore:plan-full "split the monolith into 4 modules by domain;
-keep the test suite green throughout"</pre>
+          <article class="example-row">
+            <div><h3>Refactor under tests</h3><p class="label">Mechanical verify</p></div>
+            <pre>/cubicore:plan-full "split the monolith into 4 modules by domain. Keep the test suite green throughout"</pre>
           </article>
         </div>
       </div>
     </section>
 
-    <section id="architecture" class="section">
+    <section id="architecture" class="section section-2">
       <div class="container">
-        <p class="eyebrow">Architecture</p>
-        <h2 class="section-heading">Five steps, one loop.</h2>
-
-        <div class="arch-flow">
-          <div class="arch-step"><b>Plan</b><span>plan-full</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Check</b><span>disjoint?</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Dispatch</b><span>associates</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Gate</b><span>schema → verify → scope</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Integrate</b><span>merge + build</span></div>
-        </div>
-
-        <div class="arch-flow" style="margin-top:.6rem;">
-          <div class="arch-step"><b>Verify</b><span>blocking checks</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Refine</b><span>if anything failed</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Preview</b><span>launches in a browser</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Retro</b><span>tokens & verdict</span></div>
-          <div class="arch-arrow">→</div>
-          <div class="arch-step"><b>Done</b><span>or honestly not</span></div>
-        </div>
-
-        <div class="panel" style="margin-top:1.2rem;">
+        <h2>Ten steps, one loop.</h2>
+        <ol class="trail">
+          <li><span class="trail-step num">01</span><span class="trail-name">Plan</span><span class="trail-detail">plan-full</span></li>
+          <li><span class="trail-step num">02</span><span class="trail-name">Check</span><span class="trail-detail">disjoint?</span></li>
+          <li><span class="trail-step num">03</span><span class="trail-name">Dispatch</span><span class="trail-detail">associates</span></li>
+          <li><span class="trail-step num">04</span><span class="trail-name">Gate</span><span class="trail-detail">schema, verify, scope</span></li>
+          <li><span class="trail-step num">05</span><span class="trail-name">Integrate</span><span class="trail-detail">merge and build</span></li>
+          <li><span class="trail-step num">06</span><span class="trail-name">Verify</span><span class="trail-detail">blocking checks</span></li>
+          <li><span class="trail-step num">07</span><span class="trail-name">Refine</span><span class="trail-detail">if anything failed</span></li>
+          <li><span class="trail-step num">08</span><span class="trail-name">Preview</span><span class="trail-detail">launches in a browser</span></li>
+          <li><span class="trail-step num">09</span><span class="trail-name">Retro</span><span class="trail-detail">tokens and verdict</span></li>
+          <li><span class="trail-step num">10</span><span class="trail-name">Done</span><span class="trail-detail">or honestly not</span></li>
+        </ol>
+        <div class="command-panel">
           <pre><code>$ cubicore plan-demo
 $ /cubicore:execute
 $ /cubicore:debug</code></pre>
-          <p style="color:var(--ink-2); font-size:.9rem; margin-top:.6rem;">Inside OpenCode. Works from any git repo. Inside opencode, an MCP — a parallel factory with contracts — not another chatbot wrapper.</p>
+          <p>Inside OpenCode, from any git repo. Cubicore is an MCP, a parallel factory with contracts, not another chatbot wrapper.</p>
         </div>
       </div>
     </section>
 
-    <section id="install" class="section">
-      <div class="container">
-        <p class="eyebrow">Install</p>
-        <h2 class="section-heading">One command. No ceremony.</h2>
-
-        <div class="install-grid">
-          <div>
-            <div class="terminal">
-              <div class="terminal-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-              <div class="terminal-body">
-                <div><span class="prompt">$</span> npx cubicore@latest setup</div>
-                <div><span class="value">✓</span> <span class="dim">mcp registered in opencode.json</span></div>
-                <div><span class="value">✓</span> <span class="dim">agents installed</span></div>
-                <div><span class="prompt">$</span> <span class="dim">restart opencode</span></div>
-                <div><span class="prompt">$</span> /cubicore:plan-demo</div>
-              </div>
-            </div>
-            <p style="margin-top:1rem; color:var(--ink-2); font-size:.94rem;">Global install, Linux/macOS/Windows/NixOS. Native OpenCode (existing config) by default; Flatpak requires <code>--flatpak</code>.</p>
-          </div>
-
-          <div class="install-steps">
-            <div class="step-row"><div class="step-num">1</div><p>Run the installer. It detects OpenCode, backs up your config, wires the MCP.</p></div>
-            <div class="step-row"><div class="step-num">2</div><p>Restart OpenCode. The <code>/cubicore:*</code> commands appear automatically.</p></div>
-            <div class="step-row"><div class="step-num">3</div><p><code>/cubicore:plan-demo "…"</code> — Cubicore writes <code>CUBICORE_PLAN.md</code> and asks the founder the factory-fit question.</p></div>
-            <div class="step-row"><div class="step-num">4</div><p>Review the plan. Say <code>/cubicore:execute</code> when satisfied.</p></div>
-          </div>
+    <section id="install" class="section install-band">
+      <div class="container install-grid">
+        <div>
+          <h2>One command, inside OpenCode.</h2>
+          <p class="lead">Global install for Linux, macOS, Windows and NixOS. Native OpenCode uses your config. Flatpak needs <code>--flatpak</code>.</p>
+          <code class="install-command install-command-large">npx cubicore@latest setup</code>
         </div>
+        <ol class="install-steps">
+          <li><span class="num">1</span><p>The installer detects OpenCode, backs up your config and wires the MCP.</p></li>
+          <li><span class="num">2</span><p>Restart OpenCode. The <code>/cubicore:*</code> commands appear.</p></li>
+          <li><span class="num">3</span><p>Run <code>/cubicore:plan-demo "..."</code>. Cubicore writes <code>CUBICORE_PLAN.md</code> and asks the factory-fit question.</p></li>
+          <li><span class="num">4</span><p>Review the plan. Say <code>/cubicore:execute</code> when satisfied.</p></li>
+        </ol>
       </div>
     </section>
-
   </main>
 
   <footer class="footer">
-    <div class="container footer-row">
-      <span><a href="https://github.com/velo4705/cubicore" target="_blank" rel="noreferrer">velo4705/cubicore</a> · MIT</span>
-      <span>Built with <a href="https://opencode.ai" target="_blank" rel="noreferrer">opencode</a> as the reference host.</span>
+    <div class="container footer-inner">
+      <span class="wordmark">Cubicore</span>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="https://github.com/velo4705/cubicore" target="_blank" rel="noreferrer">velo4705/cubicore</a>
+        <a href="docs.html">Docs</a>
+        <a href="tutorial.html">Tutorial</a>
+        <a href="https://opencode.ai" target="_blank" rel="noreferrer">opencode.ai</a>
+      </nav>
+      <p class="colophon">MIT. Built with OpenCode as the reference host.</p>
     </div>
   </footer>
 

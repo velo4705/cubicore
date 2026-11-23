@@ -1,0 +1,83 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "page",
+  "shape": "Manifesto",
+  "theme": "Cobalt, dark derivation of the Cubicore brand",
+  "axes": "dark/grotesk-sans/cool-blue",
+  "hero": "Stage",
+  "nav": "edge-aligned",
+  "footer": "mast",
+  "imagery": "none",
+  "photos": [],
+  "entry": "dark paper ladder, logo-blue accent re-derived at hue 250, neutral offset shadows",
+  "fingerprint": "logo-led dark instrument page, graphite bands, pale blue field, hairline rows",
+  "sections": [
+   "hero record",
+   "feature rows",
+   "example commands",
+   "audit trail",
+   "install band"
+  ],
+  "signature": "the dispatch and gate record in the hero",
+  "waived": [],
+  "prompt": "give the Cubicore site in a dark scheme",
+  "outcome": "static 0 FAIL 0 WARN 1 NOTE; render tier unavailable; brand spec records the dark derivation",
+  "date": "2026-11-23"
+ },
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "page",
+  "shape": "Manifesto",
+  "theme": "Cobalt (brand spec 2026-11-23)",
+  "axes": "light/grotesk-sans/cool-blue",
+  "hero": "Stage",
+  "nav": "edge-aligned",
+  "footer": "mast",
+  "imagery": "none",
+  "photos": [],
+  "entry": "logo blue and pale blue from local SVG, blue-to-paper hero ramp, soft blue shadow, cut corners",
+  "fingerprint": "logo-led light instrument page, pale blue field, graphite bands, hairline rows",
+  "sections": [
+   "hero record",
+   "feature rows",
+   "example commands",
+   "audit trail",
+   "install band"
+  ],
+  "signature": "the dispatch and gate record in the hero",
+  "waived": [],
+  "prompt": "match the site to the logo colour scheme; gradients and shadows may be used",
+  "outcome": "static 0 FAIL 0 WARN 1 NOTE; render tier unavailable; brand spec read from local logo assets",
+  "date": "2026-11-23"
+ },
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "page",
+  "shape": "Manifesto",
+  "theme": "Console (by request)",
+  "axes": "dark/grotesk-sans/chromatic-amber",
+  "hero": "Stage",
+  "nav": "edge-aligned",
+  "footer": "mast",
+  "imagery": "none",
+  "photos": [],
+  "entry": "the run record as an audit trail",
+  "fingerprint": "record-led dark instrument page, hairline rows, one amber action",
+  "sections": [
+   "hero record",
+   "feature rows",
+   "example commands",
+   "audit trail",
+   "install band"
+  ],
+  "signature": "the dispatch and gate record in the hero",
+  "waived": [],
+  "prompt": "make the Cubicore website beautiful with one of Cobalt, Dusk, Ribbon, Console, Ink, Ultraviolet",
+  "outcome": "static 0 FAIL 0 REFLEX 1 NOTE; render tier unavailable; finish-review subagent 5 findings resolved",
+  "date": "2026-11-23"
+ }
+]
