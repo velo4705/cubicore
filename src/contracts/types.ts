@@ -240,6 +240,11 @@ export type PlanMode = "demo" | "full";
 export interface Plan {
   /** Demo is allowed to be rushed; Full is engineering work and must not be. */
   mode?: PlanMode;
+  /**
+   * Optional cap on simultaneous workers. Omit for unbounded fan-out; the
+   * plan decides its own limit, neither mode imposes one.
+   */
+  maxConcurrency?: number;
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;

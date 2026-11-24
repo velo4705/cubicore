@@ -458,7 +458,22 @@ export async function runGates(
   results.push(schema);
   if (!schema.passed) return results;
 
-  const verify = await gateVerify(input, runner);
+  // A plan can declare two checks with the same command. They inspect the
+  // same tree at the same moment, so run it once and share the result. The
+  // cache is local to this gate evaluation: a later revision or another
+  // worker still sees fresh output after files change.
+  const seen = new Map<string, Promise<{ exitCode: number; output: string }>>();
+  const deduped: CommandRunner = {
+    run(command) {
+      let pending = seen.get(command);
+      if (!pending) {
+        pending = runner.run(command);
+        seen.set(command, pending);
+      }
+      return pending;
+    },
+  };
+  const verify = await gateVerify(input, deduped);
   results.push(verify);
   if (!verify.passed) return results;
 

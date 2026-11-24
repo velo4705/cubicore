@@ -571,7 +571,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["mode", "topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
+    if (!["mode", "maxConcurrency", "topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -702,14 +702,23 @@ export function parsePlan(raw: string): Plan {
   if (modeRaw !== undefined && modeRaw !== "demo" && modeRaw !== "full") {
     problems.push('mode must be "demo" or "full"');
   }
+  const maxConcurrencyRaw = json.maxConcurrency;
+  if (maxConcurrencyRaw !== undefined) {
+    checkPositiveInt(maxConcurrencyRaw, "maxConcurrency", problems);
+    if (typeof maxConcurrencyRaw === "number" && !Number.isInteger(maxConcurrencyRaw)) {
+      problems.push("maxConcurrency must be an integer");
+    }
+  }
 
   if (problems.length > 0) {
     throw new MalformedPlan("coordinator response did not match the plan schema", problems);
   }
 
   const mode = modeRaw === "demo" || modeRaw === "full" ? modeRaw : undefined;
+  const maxConcurrency = typeof maxConcurrencyRaw === "number" ? maxConcurrencyRaw : undefined;
   return {
     ...(mode === undefined ? {} : { mode }),
+    ...(maxConcurrency === undefined ? {} : { maxConcurrency }),
     topology: topologyRaw as Topology,
     summary,
     opinion,

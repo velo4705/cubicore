@@ -133,6 +133,9 @@ export class WorkerSessions {
    */
   mode: PlanMode = "demo";
 
+  /** Short read-only host state hint for worker briefs. Empty means no section. */
+  hostState = "";
+
   private readonly observers = new Map<string, RunObserver>();
   /** The worktree each associate worked in, so only approved work is collected. */
   private readonly worktrees = new Map<string, Worktree>();
@@ -212,8 +215,9 @@ export class WorkerSessions {
     if (worktree) refreshWorktree(worktree, this.root, contract);
 
     try {
+      const contractBrief = renderPrompt(contract, { stepsProgress });
       await this.spawner.prompt(sessionId, {
-        text: renderPrompt(contract, { stepsProgress }),
+        text: this.hostState ? `${contractBrief}\n\n${this.hostState}` : contractBrief,
         model: routing?.model,
         tools: toolsForContract(contract),
       });

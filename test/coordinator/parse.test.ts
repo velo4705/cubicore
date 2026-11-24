@@ -167,7 +167,7 @@ describe("the emitted schema matches the parser", () => {
     // either. Every plan carrying a preview block was rejected as "plan has
     // unknown field preview", and the planner had to discover that by trying.
     const schemaKeys = Object.keys(planSchema.properties).sort();
-    const parserKeys = ["acceptance", "contracts", "opinion", "context", "design", "graphBudget", "summary", "topology", "preview", "integration", "scale", "reference", "mode"].sort();
+    const parserKeys = ["acceptance", "contracts", "opinion", "context", "design", "graphBudget", "summary", "topology", "preview", "integration", "scale", "reference", "mode", "maxConcurrency"].sort();
     expect(schemaKeys).toEqual(parserKeys);
 
     // And the parser must accept a plan carrying every key the schema offers.
@@ -318,3 +318,14 @@ describe("plan mode", () => {
     }
   });
 });
+
+  test("parses a plan-declared concurrency cap and rejects a bad one", () => {
+    expect(parsePlan(JSON.stringify({ ...VALID, maxConcurrency: 4 })).maxConcurrency).toBe(4);
+    try {
+      parsePlan(JSON.stringify({ ...VALID, maxConcurrency: 0 }));
+      expect.unreachable("expected a zero cap to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(MalformedPlan);
+      expect((error as MalformedPlan).problems.join(" ")).toContain("maxConcurrency");
+    }
+  });

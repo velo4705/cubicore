@@ -83,7 +83,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 - [ ] Lean the brief — exact file list, one check command, exact report format
 - [x] worker.prompted renamed to worker.prompt-sent (2026-11-17); host never signals idle, i.e. it is not the observer's bug; keep the tracking item until the host emits it
 
-- [ ] Concurrency cap — `dispatch` already accepts `maxConcurrency` but nothing wires it; no caller uses it
+- [x] Concurrency cap — 2026-11-24: plan-declared `maxConcurrency` parsed and wired from execute; no mode cap; unbounded by default
 - [ ] Measure once — A/B after the cheap wins, not before (blocked by the three above + ~518k tok/tier measured and shipped)
 
 ## Deferred: cost & budget for every step (open only)
@@ -91,7 +91,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 - [ ] Plan tool derives mechanical parts (contract ids, graph budget defaults, baseline check union, wave edges) — hand-written schema drift goes away
 - [ ] Aggregate machine-readable artifacts mechanically — prose stays to the Main agent, not the artifact
 - [ ] Worktree scoping — full-repo checkout per worker is 36 git ops for twelve workers, index-lock contention
-- [ ] Check dedupe at run time — same command, one run
+- [x] Check dedupe at run time — 2026-11-24: identical commands share one execution within a gate evaluation; later rounds still re-run
 - [ ] Research survey cached per directory — re-walk only on re-plan
 - [ ] Single-reader topology (D7) — design change, wait for 3+4 to land + measure
 - [ ] Not before, not ever: "smart" replanning spending more than the project
@@ -176,7 +176,7 @@ None of these is committed as work, just tracked here so they are not lost:
 ## 2026-11-17 — DX ranking shipped; next candidates to weigh, in order
 
 - [ ] `/preview` — a model-viewed rendered image + explicit "user happiness" line (blocked by exposing image attachment in the host agent — needs the host session to attach the screenshot)
-- [ ] integration required for `plan-full` — flag plan lacking `integration` loudly, but not blocking (adjudicated flat-blocking already rejected)
+- [x] integration required for `plan-full` — 2026-11-24: loud advisory in the execute verdict, never a blocker
 - [ ] Visual check as blocking gate — refused; developer intent decides before shipping
 
 
@@ -200,5 +200,5 @@ None of these is committed as work, just tracked here so they are not lost:
 ## 2026-11-19 — `.cubicore-state.json` shipped; the live use of it still pending
 
 - [x] `.cubicore-state.json` introspection and write — done 2026-11-19
-- [ ] Wire host reality from `.cubicore-state.json` into planner/assoicate briefs so associates don't reinstall what's already on the host
+- [x] Wire host reality from `.cubicore-state.json` into associate briefs — 2026-11-24: read-only hint appended to each worker brief
 - [ ] Estimate p50/p75 from history (DX #5) — not started

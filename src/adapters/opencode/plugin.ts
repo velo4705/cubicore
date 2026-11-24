@@ -7,6 +7,7 @@ import { addUsage, type TokenUsage } from "../../telemetry/types";
 import { PhaseTimer } from "../../telemetry/timing";
 import { readUsage } from "../../telemetry/adapters/opencode";
 import { checkTopology } from "../../coordinator/topology";
+import { renderHostStateBrief } from "../../project/introspect";
 import { DEFAULT_MODEL } from "../../mcp/model";
 import { CUBICORE_AGENTS } from "../../mcp/agents";
 import { parsePlan, MalformedPlan } from "../../coordinator/parse";
@@ -400,6 +401,7 @@ export const CubicorePlugin: Plugin = async (input) => {
             directory,
           );
           workers.mode = parsed.mode ?? "full";
+          workers.hostState = renderHostStateBrief(directory);
           eventTargets.push(workers);
 
           const recorder = new RunRecorder(parsed.topology, timer);
@@ -409,7 +411,7 @@ export const CubicorePlugin: Plugin = async (input) => {
             parsed,
             workers.asStagedRunner(),
             commandRunner(ctx.directory || directory),
-            { repo: repoSource(root), mode: parsed.mode ?? "full", integration: parsed.integration },
+            { repo: repoSource(root), mode: parsed.mode ?? "full", integration: parsed.integration, maxConcurrency: parsed.maxConcurrency },
           );
           timer.stop("dispatch");
 

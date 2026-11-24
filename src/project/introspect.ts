@@ -136,6 +136,40 @@ export function introspectProject(dir: string): ProjectStateSnapshot {
   return { schemaVersion: 1, host, nativeDeps, playwrightBrowsers };
 }
 
+/**
+ * Render the snapshot as a short, read-only section of a worker's brief.
+ *
+ * The snapshot is a hint from `prepare`, not ground truth: packages can be
+ * removed after it was written. Missing or malformed files simply produce no
+ * section. Nothing here reads credentials or turns a hint into a gate.
+ */
+export function renderHostStateBrief(dir: string): string {
+  try {
+    const raw = readFileSync(join(dir, ".cubicore-state.json"), "utf8");
+    const snap = JSON.parse(raw) as ProjectStateSnapshot;
+    if (snap.schemaVersion !== 1 || !snap.host) return "";
+    const installed = Object.entries(snap.nativeDeps ?? {})
+      .filter(([, probe]) => probe.installed)
+      .map(([name]) => name);
+    const browsers = (snap.playwrightBrowsers ?? [])
+      .map((b) => `${b.name}${b.revision === null ? "" : ` (revision ${b.revision})`}`);
+    const lines = [
+      "# Host state already checked",
+      "",
+      `This is a hint from .cubicore-state.json, written ${snap.host.writtenAt}. Verify before reinstalling.`,
+      `node: ${snap.host.node || "unknown"}`,
+      `npm: ${snap.host.npm || "unknown"}`,
+      `platform: ${snap.host.platform || "unknown"}`,
+      `node_modules: ${snap.host.nodeModulesPresent ? "present" : "absent"}`,
+      `native deps already installed: ${installed.length > 0 ? installed.join(", ") : "none"}`,
+      `Playwright browsers cached: ${browsers.length > 0 ? browsers.join(", ") : "none"}`,
+    ];
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+
 /** Write the snapshot to <dir>/.cubicore-state.json — additive, never blocks. */
 export function writeStateSnapshot(dir: string, snapshot?: ProjectStateSnapshot): string | null {
   const snap = snapshot ?? introspectProject(dir);

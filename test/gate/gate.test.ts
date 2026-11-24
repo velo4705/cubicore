@@ -165,6 +165,30 @@ describe("runGates", () => {
     expect(gates.map((g) => g.gate)).toEqual(["schema", "verify"]);
   });
 
+  test("runs a repeated check command once per gate evaluation", async () => {
+    let calls = 0;
+    const counting: CommandRunner = {
+      async run() {
+        calls++;
+        return { exitCode: 0, output: "" };
+      },
+    };
+    await runGates(
+      {
+        artifact: artifact("x"),
+        contract: contract({
+          checks: [
+            { id: "a", kind: "intent", command: "npm run typecheck", expectation: "exit 0", gating: "blocking", convergent: true },
+            { id: "b", kind: "intent", command: "npm run typecheck", expectation: "exit 0", gating: "blocking", convergent: true },
+          ],
+        }),
+      },
+      counting,
+      { changedFiles: ["src/a.ts"] },
+    );
+    expect(calls).toBe(1);
+  });
+
   test("runs all three when both earlier gates pass", async () => {
     const gates = await runGates(
       { artifact: artifact("x"), contract: contract() },

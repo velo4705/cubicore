@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { introspectProject, writeStateSnapshot } from "../../src/project/introspect";
+import { introspectProject, renderHostStateBrief, writeStateSnapshot } from "../../src/project/introspect";
 
 const roots: string[] = [];
 const root = () => {
@@ -83,5 +83,27 @@ describe("introspectProject", () => {
     // No package.json → not declared; but installed is true because the dir exists
     expect(snap.nativeDeps.sharp.declared).toBe(false);
     expect(snap.nativeDeps.sharp.installed).toBe(true);
+  });
+});
+
+
+describe("renderHostStateBrief", () => {
+  test("turns the snapshot into a short worker hint", () => {
+    const dir = root();
+    writeStateSnapshot(dir, {
+      schemaVersion: 1,
+      host: { writtenAt: "2026-11-24T00:00:00Z", node: "v24", npm: "11", platform: "linux", nodeModulesPresent: true },
+      nativeDeps: { sharp: { declared: true, installed: true }, playwright: { declared: true, installed: false } },
+      playwrightBrowsers: [{ name: "chromium", revision: 1234, path: "/cache/chromium" }],
+    });
+    const brief = renderHostStateBrief(dir);
+    expect(brief).toContain("# Host state already checked");
+    expect(brief).toContain("native deps already installed: sharp");
+    expect(brief).toContain("chromium (revision 1234)");
+    expect(brief).toContain("Verify before reinstalling");
+  });
+
+  test("returns nothing when no snapshot exists", () => {
+    expect(renderHostStateBrief(root())).toBe("");
   });
 });

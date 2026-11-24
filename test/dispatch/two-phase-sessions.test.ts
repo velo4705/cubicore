@@ -92,3 +92,23 @@ describe("two-phase worker sessions", () => {
     expect(diff.stdout.trim()).toBe("");
   });
 });
+
+
+test("the host-state hint is appended to the worker brief", async () => {
+  let sent = "";
+  const sessions = new WorkerSessions(
+    {
+      async create() { return { sessionId: "ses_state" }; },
+      async prompt(_id, input) { sent = input.text; },
+      async changedFiles() { return []; },
+    },
+    undefined, undefined, undefined, undefined, process.cwd(), undefined, false,
+    () => ({ idle: true, outcome: "succeeded" }),
+  );
+  sessions.hostState = "# Host state already checked\nnpm: 11";
+  const handle = await sessions.prepare(contract());
+  await sessions.start(handle, contract());
+  expect(sent).toContain("# Objective");
+  expect(sent).toContain("# Host state already checked");
+  expect(sent).toContain("npm: 11");
+});

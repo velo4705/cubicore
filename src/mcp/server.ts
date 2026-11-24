@@ -15,6 +15,7 @@ import {
 } from "./runs";
 import { findCallerSession, verifyModel, callerModel } from "../adapters/opencode/runtime";
 import { agentAvailable, installAgent } from "./install";
+import { renderHostStateBrief } from "../project/introspect";
 import { deriveBaseline } from "../validate/baseline";
 import { manualRunSteps, nodePathEnv, previewIt } from "../plan/preview";
 import { screenshotCheck } from "../screenshot/check";
@@ -25,6 +26,7 @@ import { capabilities, renderCapabilities } from "../plan/capabilities";
 import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { toolHints, renderToolHint } from "../plan/tool-hint";
+import { integrationWarning } from "../plan/integration-warning";
 import {
   assessCoverage,
   renderCoverage,
@@ -670,6 +672,7 @@ async function runToCompletion(
   const inherited = await callerModel(runtime);
   const workers = workerSessions(runtime, progress, dir, inherited);
   workers.mode = parsed.mode ?? "full";
+  workers.hostState = renderHostStateBrief(dir);
   // The event connection never closes on its own, so it is aborted once
   // dispatch returns. Without this the process lives forever and the client
   // waits on a response it already has.
@@ -718,6 +721,7 @@ async function runToCompletion(
       // Demo: one integration check at the end, no repair pass.
       mode: parsed.mode ?? "full",
       integration: parsed.integration,
+      maxConcurrency: parsed.maxConcurrency,
       // Contracts whose worktrees should be preserved (not wiped) on resume.
       preserveContractIds,
       // Step completion states per contract, so associates skip completed steps.
@@ -924,8 +928,10 @@ async function runToCompletion(
     `Verdict: ${retrospective.verdict}`,
   ].join("\n");
 
+  const missingIntegration = integrationWarning(parsed);
   return {
     summary: [
+      ...(missingIntegration ? [missingIntegration, ""] : []),
       `RELAY THIS ROSTER TO THE FOUNDER IN YOUR REPLY (verbatim):`,
       roster,
       ``,
@@ -3326,6 +3332,8 @@ Work in this order, and do not skip a step.
 initialises one and records a baseline. If it already is one, the tool leaves it alone.
 
 **1. Decide scope.** ${decideScope}
+
+**Concurrency:** Omit \`maxConcurrency\` to launch every ready contract at once. Set it to a positive integer only when this host or plan needs a limit. Neither demo nor full mode imposes a cap on its own.
 
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, build with the best *current-trend* stack for this domain and say so — not merely the most popular one from two years ago. Name the chosen combo and a one-sentence reason. Do not ask — decide and state.
 

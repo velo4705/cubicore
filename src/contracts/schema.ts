@@ -140,6 +140,11 @@ export const planSchema = {
       enum: ["demo", "full"],
       description: "Demo is allowed to be rushed; Full is engineering work and must not be.",
     },
+    maxConcurrency: {
+      type: "integer",
+      minimum: 1,
+      description: "Optional cap on simultaneous workers. Omit for unbounded fan-out.",
+    },
     topology: {
       type: "string",
       enum: ["fan-out", "pipeline", "shared-context", "refuse"],

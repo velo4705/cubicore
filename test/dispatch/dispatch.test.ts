@@ -98,6 +98,27 @@ describe("dispatch", () => {
     expect(Math.max(...inflight)).toBe(3);
   });
 
+  test("honours a declared concurrency cap", async () => {
+    let live = 0;
+    let peak = 0;
+    const runner: WorkerRunner = {
+      async run(c) {
+        live++;
+        peak = Math.max(peak, live);
+        await new Promise((r) => setTimeout(r, 5));
+        live--;
+        return ok(c.id, [`src/${c.id}.ts`]);
+      },
+    };
+    await dispatch(
+      plan(["a", "b", "c", "d"].map((id) => contract({ id, writes: [`src/${id}.ts`] }))),
+      runner,
+      passGate,
+      { maxConcurrency: 2 },
+    );
+    expect(peak).toBe(2);
+  });
+
   test("records unresolved findings per contract", async () => {
     const runner: WorkerRunner = { async run(c) { return ok(c.id); } };
     const out = await dispatch(
