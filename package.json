@@ -9,7 +9,7 @@
   },
   "scripts": {
     "setup": "node dist/cli.js setup",
-    "build": "bun build src/mcp/main.ts --target=bun --outfile=dist/mcp-main.js && bun build src/cli.ts --target=node --outfile=dist/cli.js",
+    "build": "bun build src/mcp/main.ts --target=bun --outfile=dist/mcp-main.js && bun build src/cli.ts --target=node --splitting --outdir dist",
     "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit"
   },

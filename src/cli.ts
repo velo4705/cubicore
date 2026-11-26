@@ -108,11 +108,12 @@ interface CliArgs {
   version: boolean;
   yes: boolean;
   uninstall: boolean;
+  doctor: boolean;
   target: "native" | "flatpak" | null;
 }
 
 function parseArgs(argv: string[]): CliArgs | { error: string } {
-  const args: CliArgs = { help: false, version: false, yes: false, uninstall: false, target: null };
+  const args: CliArgs = { help: false, version: false, yes: false, uninstall: false, doctor: false, target: null };
   for (const arg of argv) {
     switch (arg) {
       case "setup":
@@ -121,6 +122,9 @@ function parseArgs(argv: string[]): CliArgs | { error: string } {
         break;
       case "uninstall":
         args.uninstall = true;
+        break;
+      case "doctor":
+        args.doctor = true;
         break;
       case "--native":
         if (args.target === "flatpak") return { error: "Pass either --native or --flatpak, not both." };
@@ -163,6 +167,7 @@ Usage:
 Subcommands:
   setup (default)    Install into the chosen OpenCode (interactive; --native / --flatpak)
   uninstall          Remove Cubicore from every installed target
+  doctor             Report host, auth, port, MCP registration and plan state (read-only)
                      (add --native / --flatpak to remove only one)
 
 What setup does:
@@ -328,6 +333,16 @@ async function main(): Promise<void> {
     home: homedir(),
     exists: existsSync,
   };
+
+  if (parsed.doctor) {
+    const { runDoctor, renderDoctor } = await import("./doctor");
+    const checks = await runDoctor({ directory: process.cwd() });
+    console.log(banner(version));
+    console.log(renderDoctor(checks));
+    console.log(`
+${paint(DIM, "Doctor changes nothing. Secrets are reported by source only, never by value.")}`);
+    return;
+  }
 
   if (parsed.uninstall) {
     const { uninstall } = await import("./install/uninstall");

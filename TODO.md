@@ -40,7 +40,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 - [ ] Claude Code adapter (first named)
 - [ ] Codex adapter (second named)
 - [ ] Session fallback for hosts without inline sub-agents
-- [ ] Config-first agent registration and host-specific doctor checks
+- [ ] Config-first agent registration (doctor checks shipped 2026-11-26: `npx cubicore doctor` reports credentials, port, live session-create, model config, MCP registration and plan state)
 - [ ] Cross-host smoke suite: plan → dispatch → gate → integrate → verify, on one second host
 - [ ] Host adapters declare limits instead of faking capabilities
 - [ ] Verify on a second host the same plan builds green — one config line to switch
@@ -48,7 +48,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 
 ## Area 4 — User-Visible Value (open only)
 
-- [ ] Archive of plan-and-run context across runs — one place, not `CUBICORE_PLAN*.md` archaeology
+- [x] Archive of plan-and-run context across runs — 2026-11-26: `.cubicore-archive.jsonl` records plan digest, run id, mode, topology and verdict
 - [x] Tight summary after run: done / not done, what to do next, one line — execute/debug replies end with a Next: line derived from disk state via nextLine(); the retrospective carries the done/not-done split — checked 2026-11-16
 - [x] Exit: a blocked run tells the founder exactly one next move — escalatedLine prints the single next move with the attempt count; attributed idle does not exist on this host, so this is where the audit ends, exactly as the item anticipated — checked 2026-11-16
 - [ ] Exit: nothing the founder sees is unverified — unverified lines print as unverified (keep)
@@ -56,7 +56,7 @@ see the archive before proposing. If an item appears wrong, check there first.
 ## Phase 4 — Continuous-project support (open only)
 
 - [ ] Incremental plans over existing projects
-- [ ] Stable contract IDs surviving plan rewrites
+- [x] Stable contract IDs surviving plan rewrites — 2026-11-26: fingerprint from writes and checks; green work reused after an id rename
 - [ ] Preserve green work across runs — re-run only affected contracts (requires reason or digest, not "the file changed")
 - [ ] Delta briefs — briefs for additions/removals
 - [ ] Regression ledger and change-impact report
@@ -202,3 +202,5 @@ None of these is committed as work, just tracked here so they are not lost:
 - [x] `.cubicore-state.json` introspection and write — done 2026-11-19
 - [x] Wire host reality from `.cubicore-state.json` into associate briefs — 2026-11-24: read-only hint appended to each worker brief
 - [ ] Estimate p50/p75 from history (DX #5) — not started
+- [x] doctor command — 2026-11-26: read-only host/project diagnosis, live scratch session probe, no secrets printed
+- [ ] Phase 3 groundwork shipped 2026-11-26: host registry with real config paths and declared limits (Claude Code, Codex CLI); no runtime adapters yet

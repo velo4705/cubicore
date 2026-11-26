@@ -27,6 +27,8 @@ import { ASSOCIATE_AGENT_ID, BRIEF_DIR, briefPath, briefs } from "./inline";
 import { assessRaw, explain } from "../plan/assess";
 import { toolHints, renderToolHint } from "../plan/tool-hint";
 import { integrationWarning } from "../plan/integration-warning";
+import { appendArchive, planDigest } from "./archive";
+import { contractFingerprint } from "../plan/contract-id";
 import {
   assessCoverage,
   renderCoverage,
@@ -495,20 +497,18 @@ export function satisfiedContracts(directory: string, plan: Plan): string[] {
   }
   if (done.size === 0) return [];
 
-  const same = (a: Contract, b: Contract): boolean =>
-    JSON.stringify([...a.writes].sort()) === JSON.stringify([...b.writes].sort()) &&
-    JSON.stringify(
-      a.checks.map((c) => [c.id, c.command, c.gating, c.convergent]).sort(),
-    ) ===
-      JSON.stringify(
-        b.checks.map((c) => [c.id, c.command, c.gating, c.convergent]).sort(),
-      );
+  // Map finished work by a stable fingerprint, not by the planner's chosen
+  // id. A refined plan may rename a contract and still own the same files and
+  // checks; that work is still green and must not be re-run.
+  const doneFingerprints = new Set<string>();
+  for (const id of done) {
+    const previous = last.plan.contracts.find((c) => c.id === id);
+    if (previous) doneFingerprints.add(contractFingerprint(previous));
+  }
 
   const satisfied: string[] = [];
   for (const contract of plan.contracts) {
-    if (!done.has(contract.id)) continue;
-    const previous = last.plan.contracts.find((c) => c.id === contract.id);
-    if (previous && same(previous, contract)) satisfied.push(contract.id);
+    if (doneFingerprints.has(contractFingerprint(contract))) satisfied.push(contract.id);
   }
   return satisfied;
 }
@@ -927,6 +927,18 @@ async function runToCompletion(
     ...parsed.contracts.map((c, i) => `- ${c.id}: ${states[i]}`),
     `Verdict: ${retrospective.verdict}`,
   ].join("\n");
+
+  appendArchive(dir, {
+    v: 1,
+    at: new Date().toISOString(),
+    runId,
+    planDigest: planDigest(raw),
+    mode: parsed.mode ?? "full",
+    topology: parsed.topology,
+    contracts: parsed.contracts.length,
+    state: outcome.halted ?? "done",
+    verdict: retrospective.verdict,
+  });
 
   const missingIntegration = integrationWarning(parsed);
   return {
