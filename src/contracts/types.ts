@@ -245,6 +245,11 @@ export interface Plan {
    * plan decides its own limit, neither mode imposes one.
    */
   maxConcurrency?: number;
+  /**
+   * "code" (default) dispatches through Cubicore sessions. "host" asks the
+   * model to call the host's own sub-agent tool so workers appear inline.
+   */
+  dispatch?: "code" | "host";
   topology: Topology;
   contracts: Contract[];
   graphBudget: GraphBudget;

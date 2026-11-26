@@ -145,6 +145,11 @@ export const planSchema = {
       minimum: 1,
       description: "Optional cap on simultaneous workers. Omit for unbounded fan-out.",
     },
+    dispatch: {
+      type: "string",
+      enum: ["code", "host"],
+      description: "Host dispatch shows inline sub-tasks but is model-controlled; code dispatch is the default.",
+    },
     topology: {
       type: "string",
       enum: ["fan-out", "pipeline", "shared-context", "refuse"],

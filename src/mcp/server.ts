@@ -29,6 +29,7 @@ import { toolHints, renderToolHint } from "../plan/tool-hint";
 import { integrationWarning } from "../plan/integration-warning";
 import { appendArchive, planDigest } from "./archive";
 import { contractFingerprint } from "../plan/contract-id";
+import { hostDispatchInstructions } from "./host-dispatch";
 import {
   assessCoverage,
   renderCoverage,
@@ -1212,6 +1213,13 @@ async function execute(raw: string, parentSessionID?: string, dir = process.cwd(
     return text("Plan rejected before dispatch — nothing was spent. Run plan to see why.", true);
   }
 
+  // Opt-in host dispatch: the model calls the host's own sub-agent tool so
+  // workers show as inline chat rows. No tokens are spent here and no sessions
+  // are created; the default code path is untouched.
+  if (parsed.dispatch === "host") {
+    return text(hostDispatchInstructions(parsed, dir));
+  }
+
   // A withdrawn model fails silently -- the prompt is accepted and no reply
   // ever comes -- so it is checked before any token is spent, and the run is
   // refused loudly rather than dispatching associates that do nothing.
@@ -2354,7 +2362,9 @@ async function inlineBlueprint(directory: string, args: { projectKind?: string }
     [
       `Wrote ${written.length} file(s) to ${BRIEF_DIR}/ -- one brief per associate, plus an index.`,
       "",
-      `Next: call the execute tool with no arguments. It dispatches every contract in the plan in parallel in code and returns the verdict. Do NOT dispatch these briefs yourself — one at a time or in a tool block is model-controlled and has been observed collapsing to a single worker.`,
+      loaded.plan.dispatch === "host"
+        ? `This plan declares dispatch: host. Call the host's sub-agent tool for EVERY brief in ONE tool block, in parallel. Never dispatch one at a time, never wait between calls, never loop sequentially. If the host cannot emit them together, stop and say so; do not fall back to serial. After all reports, call record_inline_run.`
+        : `Next: call the execute tool with no arguments. It dispatches every contract in the plan in parallel in code and returns the verdict. Do NOT dispatch these briefs yourself — one at a time or in a tool block is model-controlled and has been observed collapsing to a single worker.`,
       "",
       "Briefs written (informational — execute reads the plan, not these files):",
       "",
@@ -3347,6 +3357,8 @@ initialises one and records a baseline. If it already is one, the tool leaves it
 
 **Concurrency:** Omit \`maxConcurrency\` to launch every ready contract at once. Set it to a positive integer only when this host or plan needs a limit. Neither demo nor full mode imposes a cap on its own.
 
+**Dispatch visibility:** Omit \`dispatch\` for code-level sessions, which are reliable but appear only in the host's task list. Set \`"dispatch": "host"\` only when the founder explicitly asks for inline sub-task rows in the chat; that path is model-controlled and can collapse to serial calls, so never choose it on your own.
+
 **Framework & language:** If the user named a framework or programming language(s) to achieve the build, use only that — recommended is ignored. If the user did not mention any, build with the best *current-trend* stack for this domain and say so — not merely the most popular one from two years ago. Name the chosen combo and a one-sentence reason. Do not ask — decide and state.
 
 **Reference (required for UI-capable plans — check the brief, then research):** Read the brief once. If the founder already named a reference in it — a URL, a local file path, an attached image shown in the conversation, or an explicit style/direction — treat THAT as the reference and skip ahead: record the source verbatim as the plan's top-level 'reference' field ("reference": "<reference>"). The plan inherits its look from the named reference.
@@ -3606,9 +3618,12 @@ Default: read CUBICORE_PLAN.json. If absent, CUBICORE_PLAN_1.json. Or call the e
    chat row. Every builder session is created together, so all workers appear at once; a
    builder that needs another contract's files is briefed only when those files land.
    Integration/smoke sessions are created AFTER every builder finishes. This is the ONLY
-   path that guarantees simultaneous workers. Do NOT dispatch associates
-   yourself, one at a time or in a tool block — that path is model-controlled and has been
-   observed reverting to a single worker after an opencode update.
+   path that guarantees simultaneous workers. Do NOT dispatch associates yourself unless the plan
+   explicitly says \`dispatch: host\` AND the execute tool returned a HOST SUBAGENT DISPATCH block.
+   In that one case, emit EVERY brief as a sub-agent call in the SAME tool block, in parallel.
+   Never call one, wait, then call the next; never loop sequentially. If the calls cannot be emitted
+   together, stop and say so instead of going one by one. Then call \`record_inline_run\`. This path
+   is model-controlled and has been observed reverting to a single worker after an opencode update.
 3. Wait for the execute tool's result. Never merge reports yourself.
 4. Put the tool's "RELAY THIS ROSTER" block VERBATIM in your chat reply — one line per
    worker with its verdict, then the overall verdict. Tool results are collapsed; this

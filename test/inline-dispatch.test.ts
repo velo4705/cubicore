@@ -72,6 +72,13 @@ describe("inline sub-task dispatch is available when the host supports it", () =
     expect(full).toContain("refuses to rush");
   });
 
+  it("teaches planners when to opt into host dispatch", () => {
+    const full = promptFor("plan-full", { request: "a product" }).messages?.[0]?.content.text ?? "";
+    expect(full).toContain("Dispatch visibility");
+    expect(full).toContain("dispatch\": \"host\"");
+    expect(full).toContain("never choose it on your own");
+  });
+
   it("requires the preview prompt to relay the manual terminal steps", () => {
     const prompt = promptFor("preview", {}).messages?.[0]?.content.text ?? "";
     expect(prompt).toContain("TO RUN IT YOURSELF");

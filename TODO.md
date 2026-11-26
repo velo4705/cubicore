@@ -204,3 +204,4 @@ None of these is committed as work, just tracked here so they are not lost:
 - [ ] Estimate p50/p75 from history (DX #5) — not started
 - [x] doctor command — 2026-11-26: read-only host/project diagnosis, live scratch session probe, no secrets printed
 - [ ] Phase 3 groundwork shipped 2026-11-26: host registry with real config paths and declared limits (Claude Code, Codex CLI); no runtime adapters yet
+- [ ] Opt-in `dispatch: "host"` for inline chat sub-tasks — 2026-11-26: prompt and tool branch shipped, but the model-controlled path still needs a live run to prove all calls land in one block

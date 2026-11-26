@@ -571,7 +571,7 @@ export function parsePlan(raw: string): Plan {
   }
 
   for (const key of Object.keys(json)) {
-    if (!["mode", "maxConcurrency", "topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
+    if (!["mode", "maxConcurrency", "dispatch", "topology", "summary", "opinion", "context", "contracts", "graphBudget", "preview", "design", "factoryFit", "integration", "scale", "reference", "acceptance"].includes(key)) {
       problems.push(`plan has unknown field "${key}"`);
     }
   }
@@ -702,6 +702,10 @@ export function parsePlan(raw: string): Plan {
   if (modeRaw !== undefined && modeRaw !== "demo" && modeRaw !== "full") {
     problems.push('mode must be "demo" or "full"');
   }
+  const dispatchRaw = json.dispatch;
+  if (dispatchRaw !== undefined && dispatchRaw !== "code" && dispatchRaw !== "host") {
+    problems.push('dispatch must be "code" or "host"');
+  }
   const maxConcurrencyRaw = json.maxConcurrency;
   if (maxConcurrencyRaw !== undefined) {
     checkPositiveInt(maxConcurrencyRaw, "maxConcurrency", problems);
@@ -716,9 +720,11 @@ export function parsePlan(raw: string): Plan {
 
   const mode = modeRaw === "demo" || modeRaw === "full" ? modeRaw : undefined;
   const maxConcurrency = typeof maxConcurrencyRaw === "number" ? maxConcurrencyRaw : undefined;
+  const dispatch = dispatchRaw === "code" || dispatchRaw === "host" ? dispatchRaw : undefined;
   return {
     ...(mode === undefined ? {} : { mode }),
     ...(maxConcurrency === undefined ? {} : { maxConcurrency }),
+    ...(dispatch === undefined ? {} : { dispatch }),
     topology: topologyRaw as Topology,
     summary,
     opinion,
